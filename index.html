@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IANGE - Gestión Inmobiliaria</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'iange-orange': '#F37321',
+              'iange-salmon': '#FFF5F2',
+              'iange-dark': '#1E1E1E',
+            },
+          }
+        }
+      }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.4"
+  }
+}
+</script>
+<style>
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #FFF5F2; /* iange-salmon */
+        border-radius: 10px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #F37321; /* iange-orange */
+        border-radius: 10px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #d96319; /* darker orange */
+      }
+</style>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-gray-50">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
