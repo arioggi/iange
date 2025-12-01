@@ -1,17 +1,21 @@
-import { createClient } from '@supabase/supabase-js';
+// supabaseClient.ts
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as
+  | string
+  | undefined;
 
-// Pequeña validación para no morir silenciosamente
+// Si faltan, solo mostramos error en consola, pero NO lanzamos excepción.
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Supabase env vars missing', {
+  console.error("👉 Supabase env vars missing 😭", {
     supabaseUrl,
-    hasAnonKey: !!supabaseAnonKey,
+    supabaseAnonKey,
   });
 }
 
-export const supabase = createClient(
-  supabaseUrl as string,
-  supabaseAnonKey as string
-);
+// Exportamos supabase, o null si no se pudo crear
+export const supabase: SupabaseClient | null =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
