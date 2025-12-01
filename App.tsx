@@ -1,14 +1,6 @@
-// App.tsx
-import React, { useState, useEffect, useMemo } from "react";
-import {
-  Routes,
-  Route,
-  useNavigate,
-  useLocation,
-  Navigate,
-  Outlet,
-} from "react-router-dom";
-import { saveSession, loadSession, clearSession } from "./sessions";
+import React, { useState, useEffect, useMemo } from 'react';
+import { Routes, Route, useNavigate, useLocation, Navigate, Outlet } from 'react-router-dom';
+import { supabase } from './supabaseClient';
 
 // Import types and constants
 import {
@@ -50,6 +42,13 @@ import SuperAdminReportes from "./pages/superadmin/Reportes";
 import SuperAdminLogs from "./pages/superadmin/Logs";
 
 // Import components
+import Sidebar from './components/Sidebar';
+import Header from './components/Header';
+import Toast from './components/ui/Toast';
+
+const App = () => {
+  // --- STATE MANAGEMENT ---
+  const [user, setUser] = useState<User | null>(null);
 import Sidebar from "./components/Sidebar";
 import Header from "./components/Header";
 import Toast from "./components/ui/Toast";
@@ -125,6 +124,16 @@ const App = () => {
   // --- AUTH & TOAST HANDLERS ---
   const handleLogin = (email: string, pass: string) => {
     const loggedInUser = adapter.login(email, pass);
+    if (loggedInUser) {
+      setUser(loggedInUser.user);
+      if (loggedInUser.user.mustChangePassword) {
+        setShowChangePassword(true);
+      } else {
+        const defaultRoute = DEFAULT_ROUTES[loggedInUser.user.role] || '/';
+        navigate(defaultRoute);
+      }
+    } else {
+      alert('Credenciales incorrectas');
 
     if (loggedInUser) {
       setUser(loggedInUser.user);
@@ -142,53 +151,45 @@ const App = () => {
   };
 
   const handlePasswordChanged = (userId: number, newPassword: string) => {
-    if (!user) return;
-
-    adapter.setPassword(user.tenantId || null, userId, newPassword, false);
-    const updatedUser = { ...user, mustChangePassword: false };
+    adapter.setPassword(user!.tenantId || null, userId, newPassword, false);
+    const updatedUser = { ...user!, mustChangePassword: false };
     setUser(updatedUser);
-    saveSession(updatedUser); // 👈 actualizamos sesión persistida
-
     setShowChangePassword(false);
-    const defaultRoute = DEFAULT_ROUTES[updatedUser.role] || "/";
+    const defaultRoute = DEFAULT_ROUTES[user!.role] || '/';
     navigate(defaultRoute);
-    showToast("Contraseña actualizada correctamente.");
+    showToast('Contraseña actualizada correctamente.');
   };
 
   const handleLogout = () => {
-    clearSession(); // 👈 limpiamos localStorage
     setUser(null);
     setOriginalUser(null);
     setIsImpersonating(false);
-    navigate("/login");
+    navigate('/login');
   };
 
   const handleImpersonate = (tenantId: string) => {
     const tenantUsers = adapter.listUsers(tenantId);
     const owner = tenantUsers.find((u) => u.role === ROLES.EMPRESA);
-
     if (owner) {
       setOriginalUser(user);
       setUser(owner);
       setIsImpersonating(true);
-      saveSession(owner); // opcional: persistir también la impersonación
-      navigate(DEFAULT_ROUTES[owner.role] || "/");
+      navigate(DEFAULT_ROUTES[owner.role] || '/');
     } else {
-      showToast("No se encontró un usuario owner para representar.", "error");
+      showToast('No se encontró un usuario owner para representar.', 'error');
     }
   };
 
   const handleExitImpersonation = () => {
     if (originalUser) {
       setUser(originalUser);
-      saveSession(originalUser); // restaurar sesión original
       setOriginalUser(null);
       setIsImpersonating(false);
-      navigate("/superadmin/empresas");
+      navigate('/superadmin/empresas');
     }
   };
 
-  const showToast = (message: string, type: "success" | "error" = "success") => {
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
@@ -196,18 +197,13 @@ const App = () => {
   // --- DATA HANDLERS & PERSISTENCE ---
   const handleUpdateUser = (updatedUser: User) => {
     if (user && user.id === updatedUser.id) {
-      setUser((prevUser) =>
-        prevUser ? { ...prevUser, ...updatedUser } : prevUser
-      );
-      saveSession({ ...(user as User), ...updatedUser });
+      setUser((prevUser) => ({ ...prevUser!, ...updatedUser }));
     }
-    showToast("Perfil actualizado con éxito");
+    // The persistence is handled in PersonalEmpresa component via adapter
+    showToast('Perfil actualizado con éxito');
   };
 
-  const handleUpdatePropiedad = (
-    updatedPropiedad: Propiedad,
-    updatedPropietario: Propietario
-  ) => {
+  const handleUpdatePropiedad = (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
     if (!user?.tenantId) return;
 
     const newPropiedades = propiedades.map((p) =>
@@ -221,20 +217,15 @@ const App = () => {
     setPropietarios(newPropietarios);
 
     adapter.setProperties(user.tenantId, newPropiedades);
-    adapter.setContacts(user.tenantId, {
-      propietarios: newPropietarios,
-      compradores,
-    });
+    adapter.setContacts(user.tenantId, { propietarios: newPropietarios, compradores });
 
-    showToast("Datos actualizados correctamente");
+    showToast('Datos actualizados correctamente');
   };
 
   const handleDeletePropiedad = (propiedadToDelete: Propiedad) => {
     if (!user?.tenantId) return;
 
-    const newPropiedades = propiedades.filter(
-      (p) => p.id !== propiedadToDelete.id
-    );
+    const newPropiedades = propiedades.filter((p) => p.id !== propiedadToDelete.id);
     const newPropietarios = propietarios.filter(
       (p) => p.id !== propiedadToDelete.propietarioId
     );
@@ -243,17 +234,14 @@ const App = () => {
     setPropietarios(newPropietarios);
 
     adapter.setProperties(user.tenantId, newPropiedades);
-    adapter.setContacts(user.tenantId, {
-      propietarios: newPropietarios,
-      compradores,
-    });
+    adapter.setContacts(user.tenantId, { propietarios: newPropietarios, compradores });
 
-    showToast("Propiedad eliminada", "error");
+    showToast('Propiedad eliminada', 'error');
   };
 
   const handleAddVisita = (
     propiedadId: number,
-    visitaData: Omit<Visita, "id" | "fecha">
+    visitaData: Omit<Visita, 'id' | 'fecha'>
   ) => {
     if (!user?.tenantId) return;
 
@@ -272,45 +260,41 @@ const App = () => {
     setPropiedades(newPropiedades);
     adapter.setProperties(user.tenantId, newPropiedades);
 
-    showToast("Visita registrada con éxito");
+    showToast('Visita registrada con éxito');
   };
 
   const onNavigateAndEdit = (propiedadId: number) => {
     setInitialEditPropId(propiedadId);
-    navigate("/clientes");
+    navigate('/clientes');
   };
 
   // --- LAYOUT & ROUTING ---
   const getTitleForPath = (path: string): string => {
-    if (path.startsWith("/reportes/")) return "Detalle de Reporte";
-    if (path.startsWith("/superadmin/empresas")) return "Gestión de Empresas";
-    if (path.startsWith("/superadmin/usuarios-globales"))
-      return "Usuarios Globales";
-    if (path.startsWith("/superadmin/planes")) return "Planes y Facturación";
-    if (path.startsWith("/superadmin/configuracion"))
-      return "Configuración del Sistema";
-    if (path.startsWith("/superadmin/reportes-globales"))
-      return "Reportes Globales";
-    if (path.startsWith("/superadmin/logs")) return "Logs y Auditoría";
-    if (path.startsWith("/superadmin")) return "Dashboard Super Admin";
+    if (path.startsWith('/reportes/')) return 'Detalle de Reporte';
+    if (path.startsWith('/superadmin/empresas')) return 'Gestión de Empresas';
+    if (path.startsWith('/superadmin/usuarios-globales')) return 'Usuarios Globales';
+    if (path.startsWith('/superadmin/planes')) return 'Planes y Facturación';
+    if (path.startsWith('/superadmin/configuracion')) return 'Configuración del Sistema';
+    if (path.startsWith('/superadmin/reportes-globales')) return 'Reportes Globales';
+    if (path.startsWith('/superadmin/logs')) return 'Logs y Auditoría';
+    if (path.startsWith('/superadmin')) return 'Dashboard Super Admin';
 
     const routes: { [key: string]: string } = {
-      "/": "Inicio",
-      "/oportunidades": "Dashboard de Oportunidades",
-      "/clientes": "Contactos (Propiedades y Clientes)",
-      "/catalogo": "Catálogo de Propiedades",
-      "/progreso": "Progreso de Ventas",
-      "/reportes": "Central de Reportes",
-      "/crm": "CRM",
-      "/configuraciones/mi-perfil": "Mi Perfil",
-      "/configuraciones/perfil": "Perfil de Empresa",
-      "/configuraciones/personal": "Personal",
-      "/configuraciones/facturacion": "Facturación",
+      '/': 'Inicio',
+      '/oportunidades': 'Dashboard de Oportunidades',
+      '/clientes': 'Contactos (Propiedades y Clientes)',
+      '/catalogo': 'Catálogo de Propiedades',
+      '/progreso': 'Progreso de Ventas',
+      '/reportes': 'Central de Reportes',
+      '/crm': 'CRM',
+      '/configuraciones/mi-perfil': 'Mi Perfil',
+      '/configuraciones/perfil': 'Perfil de Empresa',
+      '/configuraciones/personal': 'Personal',
+      '/configuraciones/facturacion': 'Facturación',
     };
-    return routes[path] || "IANGE";
+    return routes[path] || 'IANGE';
   };
 
-  // Si no hay usuario, mostramos sólo el login
   if (!user) {
     return (
       <Routes>
@@ -321,10 +305,7 @@ const App = () => {
 
   if (showChangePassword) {
     return (
-      <ChangePassword
-        user={user}
-        onPasswordChanged={handlePasswordChanged}
-      />
+      <ChangePassword user={user} onPasswordChanged={handlePasswordChanged} />
     );
   }
 
@@ -345,17 +326,15 @@ const App = () => {
   );
 
   const ProtectedRoute = () => {
-    // Superadmin tiene acceso total
+    // Superadmin has full access
     if (user.role === ROLES.SUPER_ADMIN) {
       return <Outlet />;
     }
 
     const path = location.pathname;
 
-    if (path.startsWith("/superadmin")) {
-      return (
-        <Navigate to={DEFAULT_ROUTES[user.role] || "/"} replace />
-      );
+    if (path.startsWith('/superadmin')) {
+      return <Navigate to={DEFAULT_ROUTES[user.role] || '/'} replace />;
     }
 
     const userPermissions = user.permissions;
@@ -364,28 +343,26 @@ const App = () => {
       return <Navigate to="/login" replace />;
     }
 
-    // Páginas base de configuración
-    if (path === "/configuraciones/mi-perfil") return <Outlet />;
+    // Allow access to base config pages based on role
+    if (path === '/configuraciones/mi-perfil') return <Outlet />;
     if (
-      (path === "/configuraciones/perfil" ||
-        path === "/configuraciones/facturacion") &&
+      (path === '/configuraciones/perfil' ||
+        path === '/configuraciones/facturacion') &&
       (user.role === ROLES.EMPRESA ||
         user.role === ROLES.ADMIN_EMPRESA)
     ) {
       return <Outlet />;
     }
 
-    // Checar mapa de permisos
-    for (const [permission, paths] of Object.entries(
-      PERMISSION_PATH_MAP
-    )) {
+    // Check permission mapping
+    for (const [permission, paths] of Object.entries(PERMISSION_PATH_MAP)) {
       if (paths.some((p) => path.startsWith(p))) {
         if (userPermissions[permission as keyof typeof userPermissions]) {
           return <Outlet />;
         } else {
           return (
             <Navigate
-              to={DEFAULT_ROUTES[user.role] || "/"}
+              to={DEFAULT_ROUTES[user.role] || '/'}
               replace
             />
           );
@@ -393,7 +370,7 @@ const App = () => {
       }
     }
 
-    // Default allow para paths no mapeados
+    // Default allow for paths not in the map (like /crm or index)
     return <Outlet />;
   };
 
@@ -412,7 +389,7 @@ const App = () => {
             path="/login"
             element={
               <Navigate
-                to={DEFAULT_ROUTES[user.role] || "/"}
+                to={DEFAULT_ROUTES[user.role] || '/'}
               />
             }
           />
@@ -422,7 +399,7 @@ const App = () => {
               path="/"
               element={
                 <Navigate
-                  to={DEFAULT_ROUTES[user.role] || "/"}
+                  to={DEFAULT_ROUTES[user.role] || '/'}
                 />
               }
             />
@@ -498,10 +475,7 @@ const App = () => {
               element={<PlaceholderPage title="CRM" />}
             />
 
-            <Route
-              path="/configuraciones"
-              element={<Configuraciones />}
-            >
+            <Route path="/configuraciones" element={<Configuraciones />}>
               <Route
                 index
                 element={
