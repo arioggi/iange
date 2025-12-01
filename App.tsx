@@ -3,36 +3,43 @@ import { Routes, Route, useNavigate, useLocation, Navigate, Outlet } from 'react
 import { supabase } from './supabaseClient';
 
 // Import types and constants
-import { User, Propiedad, Propietario, Comprador, Visita, CompanySettings } from './types';
-import { DEFAULT_ROUTES, PERMISSION_PATH_MAP, ROLES } from './constants';
-import adapter from './data/localStorageAdapter';
+import {
+  User,
+  Propiedad,
+  Propietario,
+  Comprador,
+  Visita,
+  CompanySettings,
+} from "./types";
+import { DEFAULT_ROUTES, PERMISSION_PATH_MAP, ROLES } from "./constants";
+import adapter from "./data/localStorageAdapter";
 
 // Import pages
-import Login from './pages/Login';
-import OportunidadesDashboard from './pages/OportunidadesDashboard';
-import AltaClientes from './pages/AltaClientes';
-import Catalogo from './pages/Catalogo';
-import Progreso from './pages/Progreso';
-import Reportes from './pages/Reportes';
-import ReporteDetalle from './pages/ReporteDetalle';
-import MiPerfil from './pages/MiPerfil';
-import Configuraciones from './pages/Configuraciones';
-import PlaceholderPage from './pages/PlaceholderPage';
-import ChangePassword from './pages/ChangePassword';
+import Login from "./pages/Login";
+import OportunidadesDashboard from "./pages/OportunidadesDashboard";
+import AltaClientes from "./pages/AltaClientes";
+import Catalogo from "./pages/Catalogo";
+import Progreso from "./pages/Progreso";
+import Reportes from "./pages/Reportes";
+import ReporteDetalle from "./pages/ReporteDetalle";
+import MiPerfil from "./pages/MiPerfil";
+import Configuraciones from "./pages/Configuraciones";
+import PlaceholderPage from "./pages/PlaceholderPage";
+import ChangePassword from "./pages/ChangePassword";
 
 // Import Settings pages for routing
-import PerfilEmpresa from './components/settings/PerfilEmpresa';
-import PersonalEmpresa from './components/settings/PersonalEmpresa';
-import Facturacion from './components/settings/Facturacion';
+import PerfilEmpresa from "./components/settings/PerfilEmpresa";
+import PersonalEmpresa from "./components/settings/PersonalEmpresa";
+import Facturacion from "./components/settings/Facturacion";
 
 // Import SuperAdmin pages
-import SuperAdminDashboard from './pages/superadmin/Dashboard';
-import SuperAdminEmpresas from './pages/superadmin/Empresas';
-import SuperAdminUsuarios from './pages/superadmin/UsuariosGlobales';
-import SuperAdminPlanes from './pages/superadmin/Planes';
-import SuperAdminConfiguracion from './pages/superadmin/Configuracion';
-import SuperAdminReportes from './pages/superadmin/Reportes';
-import SuperAdminLogs from './pages/superadmin/Logs';
+import SuperAdminDashboard from "./pages/superadmin/Dashboard";
+import SuperAdminEmpresas from "./pages/superadmin/Empresas";
+import SuperAdminUsuarios from "./pages/superadmin/UsuariosGlobales";
+import SuperAdminPlanes from "./pages/superadmin/Planes";
+import SuperAdminConfiguracion from "./pages/superadmin/Configuracion";
+import SuperAdminReportes from "./pages/superadmin/Reportes";
+import SuperAdminLogs from "./pages/superadmin/Logs";
 
 // Import components
 import Sidebar from './components/Sidebar';
@@ -42,6 +49,19 @@ import Toast from './components/ui/Toast';
 const App = () => {
   // --- STATE MANAGEMENT ---
   const [user, setUser] = useState<User | null>(null);
+import Sidebar from "./components/Sidebar";
+import Header from "./components/Header";
+import Toast from "./components/ui/Toast";
+
+const App = () => {
+  // --- STATE MANAGEMENT ---
+  const [user, setUser] = useState<User | null>(() => {
+    // por si algún día hay SSR/tests
+    if (typeof window === "undefined") return null;
+    const stored = loadSession();
+    return stored ? (stored as User) : null;
+  });
+
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [originalUser, setOriginalUser] = useState<User | null>(null);
 
@@ -50,10 +70,17 @@ const App = () => {
   const [propiedades, setPropiedades] = useState<Propiedad[]>([]);
   const [propietarios, setPropietarios] = useState<Propietario[]>([]);
   const [compradores, setCompradores] = useState<Comprador[]>([]);
-  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
+  const [companySettings, setCompanySettings] =
+    useState<CompanySettings | null>(null);
 
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [initialEditPropId, setInitialEditPropId] = useState<number | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
+
+  const [initialEditPropId, setInitialEditPropId] = useState<number | null>(
+    null
+  );
   const [showChangePassword, setShowChangePassword] = useState(false);
 
   const navigate = useNavigate();
@@ -83,11 +110,6 @@ const App = () => {
     }
   }, [user]);
 
-  // 👇 Efecto SOLO para probar Supabase (deberías ver el log en la consola del navegador)
-  useEffect(() => {
-    console.log('Supabase listo ✅', supabase);
-  }, []);
-
   const asesores = useMemo(
     () =>
       allUsers.filter(
@@ -112,6 +134,19 @@ const App = () => {
       }
     } else {
       alert('Credenciales incorrectas');
+
+    if (loggedInUser) {
+      setUser(loggedInUser.user);
+      saveSession(loggedInUser.user); // 👈 guardamos en localStorage
+
+      if (loggedInUser.user.mustChangePassword) {
+        setShowChangePassword(true);
+      } else {
+        const defaultRoute = DEFAULT_ROUTES[loggedInUser.user.role] || "/";
+        navigate(defaultRoute);
+      }
+    } else {
+      alert("Credenciales incorrectas");
     }
   };
 
