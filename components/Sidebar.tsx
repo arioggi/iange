@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { MENU_ITEMS, SETTINGS_MENU_ITEM, SETTINGS_MENU_ITEMS, ROLE_PERMISSIONS, SUPERADMIN_MENU_ITEMS, ROLES } from '../constants';
+import { MENU_ITEMS, SETTINGS_MENU_ITEM, SETTINGS_MENU_ITEMS, SUPERADMIN_MENU_ITEMS, ROLES } from '../constants';
 import { User, UserPermissions } from '../types';
 
 const Logo = () => (
@@ -45,10 +45,11 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
     const isSettingsPage = location.pathname.startsWith('/configuraciones');
     const isSuperAdminPage = location.pathname.startsWith('/superadmin');
     
+    // Si los permisos vienen nulos (ej. superadmin recién creado), usamos un objeto vacío
     const userPermissions = user.permissions || {} as UserPermissions;
 
     const hasPermission = (item: { permissionKey?: keyof UserPermissions }): boolean => {
-      // Items without a permissionKey are always visible
+      // Items sin permissionKey son siempre visibles
       if (!item.permissionKey) {
         return true;
       }
@@ -56,24 +57,34 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
     };
 
     const visibleMenuItems = MENU_ITEMS.filter(hasPermission);
+    
+    // Filtro corregido para que el SuperAdmin vea todas las configuraciones si quiere
     const visibleSettingsMenuItems = SETTINGS_MENU_ITEMS.filter(item => {
         if(item.path === "/configuraciones/mi-perfil") return true;
         
-        // Perfil de empresa y Facturación son para roles de alto nivel
+        // CORRECCIÓN: Permitimos que el SuperAdmin también vea estas opciones
         if(item.path === "/configuraciones/perfil" || item.path === "/configuraciones/facturacion") {
-             return user.role === ROLES.EMPRESA || user.role === ROLES.ADMIN_EMPRESA;
+             return user.role === ROLES.EMPRESA || user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.SUPER_ADMIN;
         }
         
-        // El resto se basa en permisos de toggle
+        // El resto se basa en permisos (Personal requiere 'equipo')
         return hasPermission(item);
     });
     
-    // Un usuario puede ver "Configuraciones" si tiene acceso a CUALQUIERA de sus sub-páginas
     const canSeeSettings = visibleSettingsMenuItems.length > 0;
 
+    // --- CORRECCIÓN PRINCIPAL AQUÍ ---
     const handleBack = () => {
+        // Si soy Super Admin, SIEMPRE vuelvo a /superadmin, sin importar de dónde venga
+        if (user.role === ROLES.SUPER_ADMIN) {
+            navigate('/superadmin');
+            return;
+        }
+        
+        // Comportamiento normal para otros roles
         navigate(isSuperAdminPage ? '/superadmin' : '/oportunidades');
     };
+    // --------------------------------
 
     const MainMenu = () => (
         <>
@@ -122,12 +133,15 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
     );
 
   const renderContent = () => {
-    if (isSuperAdminPage) {
-        return <SuperAdminMenu />;
-    }
+    // Prioridad visual: Si es página de settings, mostramos menú de settings
     if (isSettingsPage) {
         return <SettingsMenu />;
     }
+    // Si estamos en rutas de superadmin, mostramos menú de superadmin
+    if (isSuperAdminPage) {
+        return <SuperAdminMenu />;
+    }
+    // Por defecto menú principal
     return <MainMenu />;
   }
 
