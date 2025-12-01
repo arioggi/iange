@@ -57,7 +57,6 @@ import Toast from "./components/ui/Toast";
 const App = () => {
   // --- STATE MANAGEMENT ---
   const [user, setUser] = useState<User | null>(() => {
-    // Por si algún día hay SSR/tests
     if (typeof window === "undefined") return null;
     const stored = loadSession();
     return stored ? (stored as User) : null;
@@ -111,9 +110,13 @@ const App = () => {
     }
   }, [user]);
 
-  // 👇 Efecto SOLO para probar Supabase (deberías ver el log en la consola del navegador)
+  // --- TEST SUPABASE (simple log para verificar conexión) ---
   useEffect(() => {
     console.log("Supabase listo ✅", supabase);
+    // Ejemplo extra:
+    // supabase.auth.getSession().then(({ data, error }) =>
+    //   console.log("Test Supabase auth:", { data, error })
+    // );
   }, []);
 
   const asesores = useMemo(
@@ -133,7 +136,7 @@ const App = () => {
 
     if (loggedInUser) {
       setUser(loggedInUser.user);
-      saveSession(loggedInUser.user); // guardamos en localStorage
+      saveSession(loggedInUser.user); // persistimos en localStorage
 
       if (loggedInUser.user.mustChangePassword) {
         setShowChangePassword(true);
@@ -146,11 +149,16 @@ const App = () => {
     }
   };
 
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const handlePasswordChanged = (userId: number, newPassword: string) => {
     if (!user) return;
 
     adapter.setPassword(user.tenantId || null, userId, newPassword, false);
-    const updatedUser = { ...user, mustChangePassword: false };
+    const updatedUser: User = { ...user, mustChangePassword: false };
 
     setUser(updatedUser);
     saveSession(updatedUser);
@@ -172,13 +180,12 @@ const App = () => {
   const handleImpersonate = (tenantId: string) => {
     const tenantUsers = adapter.listUsers(tenantId);
     const owner = tenantUsers.find((u) => u.role === ROLES.EMPRESA);
-
     if (owner) {
       setOriginalUser(user);
       setUser(owner);
       setIsImpersonating(true);
+      // saveSession(owner); // opcional: persistir suplantación
       navigate(DEFAULT_ROUTES[owner.role] || "/");
-      // Nota: no persistimos impersonación en localStorage a propósito
     } else {
       showToast("No se encontró un usuario owner para representar.", "error");
     }
@@ -187,30 +194,22 @@ const App = () => {
   const handleExitImpersonation = () => {
     if (originalUser) {
       setUser(originalUser);
+      // saveSession(originalUser); // opcional
       setOriginalUser(null);
       setIsImpersonating(false);
       navigate("/superadmin/empresas");
     }
   };
 
-  const showToast = (
-    message: string,
-    type: "success" | "error" = "success"
-  ) => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
   // --- DATA HANDLERS & PERSISTENCE ---
   const handleUpdateUser = (updatedUser: User) => {
     if (user && user.id === updatedUser.id) {
       setUser((prevUser) => {
-        const newUser = { ...prevUser!, ...updatedUser };
-        saveSession(newUser);
-        return newUser;
+        const merged = { ...prevUser!, ...updatedUser };
+        saveSession(merged);
+        return merged;
       });
     }
-    // The persistence is handled in PersonalEmpresa component via adapter
     showToast("Perfil actualizado con éxito");
   };
 
@@ -483,19 +482,13 @@ const App = () => {
                 />
               }
             />
-            <Route
-              path="/crm"
-              element={<PlaceholderPage title="CRM" />}
-            />
+            <Route path="/crm" element={<PlaceholderPage title="CRM" />} />
 
             <Route path="/configuraciones" element={<Configuraciones />}>
               <Route
                 index
                 element={
-                  <Navigate
-                    to="/configuraciones/mi-perfil"
-                    replace
-                  />
+                  <Navigate to="/configuraciones/mi-perfil" replace />
                 }
               />
               <Route
@@ -524,10 +517,7 @@ const App = () => {
             </Route>
 
             {/* Super Admin Routes */}
-            <Route
-              path="/superadmin"
-              element={<SuperAdminDashboard />}
-            />
+            <Route path="/superadmin" element={<SuperAdminDashboard />} />
             <Route
               path="/superadmin/empresas"
               element={
@@ -543,10 +533,7 @@ const App = () => {
                 <SuperAdminUsuarios showToast={showToast} />
               }
             />
-            <Route
-              path="/superadmin/planes"
-              element={<SuperAdminPlanes />}
-            />
+            <Route path="/superadmin/planes" element={<SuperAdminPlanes />} />
             <Route
               path="/superadmin/configuracion"
               element={
@@ -557,10 +544,7 @@ const App = () => {
               path="/superadmin/reportes-globales"
               element={<SuperAdminReportes />}
             />
-            <Route
-              path="/superadmin/logs"
-              element={<SuperAdminLogs />}
-            />
+            <Route path="/superadmin/logs" element={<SuperAdminLogs />} />
           </Route>
 
           <Route
