@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Tenant } from '../../types';
 import Modal from '../../components/ui/Modal';
-// IMPORTANTE: Importamos deleteTenantFully en lugar de deleteTenant
+// IMPORTANTE: Mantenemos deleteTenantFully para borrar correctamente
 import { createTenant, getAllTenants, deleteTenantFully } from '../../Services/api'; 
 import { supabase } from '../../supabaseClient';
 
+// Agregamos la prop 'isSubmitting' para bloquear el botón y evitar duplicados
 interface AddEditEmpresaFormProps {
     tenant?: Tenant;
     onSave: (data: any) => void;
     onCancel: () => void;
+    isSubmitting: boolean; // <--- NUEVO: Control de estado de carga
 }
 
-const AddEditEmpresaForm: React.FC<AddEditEmpresaFormProps> = ({ tenant, onSave, onCancel }) => {
+const AddEditEmpresaForm: React.FC<AddEditEmpresaFormProps> = ({ tenant, onSave, onCancel, isSubmitting }) => {
     const [formData, setFormData] = useState({
         nombre: tenant?.nombre || '',
         ownerEmail: tenant?.ownerEmail || '',
@@ -30,6 +32,7 @@ const AddEditEmpresaForm: React.FC<AddEditEmpresaFormProps> = ({ tenant, onSave,
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        // Validación básica de contraseñas solo al crear
         if (!tenant && formData.password !== formData.confirmPassword) {
             alert("Las contraseñas no coinciden.");
             return;
@@ -98,9 +101,30 @@ const AddEditEmpresaForm: React.FC<AddEditEmpresaFormProps> = ({ tenant, onSave,
             )}
             
             <div className="flex justify-end space-x-3 pt-4 border-t mt-6">
-                <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 font-medium text-sm">Cancelar</button>
-                <button type="submit" className="bg-iange-orange text-white py-2 px-4 rounded-md hover:bg-orange-600 font-bold text-sm shadow-sm">
-                    {tenant ? 'Guardar Cambios' : 'Crear Empresa y Usuario'}
+                <button 
+                    type="button" 
+                    onClick={onCancel} 
+                    className="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 font-medium text-sm"
+                    disabled={isSubmitting} // Deshabilitar cancelar si se está enviando
+                >
+                    Cancelar
+                </button>
+                <button 
+                    type="submit" 
+                    className={`text-white py-2 px-4 rounded-md font-bold text-sm shadow-sm flex items-center ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-iange-orange hover:bg-orange-600'}`}
+                    disabled={isSubmitting} // BLOQUEO CRÍTICO DE DOBLE CLICK
+                >
+                    {isSubmitting ? (
+                        <>
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Procesando...
+                        </>
+                    ) : (
+                        tenant ? 'Guardar Cambios' : 'Crear Empresa y Usuario'
+                    )}
                 </button>
             </div>
         </form>
@@ -110,6 +134,8 @@ const AddEditEmpresaForm: React.FC<AddEditEmpresaFormProps> = ({ tenant, onSave,
 const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' | 'error') => void; onImpersonate: (id: string) => void }> = ({ showToast, onImpersonate }) => {
     const [tenants, setTenants] = useState<Tenant[]>([]);
     const [loading, setLoading] = useState(true);
+    // NUEVO ESTADO: Controla si se está guardando para evitar doble submit
+    const [isSaving, setIsSaving] = useState(false); 
     const [isModalOpen, setModalOpen] = useState(false);
     const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
     const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
@@ -145,7 +171,9 @@ const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' |
     };
 
     const handleSave = async (formData: any) => {
-        setLoading(true);
+        if (isSaving) return; // Prevención extra si ya está guardando
+        setIsSaving(true); // <--- INICIO DEL BLOQUEO
+        
         try {
             if (selectedTenant) {
                 // MODO EDICIÓN
@@ -163,6 +191,7 @@ const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' |
                 showToast('Empresa actualizada.');
             } else {
                 // MODO CREACIÓN
+                // 1. Crear la Empresa
                 const tenantData = await createTenant({
                     nombre: formData.nombre, 
                     ownerEmail: formData.ownerEmail,
@@ -176,7 +205,7 @@ const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' |
 
                 console.log("Empresa creada:", tenantData);
 
-                // Intentar crear el Usuario
+                // 2. Intentar crear el Usuario
                 const { data: authData, error: authError } = await supabase.auth.signUp({
                     email: formData.ownerEmail,
                     password: formData.password,
@@ -189,6 +218,7 @@ const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' |
                     console.error("Error Auth:", authError);
                     alert(`✅ Empresa "${formData.nombre}" creada con éxito.\n\n⚠️ PERO el usuario no se pudo crear automáticamente por seguridad de Supabase (espera unos segundos).\n\nVe a la pestaña "Usuarios" y crea el usuario manualmente para asignarlo a esta empresa.`);
                 } else if (authData.user) {
+                    // Si el usuario se creó, lo vinculamos
                     const { error: profileError } = await supabase
                         .from('profiles')
                         .update({
@@ -211,15 +241,14 @@ const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' |
         } catch (error: any) {
             showToast(error.message, 'error');
         } finally {
-            setLoading(false);
+            setIsSaving(false); // <--- LIBERACIÓN DEL BLOQUEO (PASE LO QUE PASE)
         }
     };
 
-    // --- FUNCIÓN DE ELIMINACIÓN CORREGIDA ---
     const handleDelete = async () => {
         if (selectedTenant) {
             try {
-                // CAMBIO CLAVE: Usamos la eliminación completa (Auth + Datos)
+                // Usamos la eliminación completa (Auth + Datos)
                 await deleteTenantFully(selectedTenant.id);
                 
                 showToast('Empresa y todos sus usuarios eliminados permanentemente.', 'success');
@@ -232,7 +261,6 @@ const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' |
             }
         }
     };
-    // ----------------------------------------
 
     const filteredTenants = useMemo(() => {
         return tenants.filter(t => t.nombre.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -294,7 +322,12 @@ const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' |
 
             {isModalOpen && (
                 <Modal title={selectedTenant ? "Editar Empresa" : "Nueva Empresa"} isOpen={isModalOpen} onClose={() => setModalOpen(false)}>
-                    <AddEditEmpresaForm tenant={selectedTenant || undefined} onSave={handleSave} onCancel={() => setModalOpen(false)} />
+                    <AddEditEmpresaForm 
+                        tenant={selectedTenant || undefined} 
+                        onSave={handleSave} 
+                        onCancel={() => setModalOpen(false)}
+                        isSubmitting={isSaving} // PASAMOS EL ESTADO DE CARGA AL FORMULARIO
+                    />
                 </Modal>
             )}
 
