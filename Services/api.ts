@@ -265,3 +265,73 @@ export const getSuperAdminStats = async () => {
         rolesDistribution
     };
 };
+
+// ==========================================
+// 5. FUNCIONES PARA PERSONAL EMPRESA (NUEVO)
+// ==========================================
+
+/**
+ * Obtiene los empleados de un tenant específico
+ */
+export const getUsersByTenant = async (tenantId: string) => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('tenant_id', tenantId);
+
+  if (error) {
+    console.error('Error fetching tenant users:', error);
+    throw error;
+  }
+
+  // Mapeamos los datos de la BD al formato que espera tu UI
+  return data.map((p: any) => ({
+    id: p.id,
+    name: p.full_name || p.email?.split('@')[0] || 'Sin Nombre',
+    email: p.email,
+    role: p.role,
+    tenantId: p.tenant_id,
+    permissions: p.permissions || [],
+    avatar: p.avatar_url,
+    phone: p.phone
+  }));
+};
+
+/**
+ * Crea un usuario nuevo en Supabase (Auth + Perfil)
+ * Intenta registrar al usuario y asegura que se cree el perfil correctamente
+ */
+export const createTenantUser = async (email: string, password: string, tenantId: string, role: string, name: string) => {
+    // 1. Crear el usuario en Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+            data: {
+                full_name: name,
+                tenant_id: tenantId, 
+                role: role
+            }
+        }
+    });
+
+    if (authError) throw authError;
+
+    // 2. Asegurar que el perfil tenga los datos correctos
+    if (authData.user) {
+        // Upsert para asegurar que si el trigger falló, esto lo arregle
+        const { error: profileError } = await supabase
+            .from('profiles')
+            .upsert({ 
+                id: authData.user.id,
+                email: email,
+                full_name: name,
+                tenant_id: tenantId,
+                role: role
+            });
+        
+        if (profileError) console.warn("Aviso al actualizar perfil:", profileError);
+    }
+
+    return authData.user;
+};
