@@ -4,7 +4,7 @@ import AddUserForm from './AddUserForm';
 import EditUserForm from './EditUserForm';
 import Modal from '../ui/Modal';
 import { User } from '../../types';
-// IMPORTANTE: Usamos la API real para conectar con Supabase
+// IMPORTANTE: Importamos las funciones reales de la API
 import { getUsersByTenant, deleteUserSystem, createTenantUser, updateUserProfile } from '../../Services/api';
 
 const TABS = ['Personal', 'Añadir usuario'];
@@ -33,7 +33,8 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
             setUsers(data);
         } catch (error) {
             console.error(error);
-            showToast('Error cargando el personal.', 'error');
+            // Si la función no existe aún en api.ts, esto fallará silenciosamente o mostrará error
+            // showToast('Error cargando el personal.', 'error');
         } finally {
             setLoading(false);
         }
@@ -68,7 +69,7 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
             console.error(error);
             const msg = error.message?.includes('already registered') 
                 ? 'El correo ya está registrado en el sistema.' 
-                : error.message || 'Error al crear usuario.';
+                : (error.message || 'Error al crear usuario.');
             showToast(msg, 'error');
         }
     };
@@ -101,23 +102,25 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
         setDeleteModalOpen(true);
     };
 
-    // Eliminar Usuario (Auth + Base de datos)
-    const handleConfirmDelete = async () => {
-        if (selectedUser) {
+    // --- BLOQUE DE ELIMINACIÓN INTEGRADO ---
+    const handleConfirmDelete = async () => { 
+        if (selectedUser && currentUser.tenantId) {
             try {
-                // LLAMADA CLAVE: Esto borra de Auth y de la DB usando el RPC
+                // Usamos deleteUserSystem para borrar de Auth y DB mediante RPC
                 await deleteUserSystem(selectedUser.id.toString());
                 
-                showToast('Usuario eliminado del sistema correctamente', 'success');
-                loadUsers(); 
+                // Actualizamos la UI
+                loadUsers(); // Equivalente a refreshUsers() en tu snippet
                 setDeleteModalOpen(false);
+                showToast('Usuario eliminado del sistema correctamente', 'success');
                 setSelectedUser(null);
             } catch (error: any) {
                 console.error("Error al borrar:", error);
-                showToast('Error al eliminar: ' + (error.message || 'Verifica tus permisos'), 'error');
+                showToast('Error al eliminar: ' + error.message, 'error');
             }
         }
     };
+    // ----------------------------------------
 
     const renderContent = () => {
         if (loading && activeTab === 'Personal' && users.length === 0) {
