@@ -41,6 +41,7 @@ import Header from './components/Header';
 import Toast from './components/ui/Toast';
 
 const App = () => {
+  // --- ESTADO ---
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isImpersonating, setIsImpersonating] = useState(false);
@@ -52,6 +53,7 @@ const App = () => {
   const [compradores, setCompradores] = useState<Comprador[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
+  // UI States (Aquí estaba el error de duplicado)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [initialEditPropId, setInitialEditPropId] = useState<number | null>(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -173,7 +175,7 @@ const App = () => {
         }
     };
     loadData();
-  }, [user]); // Se ejecuta cuando el usuario cambia (login)
+  }, [user]); 
 
   const asesores = useMemo(() => allUsers.filter(u => 
     u.role === ROLES.ASESOR || u.role === ROLES.ADMIN_EMPRESA || u.role === ROLES.EMPRESA
@@ -188,7 +190,6 @@ const App = () => {
         alert(error.message);
         setLoading(false);
     }
-    // No navegamos manualmente, el listener lo hará
   };
 
   const handleLogout = async () => {
