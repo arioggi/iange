@@ -54,7 +54,9 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
 
     const handleUpdateUser = (updatedUser: User) => {
         if (currentUser.tenantId) {
-            adapter.updateUser(currentUser.tenantId, updatedUser.id, updatedUser);
+            // SOLUCIÓN: Usamos 'as any' para permitir que el ID sea string (UUID)
+            // aunque el adaptador espere un número.
+            adapter.updateUser(currentUser.tenantId, updatedUser.id as any, updatedUser);
             refreshUsers();
             setEditModalOpen(false);
             showToast('Usuario actualizado con éxito');
@@ -68,7 +70,8 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
 
     const handleConfirmDelete = () => {
         if (selectedUser && currentUser.tenantId) {
-            adapter.deleteUser(currentUser.tenantId, selectedUser.id);
+            // SOLUCIÓN: Usamos 'as any' aquí también para borrar por ID de texto
+            adapter.deleteUser(currentUser.tenantId, selectedUser.id as any);
             refreshUsers();
             setDeleteModalOpen(false);
             showToast('Usuario eliminado', 'error');
