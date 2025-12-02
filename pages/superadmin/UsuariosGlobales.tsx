@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User } from '../../types';
-import { getAllGlobalUsers, getAllTenants, updateUserProfile } from '../../Services/api'; // Ruta con S mayúscula
+import { getAllGlobalUsers, getAllTenants, updateUserProfile, deleteUserSystem } from '../../Services/api'; // <--- AGREGADO: deleteUserSystem
 import Modal from '../../components/ui/Modal';
 import { ROLES, ROLE_LABELS, ROLE_DEFAULT_PERMISSIONS } from '../../constants';
 
@@ -93,6 +93,26 @@ const SuperAdminUsuarios: React.FC<{ showToast: (msg: string) => void }> = ({ sh
         } catch (e: any) { showToast('Error: ' + e.message); }
     };
 
+    // --- NUEVA FUNCIÓN PARA ELIMINAR ---
+    const handleDelete = async (userId: string) => {
+        // 1. Confirmación obligatoria
+        if (!window.confirm("¡CUIDADO! \n\nEstás a punto de eliminar este usuario permanentemente.\nEsta acción borrará su acceso y todos sus datos personales.\n\n¿Estás seguro?")) {
+            return;
+        }
+
+        try {
+            // 2. Llamada a la API (borra Auth + Profile)
+            await deleteUserSystem(userId);
+            
+            // 3. Actualizar la lista visualmente sin recargar
+            setUsers(prevUsers => prevUsers.filter(u => u.id !== userId));
+            showToast('Usuario eliminado del sistema correctamente.');
+        } catch (e: any) {
+            console.error(e);
+            showToast('Error al eliminar: ' + (e.message || 'Error desconocido'));
+        }
+    };
+
     const filteredUsers = users.filter(u => 
         u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
         u.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -138,8 +158,21 @@ const SuperAdminUsuarios: React.FC<{ showToast: (msg: string) => void }> = ({ sh
                                     </td>
                                     {/* @ts-ignore */}
                                     <td className="px-6 py-4 text-gray-700 text-sm">{u.tenantName}</td>
-                                    <td className="px-6 py-4">
-                                        <button onClick={() => setSelectedUser(u)} className="text-iange-orange font-bold hover:underline text-sm">Administrar</button>
+                                    <td className="px-6 py-4 space-x-4">
+                                        <button 
+                                            onClick={() => setSelectedUser(u)} 
+                                            className="text-iange-orange font-bold hover:underline text-sm"
+                                        >
+                                            Administrar
+                                        </button>
+                                        
+                                        {/* --- BOTÓN ELIMINAR AGREGADO --- */}
+                                        <button 
+                                            onClick={() => handleDelete(u.id.toString())} 
+                                            className="text-red-500 font-bold hover:text-red-700 hover:underline text-sm"
+                                        >
+                                            Eliminar
+                                        </button>
                                     </td>
                                 </tr>
                             ))}

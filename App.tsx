@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { supabase } from './supabaseClient'; 
 
@@ -43,8 +43,12 @@ import Toast from './components/ui/Toast';
 const App = () => {
   // --- ESTADO ---
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Empieza cargando
   const [isImpersonating, setIsImpersonating] = useState(false);
+
+  // Referencia para evitar recargas innecesarias
+  const userRef = useRef<User | null>(null);
+  useEffect(() => { userRef.current = user; }, [user]);
 
   // Datos
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -53,7 +57,6 @@ const App = () => {
   const [compradores, setCompradores] = useState<Comprador[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
-  // UI States (Aquí estaba el error de duplicado)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [initialEditPropId, setInitialEditPropId] = useState<number | null>(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -61,100 +64,90 @@ const App = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // --- 1. LÓGICA DE AUTENTICACIÓN (CORREGIDA) ---
+  // --- 1. AUTENTICACIÓN ESTABLE ---
   useEffect(() => {
     let mounted = true;
 
-    // Función para obtener el perfil desde Supabase
-    const fetchProfile = async (sessionUser: any) => {
-      try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', sessionUser.id)
-          .single();
-
-        if (error) {
-          console.error("Error al obtener perfil:", error.message);
-          return null;
-        }
-
-        return {
-          id: data.id,
-          email: sessionUser.email || '',
-          name: data.full_name || 'Usuario',
-          role: data.role || 'asesor',
-          photo: data.avatar_url || 'VP',
-          tenantId: data.tenant_id,
-          permissions: data.permissions,
-          phone: data.phone || '',
-        };
-      } catch (err) {
-        console.error("Error inesperado en perfil:", err);
-        return null;
-      }
-    };
-
-    const initAuth = async () => {
-      try {
-        // Verificar sesión actual
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session?.user) {
-          const profileUser = await fetchProfile(session.user);
-          if (mounted && profileUser) {
-            // @ts-ignore
-            setUser(profileUser);
-          }
-        }
-      } catch (error) {
-        console.error("Error inicializando auth:", error);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    initAuth();
-
-    // Escuchar cambios de sesión
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
-        if (mounted) {
-          setUser(null);
-          setLoading(false);
-        }
-      } else if (event === 'SIGNED_IN' && session?.user) {
-        // Solo recargamos si el usuario es null (para evitar bucles)
-        if (!user) {
-            const profileUser = await fetchProfile(session.user);
-            if (mounted && profileUser) {
-                // @ts-ignore
-                setUser(profileUser);
+    // Función auxiliar para cargar perfil
+    const loadProfile = async (sessionUser: any) => {
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', sessionUser.id)
+                .single();
+            
+            if (mounted) {
+                if (data) {
+                    setUser({
+                        id: data.id as any,
+                        email: sessionUser.email || '',
+                        name: data.full_name || 'Usuario',
+                        role: data.role || 'asesor',
+                        photo: data.avatar_url || 'VP',
+                        tenantId: data.tenant_id,
+                        permissions: data.permissions,
+                        phone: data.phone || '',
+                    });
+                } else if (error) {
+                    console.error("Error perfil:", error.message);
+                }
             }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            // PASE LO QUE PASE, al terminar de buscar perfil, quitamos loading
+            if (mounted) setLoading(false);
         }
-      }
+    };
+
+    // A. Chequeo Inicial (Al recargar página)
+    const checkCurrentSession = async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+            await loadProfile(session.user);
+        } else {
+            if (mounted) setLoading(false); // Si no hay sesión, quitamos carga inmediatamente
+        }
+    };
+
+    checkCurrentSession();
+
+    // B. Oyente de Cambios (Login/Logout futuros)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (!mounted) return;
+
+        if (event === 'SIGNED_OUT') {
+            setUser(null);
+            navigate('/login');
+        } else if (event === 'SIGNED_IN' && session?.user) {
+            // Si el usuario ya está cargado (por el chequeo inicial), NO hacemos nada.
+            // Esto evita el bucle infinito y el parpadeo.
+            if (userRef.current?.id === session.user.id) return;
+
+            // Si es un login nuevo, cargamos el perfil SIN poner setLoading(true)
+            // Dejamos que la UI se actualice reactivamente cuando llegue la data.
+            loadProfile(session.user); 
+        }
     });
 
     return () => {
-      mounted = false;
-      subscription.unsubscribe();
+        mounted = false;
+        subscription.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Dependencias vacías para correr solo al montar
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); 
 
-  // --- 2. CARGA DE DATOS ---
+
+  // --- 2. CARGA DE DATOS DE NEGOCIO ---
   useEffect(() => {
     const loadData = async () => {
         if (!user) return;
-
-        // Si es Super Admin sin empresa, no cargamos propiedades de negocio
-        if (!user.tenantId && user.role === ROLES.SUPER_ADMIN) {
-            return;
-        }
+        if (!user.tenantId && user.role === ROLES.SUPER_ADMIN) return;
 
         if (user.tenantId) {
             try {
-                // Datos reales
+                // Datos reales Supabase
                 const props = await getPropertiesByTenant(user.tenantId);
                 const contacts = await getContactsByTenant(user.tenantId);
                 
@@ -163,13 +156,11 @@ const App = () => {
                     setPropietarios(contacts.propietarios);
                     setCompradores(contacts.compradores);
                 }
-
-                // Datos locales (fallback temporal para usuarios y settings)
+                // Datos locales (fallback)
                 setAllUsers(adapter.listUsers(user.tenantId));
                 setCompanySettings(adapter.getTenantSettings(user.tenantId));
             } catch (error) {
-                console.error("Error cargando datos:", error);
-                // Fallback silencioso a local si falla la red
+                console.error("Error cargando datos negocio:", error);
                 setPropiedades(adapter.listProperties(user.tenantId));
             }
         }
@@ -184,20 +175,17 @@ const App = () => {
   // --- HANDLERS ---
 
   const handleLogin = async (email: string, pass: string) => {
-    setLoading(true);
+    // NO activamos setLoading(true) aquí. Dejamos que Login.tsx maneje su spinner visual.
     const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    if (error) {
-        alert(error.message);
-        setLoading(false);
-    }
+    if (error) alert(error.message);
   };
 
   const handleLogout = async () => {
     setLoading(true);
     await supabase.auth.signOut();
     setUser(null);
-    navigate('/login');
     setLoading(false);
+    navigate('/login');
   };
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -205,7 +193,7 @@ const App = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Handlers
+  // Handlers Dummy / Locales
   const handleUpdatePropiedad = () => showToast('Guardando...');
   const handleDeletePropiedad = () => showToast('Eliminando...');
   const handleAddVisita = () => showToast('Visita registrada');
@@ -231,9 +219,9 @@ const App = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-            <div className="text-3xl font-bold text-iange-orange mb-2">IANGE<span className="text-gray-800">.</span></div>
-            <div className="text-gray-500 animate-pulse">Cargando...</div>
+        <div className="text-center animate-pulse">
+          <div className="text-3xl font-bold text-iange-orange mb-2">IANGE<span className="text-gray-800">.</span></div>
+          <div className="text-gray-500">Cargando sistema...</div>
         </div>
       </div>
     );

@@ -1,13 +1,22 @@
 import { supabase } from '../supabaseClient';
 
 // ==========================================
-// EMPRESAS
+// 1. GESTIÓN DE EMPRESAS (TENANTS)
 // ==========================================
 
-export const createTenant = async (name: string, ownerEmail: string) => {
+// Actualizado para recibir todos los datos del formulario nuevo
+export const createTenant = async (dataObj: { nombre: string, ownerEmail: string, telefono: string, direccion: string, rfc: string, plan: string }) => {
   const { data, error } = await supabase
     .from('tenants')
-    .insert([{ name, owner_email: ownerEmail, status: 'active' }])
+    .insert([{ 
+        name: dataObj.nombre, 
+        owner_email: dataObj.ownerEmail, 
+        telefono: dataObj.telefono,
+        direccion: dataObj.direccion,
+        rfc: dataObj.rfc,
+        plan: dataObj.plan,
+        status: 'active' 
+    }])
     .select()
     .single();
 
@@ -25,8 +34,18 @@ export const getAllTenants = async () => {
   return data;
 };
 
+// NUEVO: Función para borrar empresas
+export const deleteTenant = async (tenantId: string) => {
+    const { error } = await supabase
+        .from('tenants')
+        .delete()
+        .eq('id', tenantId);
+    
+    if (error) throw error;
+};
+
 // ==========================================
-// USUARIOS
+// 2. GESTIÓN DE USUARIOS
 // ==========================================
 
 export const getAllGlobalUsers = async () => {
@@ -61,10 +80,7 @@ export const updateUserProfile = async (userId: string, updates: any) => {
   return data;
 };
 
-// Función para intentar crear perfil manual (solo funcionará si el ID auth existe o si quitamos la restricción,
-// pero por ahora la usamos para actualizar datos si el perfil ya existe)
 export const createGlobalUserProfile = async (profileData: any) => {
-    // Intentamos UPSERT (Insertar o Actualizar si existe)
     const { data, error } = await supabase
         .from('profiles')
         .upsert([profileData])
@@ -75,33 +91,177 @@ export const createGlobalUserProfile = async (profileData: any) => {
     return data;
 };
 
-// ... (Resto de funciones de propiedades/fotos que ya tenías)
+/**
+ * NUEVO: Elimina un usuario completamente (Auth + Perfil)
+ * Requiere la función RPC 'delete_user_by_admin' en Supabase y ON DELETE CASCADE en la BD.
+ */
+export const deleteUserSystem = async (userId: string) => {
+  const { data, error } = await supabase.rpc('delete_user_by_admin', { 
+    user_id: userId 
+  });
+
+  if (error) {
+    console.error('Error eliminando usuario:', error);
+    throw error;
+  }
+  return data;
+};
+
+// ==========================================
+// 3. PROPIEDADES, CONTACTOS Y FOTOS
+// ==========================================
+
 export const uploadPropertyImage = async (file: File) => {
   const fileExt = file.name.split('.').pop();
-  const fileName = `${Math.random()}.${fileExt}`;
+  const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
   const filePath = `${fileName}`;
-  const { error: uploadError } = await supabase.storage.from('propiedades').upload(filePath, file);
+
+  const { error: uploadError } = await supabase.storage
+    .from('propiedades')
+    .upload(filePath, file);
+
   if (uploadError) throw uploadError;
+
   const { data } = supabase.storage.from('propiedades').getPublicUrl(filePath);
   return data.publicUrl;
 };
 
-export const createProperty = async (propertyData: any, tenantId: string) => {
-  // Lógica simplificada para crear propiedad
+// NUEVO: Crear Contacto (Propietario/Comprador)
+export const createContact = async (contactData: any, tenantId: string, tipo: 'propietario' | 'comprador') => {
+    const { data, error } = await supabase
+        .from('contactos')
+        .insert([{
+            tenant_id: tenantId,
+            nombre: contactData.nombreCompleto,
+            email: contactData.email,
+            telefono: contactData.telefono,
+            tipo: tipo
+        }])
+        .select()
+        .single();
+    
+    if (error) throw error;
+    return data;
+};
+
+// ACTUALIZADO: Crear Propiedad vinculada a contacto y tenant
+export const createProperty = async (propertyData: any, tenantId: string, ownerId: string) => {
+  const { 
+    titulo, direccion, valor_operacion, tipo_inmueble, status, 
+    fotos, // Sacamos fotos del objeto json
+    ...restDetails 
+  } = propertyData;
+
   const dbPayload = {
     tenant_id: tenantId,
-    titulo: propertyData.calle, // Usamos calle como título simple
-    direccion: `${propertyData.colonia}, ${propertyData.municipio}`,
-    precio: parseFloat(String(propertyData.valor_operacion).replace(/[^0-9.]/g, '')) || 0,
-    tipo: propertyData.tipo_inmueble,
+    contacto_id: ownerId,
+    titulo: `${propertyData.calle} ${propertyData.numero_exterior}`,
+    direccion: `${propertyData.colonia}, ${propertyData.municipio}, ${propertyData.estado}`,
+    precio: parseFloat(String(valor_operacion).replace(/[^0-9.]/g, '')) || 0,
+    tipo: tipo_inmueble,
     estatus: 'disponible',
-    features: propertyData, // Guardamos todo el objeto JSON por flexibilidad
-    images: propertyData.fotos || [] // Asumiendo que ya son URLs
+    features: { ...restDetails, calle: propertyData.calle, numero_exterior: propertyData.numero_exterior },
+    images: propertyData.imageUrls || []
   };
-  const { data, error } = await supabase.from('propiedades').insert([dbPayload]).select().single();
+
+  const { data, error } = await supabase
+    .from('propiedades')
+    .insert([dbPayload])
+    .select()
+    .single();
+
   if (error) throw error;
   return data;
 };
 
-export const getPropertiesByTenant = async (tenantId: string) => { /* ... lógica previa ... */ return []; };
-export const getContactsByTenant = async (tenantId: string) => { return { propietarios: [], compradores: [] }; };
+// IMPLEMENTADO: Leer propiedades reales
+export const getPropertiesByTenant = async (tenantId: string) => {
+  const { data, error } = await supabase
+    .from('propiedades')
+    .select('*')
+    .eq('tenant_id', tenantId);
+
+  if (error) throw error;
+
+  return data.map((p: any) => ({
+    id: p.id,
+    propietarioId: p.contacto_id,
+    valor_operacion: p.precio?.toString(),
+    tipo_inmueble: p.tipo,
+    status: p.estatus === 'disponible' ? 'En Promoción' : p.estatus,
+    ...p.features,
+    fotos: [], // La UI espera Files, pero usaremos imageUrls para mostrar
+    imageUrls: p.images
+  }));
+};
+
+// IMPLEMENTADO: Leer contactos reales
+export const getContactsByTenant = async (tenantId: string) => {
+  const { data, error } = await supabase
+    .from('contactos')
+    .select('*')
+    .eq('tenant_id', tenantId);
+
+  if (error) throw error;
+  
+  const propietarios = data.filter((c: any) => c.tipo === 'propietario').map((c: any) => ({ ...c, id: c.id, nombreCompleto: c.nombre }));
+  const compradores = data.filter((c: any) => c.tipo === 'comprador').map((c: any) => ({ ...c, id: c.id, nombreCompleto: c.nombre }));
+  
+  return { propietarios, compradores };
+  
+};
+
+// ==========================================
+// 4. ESTADÍSTICAS Y DASHBOARD
+// ==========================================
+
+// Estadísticas para SUPER ADMIN
+export const getSuperAdminStats = async () => {
+    // 1. Contar Empresas
+    const { count: totalCompanies, error: errorCompanies } = await supabase
+        .from('tenants')
+        .select('*', { count: 'exact', head: true });
+
+    // 2. Contar Usuarios
+    const { count: totalUsers, error: errorUsers } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true });
+
+    // 3. Contar Propiedades Totales
+    const { count: totalProperties, error: errorProps } = await supabase
+        .from('propiedades')
+        .select('*', { count: 'exact', head: true });
+
+    // 4. Calcular Ventas Globales (Suma de precios de propiedades vendidas)
+    const { data: salesData, error: errorSales } = await supabase
+        .from('propiedades')
+        .select('precio')
+        .eq('estatus', 'Vendida');
+
+    if (errorCompanies || errorUsers || errorProps || errorSales) {
+        console.error("Error obteniendo stats");
+        throw new Error("Error de base de datos");
+    }
+
+    const totalSalesValue = salesData?.reduce((sum, item) => sum + (item.precio || 0), 0) || 0;
+    const totalSalesCount = salesData?.length || 0;
+
+    // Distribución de Roles (Para la gráfica de pastel)
+    const { data: rolesData } = await supabase
+        .from('profiles')
+        .select('role');
+    
+    const rolesDistribution = rolesData?.reduce((acc: any, curr: any) => {
+        acc[curr.role] = (acc[curr.role] || 0) + 1;
+        return acc;
+    }, {}) || {};
+
+    return {
+        totalCompanies: totalCompanies || 0,
+        totalUsers: totalUsers || 0,
+        totalProperties: totalProperties || 0,
+        globalSalesCount: totalSalesCount,
+        globalSalesValue: totalSalesValue,
+        rolesDistribution
+    };
+};

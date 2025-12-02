@@ -3,10 +3,8 @@ import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import App from './App';
 import adapter from './data/localStorageAdapter';
-import { AuthProvider } from './authContext';
 
-// Initialize and migrate data on startup.
-// migrateData() will only run once.
+// Inicialización de datos locales (legacy)
 adapter.migrateData();
 
 const rootElement = document.getElementById('root');
@@ -17,10 +15,9 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <AuthProvider>
-      <HashRouter>
-        <App />
-      </HashRouter>
-    </AuthProvider>
+    {/* ELIMINADO: AuthProvider. Ahora solo App controla todo. */}
+    <HashRouter>
+      <App />
+    </HashRouter>
   </React.StrictMode>
 );
