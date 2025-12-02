@@ -1,8 +1,5 @@
 import React from 'react';
 
-// Fix: Removed incorrect import of 'Oportunidad' from './constants' to resolve a circular dependency.
-// The 'Oportunidad' interface is defined within this file.
-
 export enum UserRole {
   ASESOR = 'Asesor',
   ADMINISTRADOR = 'Administrador',
@@ -49,39 +46,36 @@ export interface UserPermissions {
   equipo: boolean;
 }
 
+// --- ACTUALIZACIÓN CLAVE: IDs AHORA SON STRING | NUMBER ---
 export interface User {
-  id: number;
+  id: number | string; // <--- CAMBIO AQUÍ (Soporta UUID de Supabase)
   photo: string;
   name: string;
   email: string;
   phone: string;
   role: string;
   password?: string;
-  empresaId?: number; // Legacy, tenantId is now the source of truth
-  tenantId?: string | null; // Null for superadmins
+  empresaId?: number; 
+  tenantId?: string | null; 
   permissions?: UserPermissions;
   zona?: string;
   mustChangePassword?: boolean;
 }
 
 export interface ChecklistStatus {
-  // Etapa 1: Captación
   propiedadRegistrada: boolean;
   propietarioRegistrado: boolean;
   documentacionCompleta: boolean;
   entrevistaPLD: boolean;
   propiedadVerificada: boolean;
-  // Etapa 2: Promoción
   fichaTecnicaGenerada: boolean;
   publicadaEnPortales: boolean;
   campanasMarketing: boolean;
   seguimientoEnCurso: boolean;
-  // Etapa 3: Separación
   compradorInteresado: boolean;
   documentosCompradorCompletos: boolean;
   propiedadSeparada: boolean;
   checklistTramitesIniciado: boolean;
-  // Etapa 4: Venta concluida
   contratoGenerado: boolean;
   firmaCompletada: boolean;
   ventaConcluida: boolean;
@@ -100,11 +94,10 @@ export interface Visita {
 }
 
 export interface Propiedad {
-  id: number;
+  id: number; // Las propiedades locales siguen siendo number por ahora
   propietarioId: number;
   compradorId?: number | null;
-  asesorId: number;
-  // Datos de la propiedad
+  asesorId: number | string; // <--- CAMBIO AQUÍ (El asesor puede venir de Supabase)
   calle: string;
   numero_exterior: string;
   numero_interior?: string;
@@ -113,7 +106,6 @@ export interface Propiedad {
   estado: string;
   codigo_postal: string;
   pais: string;
-  // Detalles adicionales para ficha técnica
   tipo_inmueble: string; 
   valor_operacion: string;
   terreno_m2?: string;
@@ -133,23 +125,18 @@ export interface Propiedad {
   fotos: File[];
   fecha_captacion: string;
   fecha_venta: string | null;
-  fichaTecnicaPdf: string; // Almacenará el PDF como Data URL
-  // Sistema de Progreso
-  progreso: number; // 0, 25, 50, 75, 100
+  fichaTecnicaPdf: string;
+  progreso: number;
   checklist: ChecklistStatus;
   fuente_captacion: string;
   status: 'Validación Pendiente' | 'En Promoción' | 'Separada' | 'Vendida';
-  // Visitas
   visitas: Visita[];
-  // Comisiones
   comisionOficina?: number;
   comisionAsesor?: number;
   comisionCompartida?: number;
 }
 
-
 export interface KycData {
-  // Datos de identificación (Persona Física)
   nombreCompleto: string;
   curp: string;
   rfc: string;
@@ -167,24 +154,16 @@ export interface KycData {
   email: string;
   identificacionOficialTipo: string;
   identificacionOficialNumero: string;
-
-  // Datos de identificación (Persona Moral)
   esPersonaMoral: boolean;
   razonSocial?: string;
   rfcPm?: string;
   fechaConstitucion?: string;
   domicilioFiscal?: string;
   representanteLegal?: string;
-
-  // Beneficiario Final
   actuaPorCuentaPropia: boolean;
   beneficiarioFinalNombre?: string;
-
-  // Origen y Destino de los Recursos
   origenRecursos: string;
   destinoRecursos: string;
-
-  // Declaración PEP
   esPep: boolean;
   pepNombre?: string;
   pepCargo?: string;
@@ -199,11 +178,8 @@ export interface Comprador extends KycData {
   propiedadId?: number | null;
 }
 
-// --- Super Admin Types ---
-
 export interface CompanySettings {
   onboarded?: boolean;
-  // Integrations, preferences, etc. would go here
   requiereAprobacionPublicar?: boolean;
   requiereAprobacionCerrar?: boolean;
   integracionWhatsapp?: boolean;
@@ -212,21 +188,17 @@ export interface CompanySettings {
 }
 
 export interface Tenant {
-  id: string; // Unique tenant identifier (e.g., timestamp)
+  id: string; // Tenants siempre han sido string (uuid simulado o real)
   nombre: string;
   ownerEmail: string;
   telefono?: string;
   fechaRegistro: string;
   estado: 'Activo' | 'Suspendido';
-  // The following fields can be calculated on-the-fly when needed
-  // usuariosActivos: number;
-  // propiedadesRegistradas: number;
 }
 
-
-// Fix: Added Empresa interface to be used with mock data.
+// --- ACTUALIZACIÓN CLAVE: Empresa soporta string en ID ---
 export interface Empresa {
-  id: number;
+  id: string | number; // <--- CAMBIO AQUÍ
   nombre: string;
   ownerEmail: string;
   telefono: string;
