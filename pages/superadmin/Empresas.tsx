@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Tenant } from '../../types';
 import Modal from '../../components/ui/Modal';
-import { createTenant, getAllTenants, deleteTenant } from '../../Services/api'; // services minúscula
+// IMPORTANTE: Importamos deleteTenantFully en lugar de deleteTenant
+import { createTenant, getAllTenants, deleteTenantFully } from '../../Services/api'; 
 import { supabase } from '../../supabaseClient';
 
 interface AddEditEmpresaFormProps {
@@ -14,7 +15,7 @@ const AddEditEmpresaForm: React.FC<AddEditEmpresaFormProps> = ({ tenant, onSave,
     const [formData, setFormData] = useState({
         nombre: tenant?.nombre || '',
         ownerEmail: tenant?.ownerEmail || '',
-        telefono: (tenant as any)?.telefono || '', // Mantenemos compatibilidad si el campo no existe aún
+        telefono: (tenant as any)?.telefono || '',
         direccion: (tenant as any)?.direccion || '',
         rfc: (tenant as any)?.rfc || '',
         plan: (tenant as any)?.plan || 'basic',
@@ -162,7 +163,6 @@ const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' |
                 showToast('Empresa actualizada.');
             } else {
                 // MODO CREACIÓN
-                // 1. Crear la Empresa (Ya actualizado en api.ts para recibir todos los campos)
                 const tenantData = await createTenant({
                     nombre: formData.nombre, 
                     ownerEmail: formData.ownerEmail,
@@ -176,7 +176,7 @@ const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' |
 
                 console.log("Empresa creada:", tenantData);
 
-                // 2. Intentar crear el Usuario
+                // Intentar crear el Usuario
                 const { data: authData, error: authError } = await supabase.auth.signUp({
                     email: formData.ownerEmail,
                     password: formData.password,
@@ -186,11 +186,9 @@ const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' |
                 });
 
                 if (authError) {
-                    // Manejo del error de seguridad (7 segundos) que querías conservar
                     console.error("Error Auth:", authError);
                     alert(`✅ Empresa "${formData.nombre}" creada con éxito.\n\n⚠️ PERO el usuario no se pudo crear automáticamente por seguridad de Supabase (espera unos segundos).\n\nVe a la pestaña "Usuarios" y crea el usuario manualmente para asignarlo a esta empresa.`);
                 } else if (authData.user) {
-                    // Si el usuario se creó, lo vinculamos
                     const { error: profileError } = await supabase
                         .from('profiles')
                         .update({
@@ -217,21 +215,24 @@ const SuperAdminEmpresas: React.FC<{ showToast: (msg: string, type?: 'success' |
         }
     };
 
+    // --- FUNCIÓN DE ELIMINACIÓN CORREGIDA ---
     const handleDelete = async () => {
         if (selectedTenant) {
             try {
-                // Usamos la nueva función de borrado real
-                await deleteTenant(selectedTenant.id);
+                // CAMBIO CLAVE: Usamos la eliminación completa (Auth + Datos)
+                await deleteTenantFully(selectedTenant.id);
                 
-                showToast('Empresa eliminada permanentemente.', 'success');
+                showToast('Empresa y todos sus usuarios eliminados permanentemente.', 'success');
                 refreshTenants();
                 setDeleteModalOpen(false);
                 setSelectedTenant(null);
             } catch (error: any) {
-                showToast('Error: ' + error.message, 'error');
+                console.error(error);
+                showToast('Error: ' + (error.message || 'No se pudo eliminar'), 'error');
             }
         }
     };
+    // ----------------------------------------
 
     const filteredTenants = useMemo(() => {
         return tenants.filter(t => t.nombre.toLowerCase().includes(searchTerm.toLowerCase()));

@@ -34,7 +34,7 @@ export const getAllTenants = async () => {
   return data;
 };
 
-// NUEVO: Función para borrar empresas
+// Función antigua (solo borra dato público)
 export const deleteTenant = async (tenantId: string) => {
     const { error } = await supabase
         .from('tenants')
@@ -42,6 +42,21 @@ export const deleteTenant = async (tenantId: string) => {
         .eq('id', tenantId);
     
     if (error) throw error;
+};
+
+/**
+ * NUEVO: Borra la empresa Y todos sus usuarios asociados de Auth.
+ * Usa la función RPC 'delete_tenant_fully' que debes tener en SQL.
+ */
+export const deleteTenantFully = async (tenantId: string) => {
+  const { error } = await supabase.rpc('delete_tenant_fully', { 
+    target_tenant_id: tenantId 
+  });
+
+  if (error) {
+    console.error('Error eliminando empresa y usuarios:', error);
+    throw error;
+  }
 };
 
 // ==========================================
@@ -92,8 +107,8 @@ export const createGlobalUserProfile = async (profileData: any) => {
 };
 
 /**
- * NUEVO: Elimina un usuario completamente (Auth + Perfil)
- * Requiere la función RPC 'delete_user_by_admin' en Supabase y ON DELETE CASCADE en la BD.
+ * Elimina un usuario completamente (Auth + Perfil)
+ * Requiere la función RPC 'delete_user_by_admin' en Supabase.
  */
 export const deleteUserSystem = async (userId: string) => {
   const { data, error } = await supabase.rpc('delete_user_by_admin', { 
@@ -126,7 +141,6 @@ export const uploadPropertyImage = async (file: File) => {
   return data.publicUrl;
 };
 
-// NUEVO: Crear Contacto (Propietario/Comprador)
 export const createContact = async (contactData: any, tenantId: string, tipo: 'propietario' | 'comprador') => {
     const { data, error } = await supabase
         .from('contactos')
@@ -144,11 +158,10 @@ export const createContact = async (contactData: any, tenantId: string, tipo: 'p
     return data;
 };
 
-// ACTUALIZADO: Crear Propiedad vinculada a contacto y tenant
 export const createProperty = async (propertyData: any, tenantId: string, ownerId: string) => {
   const { 
     titulo, direccion, valor_operacion, tipo_inmueble, status, 
-    fotos, // Sacamos fotos del objeto json
+    fotos, 
     ...restDetails 
   } = propertyData;
 
@@ -174,7 +187,6 @@ export const createProperty = async (propertyData: any, tenantId: string, ownerI
   return data;
 };
 
-// IMPLEMENTADO: Leer propiedades reales
 export const getPropertiesByTenant = async (tenantId: string) => {
   const { data, error } = await supabase
     .from('propiedades')
@@ -190,12 +202,11 @@ export const getPropertiesByTenant = async (tenantId: string) => {
     tipo_inmueble: p.tipo,
     status: p.estatus === 'disponible' ? 'En Promoción' : p.estatus,
     ...p.features,
-    fotos: [], // La UI espera Files, pero usaremos imageUrls para mostrar
+    fotos: [], 
     imageUrls: p.images
   }));
 };
 
-// IMPLEMENTADO: Leer contactos reales
 export const getContactsByTenant = async (tenantId: string) => {
   const { data, error } = await supabase
     .from('contactos')
@@ -215,24 +226,19 @@ export const getContactsByTenant = async (tenantId: string) => {
 // 4. ESTADÍSTICAS Y DASHBOARD
 // ==========================================
 
-// Estadísticas para SUPER ADMIN
 export const getSuperAdminStats = async () => {
-    // 1. Contar Empresas
     const { count: totalCompanies, error: errorCompanies } = await supabase
         .from('tenants')
         .select('*', { count: 'exact', head: true });
 
-    // 2. Contar Usuarios
     const { count: totalUsers, error: errorUsers } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true });
 
-    // 3. Contar Propiedades Totales
     const { count: totalProperties, error: errorProps } = await supabase
         .from('propiedades')
         .select('*', { count: 'exact', head: true });
 
-    // 4. Calcular Ventas Globales (Suma de precios de propiedades vendidas)
     const { data: salesData, error: errorSales } = await supabase
         .from('propiedades')
         .select('precio')
@@ -246,7 +252,6 @@ export const getSuperAdminStats = async () => {
     const totalSalesValue = salesData?.reduce((sum, item) => sum + (item.precio || 0), 0) || 0;
     const totalSalesCount = salesData?.length || 0;
 
-    // Distribución de Roles (Para la gráfica de pastel)
     const { data: rolesData } = await supabase
         .from('profiles')
         .select('role');
@@ -267,12 +272,9 @@ export const getSuperAdminStats = async () => {
 };
 
 // ==========================================
-// 5. FUNCIONES PARA PERSONAL EMPRESA (NUEVO)
+// 5. FUNCIONES PARA PERSONAL EMPRESA
 // ==========================================
 
-/**
- * Obtiene los empleados de un tenant específico
- */
 export const getUsersByTenant = async (tenantId: string) => {
   const { data, error } = await supabase
     .from('profiles')
@@ -284,7 +286,6 @@ export const getUsersByTenant = async (tenantId: string) => {
     throw error;
   }
 
-  // Mapeamos los datos de la BD al formato que espera tu UI
   return data.map((p: any) => ({
     id: p.id,
     name: p.full_name || p.email?.split('@')[0] || 'Sin Nombre',
@@ -297,12 +298,7 @@ export const getUsersByTenant = async (tenantId: string) => {
   }));
 };
 
-/**
- * Crea un usuario nuevo en Supabase (Auth + Perfil)
- * Intenta registrar al usuario y asegura que se cree el perfil correctamente
- */
 export const createTenantUser = async (email: string, password: string, tenantId: string, role: string, name: string) => {
-    // 1. Crear el usuario en Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -317,9 +313,7 @@ export const createTenantUser = async (email: string, password: string, tenantId
 
     if (authError) throw authError;
 
-    // 2. Asegurar que el perfil tenga los datos correctos
     if (authData.user) {
-        // Upsert para asegurar que si el trigger falló, esto lo arregle
         const { error: profileError } = await supabase
             .from('profiles')
             .upsert({ 
