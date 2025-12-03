@@ -55,10 +55,11 @@ const App = () => {
   const [propiedades, setPropiedades] = useState<Propiedad[]>([]);
   const [propietarios, setPropietarios] = useState<Propietario[]>([]);
   const [compradores, setCompradores] = useState<Comprador[]>([]);
-  const [companySettings, setCompanySettings] =
-    useState<CompanySettings | null>(null);
+  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
+  // Conflicto resuelto: Usamos una sola definición de toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  
   const [initialEditPropId, setInitialEditPropId] = useState<number | null>(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
 
@@ -123,11 +124,7 @@ const App = () => {
             navigate('/login');
         } else if (event === 'SIGNED_IN' && session?.user) {
             // Si el usuario ya está cargado (por el chequeo inicial), NO hacemos nada.
-            // Esto evita el bucle infinito y el parpadeo.
             if (userRef.current?.id === session.user.id) return;
-
-            // Si es un login nuevo, cargamos el perfil SIN poner setLoading(true)
-            // Dejamos que la UI se actualice reactivamente cuando llegue la data.
             loadProfile(session.user); 
         }
     });
@@ -221,7 +218,7 @@ const App = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center animate-pulse flex flex-col items-center">
-          {/* LOGO DE CARGA */}
+          {/* LOGO DE CARGA CON FALLBACK */}
           <div className="mb-4 h-16 flex items-center justify-center">
              <img 
                 src="/logo.svg" 
@@ -303,5 +300,7 @@ const App = () => {
     </>
   );
 };
+
+export default App;
 
 export default App;
