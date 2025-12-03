@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { ROLE_DEFAULT_PERMISSIONS } from '../constants';
 
 // ==========================================
 // 1. GESTIÓN DE EMPRESAS (TENANTS)
@@ -120,6 +121,68 @@ export const deleteUserSystem = async (userId: string) => {
     throw error;
   }
   return data;
+};
+
+// --- NUEVA FUNCIÓN AGREGADA ---
+/**
+ * Crea un usuario en Auth y configura su perfil inmediatamente.
+ * Útil para Super Admin creando usuarios globales o asignados a tenants manualmente.
+ */
+export const createSystemUser = async (userData: {
+    email: string;
+    password?: string;
+    fullName: string;
+    role: string;
+    tenantId: string | null; // Null para usuarios globales
+    phone?: string;
+}) => {
+    // 1. Crear el usuario en Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password || 'temp12345',
+        options: {
+            data: {
+                full_name: userData.fullName,
+            }
+        }
+    });
+
+    if (authError) throw authError;
+    if (!authData.user) throw new Error("No se pudo crear el usuario en Auth.");
+
+    // 2. Actualizar el perfil creado automáticamente
+    // Asignamos el rol, tenant y permisos por defecto.
+    const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .update({
+            full_name: userData.fullName,
+            role: userData.role,
+            tenant_id: userData.tenantId, // Vinculación clave
+            phone: userData.phone,
+            permissions: ROLE_DEFAULT_PERMISSIONS[userData.role] || getDefaultPermissions(userData.role)
+        })
+        .eq('id', authData.user.id)
+        .select()
+        .single();
+
+    if (profileError) {
+        console.error("Error actualizando perfil:", profileError);
+        throw new Error("Usuario Auth creado, pero falló la asignación de Rol/Empresa.");
+    }
+
+    return profileData;
+};
+
+// Helper interno por si fallan las constantes
+const getDefaultPermissions = (role: string) => {
+    return {
+        propiedades: role !== 'gestor',
+        contactos: role !== 'gestor',
+        operaciones: true,
+        documentosKyc: true,
+        reportes: role === 'superadmin' || role === 'adminempresa',
+        equipo: role === 'superadmin' || role === 'adminempresa'
+    };
 };
 
 // ==========================================

@@ -55,7 +55,8 @@ const App = () => {
   const [propiedades, setPropiedades] = useState<Propiedad[]>([]);
   const [propietarios, setPropietarios] = useState<Propietario[]>([]);
   const [compradores, setCompradores] = useState<Comprador[]>([]);
-  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
+  const [companySettings, setCompanySettings] =
+    useState<CompanySettings | null>(null);
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [initialEditPropId, setInitialEditPropId] = useState<number | null>(null);
@@ -219,8 +220,22 @@ const App = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center animate-pulse">
-          <div className="text-3xl font-bold text-iange-orange mb-2">IANGE<span className="text-gray-800">.</span></div>
+        <div className="text-center animate-pulse flex flex-col items-center">
+          {/* LOGO DE CARGA */}
+          <div className="mb-4 h-16 flex items-center justify-center">
+             <img 
+                src="/logo.svg" 
+                alt="IANGE" 
+                className="h-full w-auto object-contain max-h-12"
+                onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    document.getElementById('loading-logo-fallback')?.classList.remove('hidden');
+                }}
+            />
+            <div id="loading-logo-fallback" className="hidden">
+               <div className="text-3xl font-bold text-iange-orange mb-2">IANGE<span className="text-gray-800">.</span></div>
+            </div>
+          </div>
           <div className="text-gray-500">Cargando sistema...</div>
         </div>
       </div>
