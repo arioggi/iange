@@ -4,7 +4,8 @@ import AddUserForm from './AddUserForm';
 import EditUserForm from './EditUserForm';
 import Modal from '../ui/Modal';
 import { User } from '../../types';
-import adapter from '../../data/localStorageAdapter';
+// IMPORTANTE: Importamos las funciones reales de la API
+import { getUsersByTenant, deleteUserSystem, createTenantUser, updateUserProfile } from '../../Services/api';
 
 const TABS = ['Personal', 'Añadir usuario'];
 
@@ -16,34 +17,60 @@ interface PersonalEmpresaProps {
 const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUser }) => {
     const [activeTab, setActiveTab] = useState(TABS[0]);
     const [users, setUsers] = useState<User[]>([]);
+    const [loading, setLoading] = useState(false);
+    
+    // Estados para los modales
     const [isEditModalOpen, setEditModalOpen] = useState(false);
     const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
-    useEffect(() => {
-        if (currentUser.tenantId) {
-            setUsers(adapter.listUsers(currentUser.tenantId));
-        }
-    }, [currentUser.tenantId]);
-
-    const refreshUsers = () => {
-        if (currentUser.tenantId) {
-            setUsers(adapter.listUsers(currentUser.tenantId));
+    // Función para cargar usuarios REALES desde Supabase
+    const loadUsers = async () => {
+        if (!currentUser.tenantId) return;
+        setLoading(true);
+        try {
+            const data = await getUsersByTenant(currentUser.tenantId);
+            setUsers(data);
+        } catch (error) {
+            console.error(error);
+            // Si la función no existe aún en api.ts, esto fallará silenciosamente o mostrará error
+            // showToast('Error cargando el personal.', 'error');
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleAddUser = (newUser: Omit<User, 'id'>) => {
+    // Cargar al montar el componente
+    useEffect(() => {
+        loadUsers();
+    }, [currentUser.tenantId]);
+
+    // Crear Usuario (Conecta con Supabase Auth)
+    const handleAddUser = async (newUser: Omit<User, 'id'>) => {
         if (!currentUser.tenantId) return;
+        
         try {
-            adapter.createUser(currentUser.tenantId, newUser);
-            showToast('Usuario dado de alta');
-            refreshUsers();
+            // Usamos la contraseña que viene del formulario o una temporal por defecto
+            const passwordToUse = newUser.password || "Temporal123!";
+            
+            await createTenantUser(
+                newUser.email, 
+                passwordToUse,
+                currentUser.tenantId, 
+                newUser.role || 'asesor', 
+                newUser.name
+            );
+
+            showToast('Usuario creado correctamente.');
+            loadUsers(); // Recargamos la lista real
             setActiveTab(TABS[0]);
-            if (currentUser.tenantId) {
-                adapter.updateTenantSettings(currentUser.tenantId, { onboarded: true });
-            }
+            
         } catch (error: any) {
-            showToast(error.message, 'error');
+            console.error(error);
+            const msg = error.message?.includes('already registered') 
+                ? 'El correo ya está registrado en el sistema.' 
+                : (error.message || 'Error al crear usuario.');
+            showToast(msg, 'error');
         }
     };
 
@@ -52,14 +79,21 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
         setEditModalOpen(true);
     };
 
-    const handleUpdateUser = (updatedUser: User) => {
-        if (currentUser.tenantId) {
-            // SOLUCIÓN: Usamos 'as any' para permitir que el ID sea string (UUID)
-            // aunque el adaptador espere un número.
-            adapter.updateUser(currentUser.tenantId, updatedUser.id as any, updatedUser);
-            refreshUsers();
-            setEditModalOpen(false);
+    // Actualizar Usuario (Base de datos real)
+    const handleUpdateUser = async (updatedUser: User) => {
+        try {
+            await updateUserProfile(updatedUser.id.toString(), {
+                full_name: updatedUser.name,
+                role: updatedUser.role,
+                permissions: updatedUser.permissions
+            });
+            
             showToast('Usuario actualizado con éxito');
+            loadUsers();
+            setEditModalOpen(false);
+        } catch (error: any) {
+            console.error(error);
+            showToast('Error actualizando: ' + error.message, 'error');
         }
     };
 
@@ -68,18 +102,31 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
         setDeleteModalOpen(true);
     };
 
-    const handleConfirmDelete = () => {
+    // --- BLOQUE DE ELIMINACIÓN INTEGRADO ---
+    const handleConfirmDelete = async () => { 
         if (selectedUser && currentUser.tenantId) {
-            // SOLUCIÓN: Usamos 'as any' aquí también para borrar por ID de texto
-            adapter.deleteUser(currentUser.tenantId, selectedUser.id as any);
-            refreshUsers();
-            setDeleteModalOpen(false);
-            showToast('Usuario eliminado', 'error');
-            setSelectedUser(null);
+            try {
+                // Usamos deleteUserSystem para borrar de Auth y DB mediante RPC
+                await deleteUserSystem(selectedUser.id.toString());
+                
+                // Actualizamos la UI
+                loadUsers(); // Equivalente a refreshUsers() en tu snippet
+                setDeleteModalOpen(false);
+                showToast('Usuario eliminado del sistema correctamente', 'success');
+                setSelectedUser(null);
+            } catch (error: any) {
+                console.error("Error al borrar:", error);
+                showToast('Error al eliminar: ' + error.message, 'error');
+            }
         }
     };
+    // ----------------------------------------
 
     const renderContent = () => {
+        if (loading && activeTab === 'Personal' && users.length === 0) {
+            return <div className="p-8 text-center text-gray-500">Cargando personal...</div>;
+        }
+
         switch (activeTab) {
             case 'Personal':
                 return <UserTable users={users} onEdit={handleEditClick} onDelete={handleDeleteClick} />;
@@ -132,7 +179,9 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
                         <p className="text-lg text-gray-700">
                             ¿Estás seguro de que quieres borrar al usuario <span className="font-bold">{selectedUser.name}</span>?
                         </p>
-                        <p className="text-sm text-gray-500 mt-2">Esta acción no se puede deshacer.</p>
+                        <p className="text-sm text-red-500 mt-2 font-semibold">
+                            ⚠️ Esta acción eliminará su acceso a la plataforma permanentemente.
+                        </p>
                         <div className="mt-6 flex justify-center space-x-4">
                             <button 
                                 onClick={() => setDeleteModalOpen(false)}
@@ -144,7 +193,7 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
                                 onClick={handleConfirmDelete}
                                 className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
                             >
-                                Borrar Usuario
+                                Borrar Definitivamente
                             </button>
                         </div>
                     </div>

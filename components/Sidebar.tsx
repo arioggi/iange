@@ -3,14 +3,39 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { MENU_ITEMS, SETTINGS_MENU_ITEM, SETTINGS_MENU_ITEMS, SUPERADMIN_MENU_ITEMS, ROLES } from '../constants';
 import { User, UserPermissions } from '../types';
 
+// ==========================================
+// COMPONENTE LOGO PERSONALIZADO
+// ==========================================
 const Logo = () => (
-    <div className="flex justify-center items-center mb-12 h-12">
-      <svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <text x="0" y="30" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'" fontSize="32" fontWeight="bold" fill="#1E1E1E">
-          IANGE
-          <tspan fill="#F37321">.</tspan>
-        </text>
-      </svg>
+    <div className="flex justify-center items-center mb-12 h-16 px-2">
+      {/* INSTRUCCIONES PARA TU LOGO:
+          1. Sube tu archivo de imagen (ej. logo.png) a la carpeta 'public' de tu proyecto.
+          2. Asegúrate que el 'src' de abajo coincida con el nombre de tu archivo.
+      */}
+      <img 
+        src="/logo.svg" 
+        alt="IANGE" 
+        // CAMBIO: Reduje max-h-14 a max-h-10 (~30% menos) para que sea menos invasivo
+        className="h-full w-auto object-contain max-h-10"
+        onError={(e) => {
+            // SISTEMA DE SEGURIDAD (FALLBACK):
+            // Si la imagen no carga (porque no la has subido aún), ocultamos la imagen
+            // y mostramos el logo de texto original automáticamente.
+            e.currentTarget.style.display = 'none';
+            const fallback = document.getElementById('logo-fallback');
+            if (fallback) fallback.classList.remove('hidden');
+        }}
+      />
+      
+      {/* Logo original (Texto SVG) como respaldo */}
+      <div id="logo-fallback" className="hidden">
+          <svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <text x="0" y="30" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" fontSize="32" fontWeight="bold" fill="#1E1E1E">
+              IANGE
+              <tspan fill="#F37321">.</tspan>
+            </text>
+          </svg>
+      </div>
     </div>
 );
 
@@ -73,7 +98,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
     
     const canSeeSettings = visibleSettingsMenuItems.length > 0;
 
-    // --- CORRECCIÓN PRINCIPAL AQUÍ ---
+    // --- LÓGICA DE NAVEGACIÓN ---
     const handleBack = () => {
         // Si soy Super Admin, SIEMPRE vuelvo a /superadmin, sin importar de dónde venga
         if (user.role === ROLES.SUPER_ADMIN) {
@@ -84,7 +109,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
         // Comportamiento normal para otros roles
         navigate(isSuperAdminPage ? '/superadmin' : '/oportunidades');
     };
-    // --------------------------------
 
     const MainMenu = () => (
         <>

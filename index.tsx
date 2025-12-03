@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { HashRouter } from 'react-router-dom';
+// CAMBIO: Importamos BrowserRouter en lugar de HashRouter
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import adapter from './data/localStorageAdapter';
 
@@ -15,9 +16,9 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    {/* ELIMINADO: AuthProvider. Ahora solo App controla todo. */}
-    <HashRouter>
+    {/* CAMBIO: Usamos BrowserRouter para URLs limpias (sin #) */}
+    <BrowserRouter>
       <App />
-    </HashRouter>
+    </BrowserRouter>
   </React.StrictMode>
 );

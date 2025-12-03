@@ -23,10 +23,28 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
-      <div className="text-center mb-8">
-        <h1 className="text-4xl font-bold tracking-wider text-iange-dark">
-          IANGE<span className="text-iange-orange">.</span>
-        </h1>
+      <div className="text-center mb-8 flex flex-col items-center">
+        {/* LOGO SECTION START */}
+        <div className="mb-4 h-20 flex items-center justify-center">
+            <img 
+                src="/logo.svg" 
+                alt="IANGE" 
+                className="h-full w-auto object-contain max-h-16" // Un poco más grande que en el sidebar
+                onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    document.getElementById('login-logo-fallback')?.classList.remove('hidden');
+                }}
+            />
+            
+            {/* Fallback si la imagen falla */}
+            <div id="login-logo-fallback" className="hidden">
+                <h1 className="text-4xl font-bold tracking-wider text-iange-dark">
+                IANGE<span className="text-iange-orange">.</span>
+                </h1>
+            </div>
+        </div>
+        {/* LOGO SECTION END */}
+
         <p className="text-gray-600 mt-1">Gestión Inmobiliaria Inteligente</p>
       </div>
 
