@@ -28,17 +28,24 @@ const Select: React.FC<{ label: string; required?: boolean; name: string; value:
     </div>
 );
 
+// Toggle mejorado con ID único para evitar conflictos de clic
 const Toggle: React.FC<{ label: string; name: string; checked: boolean; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; }> = ({ label, name, checked, onChange }) => (
-    <label htmlFor={`${name}-edit`} className="flex items-center justify-between cursor-pointer p-2 rounded-md hover:bg-gray-50">
+    <label htmlFor={`toggle-${name}`} className="flex items-center justify-between cursor-pointer p-2 rounded-md hover:bg-gray-50">
         <span className="text-sm font-medium text-gray-700">{label}</span>
         <div className="relative">
-            <input type="checkbox" id={`${name}-edit`} name={name} checked={checked} onChange={onChange} className="sr-only" />
-            <div className={`block w-14 h-8 rounded-full ${checked ? 'bg-iange-orange' : 'bg-gray-200'}`}></div>
-            <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${checked ? 'transform translate-x-6' : ''}`}></div>
+            <input 
+                type="checkbox" 
+                id={`toggle-${name}`} // ID Único
+                name={name} 
+                checked={checked} 
+                onChange={onChange} 
+                className="sr-only" 
+            />
+            <div className={`block w-14 h-8 rounded-full transition-colors duration-200 ${checked ? 'bg-iange-orange' : 'bg-gray-200'}`}></div>
+            <div className={`absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform duration-200 ${checked ? 'transform translate-x-6' : ''}`}></div>
         </div>
     </label>
 );
-
 
 interface EditUserFormProps {
     user: User;
@@ -49,19 +56,31 @@ interface EditUserFormProps {
 
 const EditUserForm: React.FC<EditUserFormProps> = ({ user, onUserUpdated, onCancel, currentUser }) => {
     const [formData, setFormData] = useState<User>(user);
-    const [permissions, setPermissions] = useState<UserPermissions>(user.permissions || ROLE_DEFAULT_PERMISSIONS[user.role]);
+    
+    // Inicialización robusta: Si permissions viene corrupto o vacío, usa los defaults del rol
+    const [permissions, setPermissions] = useState<UserPermissions>(() => {
+        if (user.permissions && !Array.isArray(user.permissions)) {
+            return user.permissions;
+        }
+        return ROLE_DEFAULT_PERMISSIONS[user.role] || ROLE_DEFAULT_PERMISSIONS['asesor'];
+    });
+
     const [showPasswordReset, setShowPasswordReset] = useState(false);
     const [newPassword, setNewPassword] = useState('');
     const [confirmNewPassword, setConfirmNewPassword] = useState('');
     const [mustChangeOnNextLogin, setMustChangeOnNextLogin] = useState(false);
 
+    // Definimos si el usuario actual tiene capacidad de gestionar equipo
+    const canManageTeam = currentUser.role === ROLES.SUPER_ADMIN || 
+                          currentUser.role === ROLES.ADMIN_EMPRESA || 
+                          currentUser.role === ROLES.EMPRESA;
 
     useEffect(() => {
-        // If role changes, reset permissions to default for that role
+        // Solo reseteamos permisos si el rol cambia visualmente en el formulario
         if(formData.role !== user.role) {
             setPermissions(ROLE_DEFAULT_PERMISSIONS[formData.role] || {} as UserPermissions);
         }
-    }, [formData.role, user.role]);
+    }, [formData.role]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -109,14 +128,15 @@ const EditUserForm: React.FC<EditUserFormProps> = ({ user, onUserUpdated, onCanc
                 </Select>
             </FormSection>
             
-            <FormSection title="Permisos">
-                <Toggle label="Propiedades" name="propiedades" checked={permissions.propiedades} onChange={handlePermissionChange} />
-                <Toggle label="Contactos" name="contactos" checked={permissions.contactos} onChange={handlePermissionChange} />
-                <Toggle label="Operaciones" name="operaciones" checked={permissions.operaciones} onChange={handlePermissionChange} />
-                <Toggle label="Documentos y KYC" name="documentosKyc" checked={permissions.documentosKyc} onChange={handlePermissionChange} />
-                <Toggle label="Reportes" name="reportes" checked={permissions.reportes} onChange={handlePermissionChange} />
-                {currentUser.role === ROLES.EMPRESA && (
-                  <Toggle label="Equipo (Usuarios)" name="equipo" checked={permissions.equipo} onChange={handlePermissionChange} />
+            <FormSection title="Permisos de Acceso (Barra Lateral)">
+                <Toggle label="Catálogo (Propiedades)" name="propiedades" checked={!!permissions.propiedades} onChange={handlePermissionChange} />
+                <Toggle label="Alta de Clientes (Contactos)" name="contactos" checked={!!permissions.contactos} onChange={handlePermissionChange} />
+                <Toggle label="Operaciones (Dashboard/Progreso)" name="operaciones" checked={!!permissions.operaciones} onChange={handlePermissionChange} />
+                <Toggle label="Documentos y KYC" name="documentosKyc" checked={!!permissions.documentosKyc} onChange={handlePermissionChange} />
+                <Toggle label="Reportes" name="reportes" checked={!!permissions.reportes} onChange={handlePermissionChange} />
+                {/* Solo mostramos la opción de Equipo si el usuario actual es Admin */}
+                {canManageTeam && (
+                  <Toggle label="Personal (Configuración)" name="equipo" checked={!!permissions.equipo} onChange={handlePermissionChange} />
                 )}
             </FormSection>
 

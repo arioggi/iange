@@ -26,44 +26,50 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
 
     // Función para cargar usuarios REALES desde Supabase
     const loadUsers = async () => {
+        // Validación de seguridad: Si no hay tenantId, no cargamos nada (excepto si fuera lógica superadmin, pero aquí es panel de empresa)
         if (!currentUser.tenantId) return;
+        
         setLoading(true);
         try {
+            // Esta función ya filtra por tenant_id en la API
             const data = await getUsersByTenant(currentUser.tenantId);
             setUsers(data);
         } catch (error) {
             console.error(error);
-            // Si la función no existe aún en api.ts, esto fallará silenciosamente o mostrará error
-            // showToast('Error cargando el personal.', 'error');
+            showToast('Error cargando el personal.', 'error');
         } finally {
             setLoading(false);
         }
     };
 
-    // Cargar al montar el componente
+    // Cargar al montar el componente o cambiar de usuario
     useEffect(() => {
         loadUsers();
     }, [currentUser.tenantId]);
 
     // Crear Usuario (Conecta con Supabase Auth)
     const handleAddUser = async (newUser: Omit<User, 'id'>) => {
-        if (!currentUser.tenantId) return;
+        if (!currentUser.tenantId) {
+            showToast('Error: No se identificó la empresa del usuario actual.', 'error');
+            return;
+        }
         
         try {
             // Usamos la contraseña que viene del formulario o una temporal por defecto
+            // Nota: En un flujo real ideal, se enviaría un correo de invitación.
             const passwordToUse = newUser.password || "Temporal123!";
             
             await createTenantUser(
                 newUser.email, 
                 passwordToUse,
-                currentUser.tenantId, 
+                currentUser.tenantId, // <--- AQUÍ ESTÁ LA CLAVE: Vinculamos al nuevo usuario a la MISMA empresa
                 newUser.role || 'asesor', 
                 newUser.name
             );
 
-            showToast('Usuario creado correctamente.');
-            loadUsers(); // Recargamos la lista real
-            setActiveTab(TABS[0]);
+            showToast('Usuario creado correctamente y vinculado a tu empresa.');
+            loadUsers(); // Recargamos la lista real para ver al nuevo usuario
+            setActiveTab(TABS[0]); // Volvemos a la tabla
             
         } catch (error: any) {
             console.error(error);
@@ -86,6 +92,7 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
                 full_name: updatedUser.name,
                 role: updatedUser.role,
                 permissions: updatedUser.permissions
+                // No actualizamos tenant_id para evitar mover usuarios por error
             });
             
             showToast('Usuario actualizado con éxito');
@@ -106,11 +113,11 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
     const handleConfirmDelete = async () => { 
         if (selectedUser && currentUser.tenantId) {
             try {
-                // Usamos deleteUserSystem para borrar de Auth y DB mediante RPC
+                // Usamos deleteUserSystem para borrar de Auth y DB
                 await deleteUserSystem(selectedUser.id.toString());
                 
                 // Actualizamos la UI
-                loadUsers(); // Equivalente a refreshUsers() en tu snippet
+                loadUsers(); 
                 setDeleteModalOpen(false);
                 showToast('Usuario eliminado del sistema correctamente', 'success');
                 setSelectedUser(null);
@@ -124,12 +131,33 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
 
     const renderContent = () => {
         if (loading && activeTab === 'Personal' && users.length === 0) {
-            return <div className="p-8 text-center text-gray-500">Cargando personal...</div>;
+            return (
+                <div className="flex justify-center items-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-iange-orange"></div>
+                    <span className="ml-3 text-gray-500">Cargando equipo...</span>
+                </div>
+            );
         }
 
         switch (activeTab) {
             case 'Personal':
-                return <UserTable users={users} onEdit={handleEditClick} onDelete={handleDeleteClick} />;
+                return (
+                    <div>
+                        {users.length > 0 ? (
+                            <UserTable users={users} onEdit={handleEditClick} onDelete={handleDeleteClick} />
+                        ) : (
+                            <div className="text-center py-10 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                                <p className="text-gray-500 mb-2">No hay usuarios registrados en esta empresa aún.</p>
+                                <button 
+                                    onClick={() => setActiveTab('Añadir usuario')}
+                                    className="text-iange-orange font-semibold hover:underline"
+                                >
+                                    ¡Añade el primero aquí!
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                );
             case 'Añadir usuario':
                 return <AddUserForm onUserAdded={handleAddUser} currentUser={currentUser} />;
             default:
@@ -139,7 +167,19 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
 
     return (
         <div className="bg-white p-8 rounded-lg shadow-sm">
-            <h2 className="text-2xl font-bold text-iange-dark mb-6">Personal de la Empresa</h2>
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-iange-dark">Personal de la Empresa</h2>
+                {/* Botón rápido para añadir si estamos en la tabla */}
+                {activeTab === 'Personal' && (
+                    <button 
+                        onClick={() => setActiveTab('Añadir usuario')}
+                        className="bg-iange-orange text-white py-2 px-4 rounded-md hover:bg-orange-600 text-sm font-semibold shadow-sm transition-colors"
+                    >
+                        + Nuevo Usuario
+                    </button>
+                )}
+            </div>
+
             <div className="border-b border-gray-200 mb-6">
                 <nav className="-mb-px flex space-x-8" aria-label="Tabs">
                     {TABS.map((tab) => (
@@ -175,25 +215,30 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
 
             {selectedUser && (
                  <Modal title="Confirmar Eliminación" isOpen={isDeleteModalOpen} onClose={() => setDeleteModalOpen(false)}>
-                    <div className="text-center">
-                        <p className="text-lg text-gray-700">
-                            ¿Estás seguro de que quieres borrar al usuario <span className="font-bold">{selectedUser.name}</span>?
+                    <div className="text-center p-4">
+                        <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                            <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-900">¿Eliminar usuario?</h3>
+                        <p className="text-sm text-gray-500 mt-2">
+                            Estás a punto de eliminar a <span className="font-bold text-gray-700">{selectedUser.name}</span>.
+                            <br/>
+                            Esta acción eliminará su acceso a la plataforma permanentemente.
                         </p>
-                        <p className="text-sm text-red-500 mt-2 font-semibold">
-                            ⚠️ Esta acción eliminará su acceso a la plataforma permanentemente.
-                        </p>
-                        <div className="mt-6 flex justify-center space-x-4">
+                        <div className="mt-6 flex justify-center gap-3">
                             <button 
                                 onClick={() => setDeleteModalOpen(false)}
-                                className="px-6 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                                className="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:w-auto sm:text-sm"
                             >
                                 Cancelar
                             </button>
                             <button 
                                 onClick={handleConfirmDelete}
-                                className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 sm:w-auto sm:text-sm"
                             >
-                                Borrar Definitivamente
+                                Sí, Eliminar
                             </button>
                         </div>
                     </div>

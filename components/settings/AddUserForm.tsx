@@ -27,13 +27,21 @@ const Select: React.FC<{ label: string; required?: boolean; name: string; childr
     </div>
 );
 
+// Toggle con ID único
 const Toggle: React.FC<{ label: string; name: string; checked: boolean; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; }> = ({ label, name, checked, onChange }) => (
-    <label htmlFor={name} className="flex items-center justify-between cursor-pointer p-2 rounded-md hover:bg-gray-50">
+    <label htmlFor={`toggle-add-${name}`} className="flex items-center justify-between cursor-pointer p-2 rounded-md hover:bg-gray-50">
         <span className="text-sm font-medium text-gray-700">{label}</span>
         <div className="relative">
-            <input type="checkbox" id={name} name={name} checked={checked} onChange={onChange} className="sr-only" />
-            <div className={`block w-14 h-8 rounded-full ${checked ? 'bg-iange-orange' : 'bg-gray-200'}`}></div>
-            <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${checked ? 'transform translate-x-6' : ''}`}></div>
+            <input 
+                type="checkbox" 
+                id={`toggle-add-${name}`} 
+                name={name} 
+                checked={checked} 
+                onChange={onChange} 
+                className="sr-only" 
+            />
+            <div className={`block w-14 h-8 rounded-full transition-colors duration-200 ${checked ? 'bg-iange-orange' : 'bg-gray-200'}`}></div>
+            <div className={`absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform duration-200 ${checked ? 'transform translate-x-6' : ''}`}></div>
         </div>
     </label>
 );
@@ -49,6 +57,10 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ onUserAdded, currentUser }) =
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [mustChangePassword, setMustChangePassword] = useState(true);
+
+    const canManageTeam = currentUser.role === ROLES.SUPER_ADMIN || 
+                          currentUser.role === ROLES.ADMIN_EMPRESA || 
+                          currentUser.role === ROLES.EMPRESA;
 
     useEffect(() => {
         setPermissions(ROLE_DEFAULT_PERMISSIONS[role] || {} as UserPermissions);
@@ -100,7 +112,7 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ onUserAdded, currentUser }) =
                 <Input label="Correo electrónico" name="email" type="email" required placeholder="ej. juan.perez@empresa.com" />
                 <Input label="Teléfono" name="telefono" type="tel" placeholder="81 1234 5678" />
                 <Input label="Zona (manual)" name="zona" placeholder="Ej. Monterrey Centro" />
-                <Select label="Rol" name="rol" required value={role} onChange={e => setRole(e.target.value)}>
+                <Select label="Rol" name="role" required value={role} onChange={e => setRole(e.target.value)}>
                     <option value="adminempresa">Administrador de Empresa</option>
                     <option value="administrador">Administrador</option>
                     <option value="asesor">Asesor</option>
@@ -138,14 +150,14 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ onUserAdded, currentUser }) =
                  </div>
             </FormSection>
 
-            <FormSection title="Permisos">
-                <Toggle label="Propiedades" name="propiedades" checked={permissions.propiedades} onChange={handlePermissionChange} />
-                <Toggle label="Contactos" name="contactos" checked={permissions.contactos} onChange={handlePermissionChange} />
-                <Toggle label="Operaciones" name="operaciones" checked={permissions.operaciones} onChange={handlePermissionChange} />
-                <Toggle label="Documentos y KYC" name="documentosKyc" checked={permissions.documentosKyc} onChange={handlePermissionChange} />
-                <Toggle label="Reportes" name="reportes" checked={permissions.reportes} onChange={handlePermissionChange} />
-                {currentUser.role === ROLES.EMPRESA && (
-                  <Toggle label="Equipo (Usuarios)" name="equipo" checked={permissions.equipo} onChange={handlePermissionChange} />
+            <FormSection title="Permisos de Acceso (Barra Lateral)">
+                <Toggle label="Catálogo (Propiedades)" name="propiedades" checked={!!permissions.propiedades} onChange={handlePermissionChange} />
+                <Toggle label="Alta de Clientes (Contactos)" name="contactos" checked={!!permissions.contactos} onChange={handlePermissionChange} />
+                <Toggle label="Operaciones (Dashboard/Progreso)" name="operaciones" checked={!!permissions.operaciones} onChange={handlePermissionChange} />
+                <Toggle label="Documentos y KYC" name="documentosKyc" checked={!!permissions.documentosKyc} onChange={handlePermissionChange} />
+                <Toggle label="Reportes" name="reportes" checked={!!permissions.reportes} onChange={handlePermissionChange} />
+                {canManageTeam && (
+                  <Toggle label="Personal (Configuración)" name="equipo" checked={!!permissions.equipo} onChange={handlePermissionChange} />
                 )}
             </FormSection>
 
