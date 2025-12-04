@@ -62,11 +62,11 @@ const NavItem: React.FC<NavItemProps> = ({ item }) => {
         }`
       }
     >
-      {/* Renderizado condicional del ícono */}
+      {/* Renderizado condicional del ícono con clases para color y tamaño */}
       {Icon && (
         <Icon 
           className={`h-5 w-5 mr-3 transition-colors ${
-            // El icono hereda el color del texto, pero puedes forzar colores específicos si lo deseas
+            // El icono hereda el color del texto automáticamente
             '' 
           }`} 
         />
@@ -99,16 +99,22 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
 
     const visibleMenuItems = MENU_ITEMS.filter(hasPermission);
     
-    // Filtro corregido para que el SuperAdmin vea todas las configuraciones si quiere
+    // --- AQUÍ ESTÁ EL FIX ---
+    // Filtramos el menú de configuración asegurando que el Admin vea TODO
     const visibleSettingsMenuItems = SETTINGS_MENU_ITEMS.filter(item => {
+        // 1. "Mi Perfil" lo ven todos
         if(item.path === "/configuraciones/mi-perfil") return true;
         
-        // CORRECCIÓN: Permitimos que el SuperAdmin también vea estas opciones
-        if(item.path === "/configuraciones/perfil" || item.path === "/configuraciones/facturacion") {
-             return user.role === ROLES.EMPRESA || user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.SUPER_ADMIN;
+        // 2. Definimos quién es "Admin" (Dueño, Admin Empresa o SuperAdmin)
+        const isAdmin = user.role === ROLES.EMPRESA || user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.SUPER_ADMIN;
+
+        // 3. Si es Admin, tiene acceso VIP a todo el menú de configuración
+        if (isAdmin) {
+            return true;
         }
         
-        // El resto se basa en permisos (Personal requiere 'equipo')
+        // 4. Si es empleado normal (Asesor), revisamos sus permisos específicos
+        // (Por ejemplo, si le diste permiso de 'equipo' manualmente)
         return hasPermission(item);
     });
     

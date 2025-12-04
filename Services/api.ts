@@ -5,7 +5,6 @@ import { ROLE_DEFAULT_PERMISSIONS } from '../constants';
 // 1. GESTIÓN DE EMPRESAS (TENANTS)
 // ==========================================
 
-// Actualizado para recibir todos los datos del formulario nuevo
 export const createTenant = async (dataObj: { nombre: string, ownerEmail: string, telefono: string, direccion: string, rfc: string, plan: string }) => {
   const { data, error } = await supabase
     .from('tenants')
@@ -35,7 +34,6 @@ export const getAllTenants = async () => {
   return data;
 };
 
-// Función antigua (solo borra dato público)
 export const deleteTenant = async (tenantId: string) => {
     const { error } = await supabase
         .from('tenants')
@@ -45,10 +43,6 @@ export const deleteTenant = async (tenantId: string) => {
     if (error) throw error;
 };
 
-/**
- * NUEVO: Borra la empresa Y todos sus usuarios asociados de Auth.
- * Usa la función RPC 'delete_tenant_fully' que debes tener en SQL.
- */
 export const deleteTenantFully = async (tenantId: string) => {
   const { error } = await supabase.rpc('delete_tenant_fully', { 
     target_tenant_id: tenantId 
@@ -107,10 +101,6 @@ export const createGlobalUserProfile = async (profileData: any) => {
     return data;
 };
 
-/**
- * Elimina un usuario completamente (Auth + Perfil)
- * Requiere la función RPC 'delete_user_by_admin' en Supabase.
- */
 export const deleteUserSystem = async (userId: string) => {
   const { data, error } = await supabase.rpc('delete_user_by_admin', { 
     user_id: userId 
@@ -123,20 +113,14 @@ export const deleteUserSystem = async (userId: string) => {
   return data;
 };
 
-// --- NUEVA FUNCIÓN AGREGADA ---
-/**
- * Crea un usuario en Auth y configura su perfil inmediatamente.
- * Útil para Super Admin creando usuarios globales o asignados a tenants manualmente.
- */
 export const createSystemUser = async (userData: {
     email: string;
     password?: string;
     fullName: string;
     role: string;
-    tenantId: string | null; // Null para usuarios globales
+    tenantId: string | null;
     phone?: string;
 }) => {
-    // 1. Crear el usuario en Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
         email: userData.email,
         password: userData.password || 'temp12345',
@@ -150,14 +134,12 @@ export const createSystemUser = async (userData: {
     if (authError) throw authError;
     if (!authData.user) throw new Error("No se pudo crear el usuario en Auth.");
 
-    // 2. Actualizar el perfil creado automáticamente
-    // Asignamos el rol, tenant y permisos por defecto.
     const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .update({
             full_name: userData.fullName,
             role: userData.role,
-            tenant_id: userData.tenantId, // Vinculación clave
+            tenant_id: userData.tenantId,
             phone: userData.phone,
             permissions: ROLE_DEFAULT_PERMISSIONS[userData.role] || getDefaultPermissions(userData.role)
         })
@@ -173,7 +155,6 @@ export const createSystemUser = async (userData: {
     return profileData;
 };
 
-// Helper interno por si fallan las constantes
 const getDefaultPermissions = (role: string) => {
     return {
         propiedades: role !== 'gestor',
@@ -355,7 +336,9 @@ export const getUsersByTenant = async (tenantId: string) => {
     email: p.email,
     role: p.role,
     tenantId: p.tenant_id,
-    permissions: p.permissions || [],
+    // CORRECCIÓN CLAVE: Usamos 'null' en lugar de '[]' si no hay permisos.
+    // Esto permite que el formulario use los valores por defecto correctamente.
+    permissions: p.permissions || null, 
     avatar: p.avatar_url,
     phone: p.phone
   }));

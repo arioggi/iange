@@ -4,12 +4,15 @@ import { supabase } from './supabaseClient';
 
 // Tipos y constantes
 import { User, Propiedad, Propietario, Comprador, CompanySettings } from "./types";
-import { DEFAULT_ROUTES, ROLES } from "./constants";
+// IMPORTANTE: Mantenemos ROLE_DEFAULT_PERMISSIONS para corregir el menú
+import { DEFAULT_ROUTES, ROLES, ROLE_DEFAULT_PERMISSIONS } from "./constants";
 import adapter from "./data/localStorageAdapter"; 
 import { getPropertiesByTenant, getContactsByTenant } from './Services/api';
 
 // Páginas
 import Login from "./pages/Login";
+// Eliminado: import SignUp from "./pages/SignUp"; <--- CAUSANTE DEL ERROR
+
 import OportunidadesDashboard from "./pages/OportunidadesDashboard";
 import AltaClientes from "./pages/AltaClientes";
 import Catalogo from "./pages/Catalogo";
@@ -43,10 +46,9 @@ import Toast from './components/ui/Toast';
 const App = () => {
   // --- ESTADO ---
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true); // Empieza cargando
+  const [loading, setLoading] = useState(true); 
   const [isImpersonating, setIsImpersonating] = useState(false);
 
-  // Referencia para evitar recargas innecesarias
   const userRef = useRef<User | null>(null);
   useEffect(() => { userRef.current = user; }, [user]);
 
@@ -57,9 +59,7 @@ const App = () => {
   const [compradores, setCompradores] = useState<Comprador[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
-  // Conflicto resuelto: Usamos una sola definición de toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  
   const [initialEditPropId, setInitialEditPropId] = useState<number | null>(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
 
@@ -70,7 +70,6 @@ const App = () => {
   useEffect(() => {
     let mounted = true;
 
-    // Función auxiliar para cargar perfil
     const loadProfile = async (sessionUser: any) => {
         try {
             const { data, error } = await supabase
@@ -81,14 +80,20 @@ const App = () => {
             
             if (mounted) {
                 if (data) {
+                    // --- CORRECCIÓN DEL MENÚ PERSONAL ---
+                    // Si el usuario no tiene permisos guardados explícitamente,
+                    // le asignamos los permisos por defecto de su rol (adminempresa = ver todo).
+                    const userRole = data.role || 'asesor';
+                    const effectivePermissions = data.permissions || ROLE_DEFAULT_PERMISSIONS[userRole];
+
                     setUser({
                         id: data.id as any,
                         email: sessionUser.email || '',
                         name: data.full_name || 'Usuario',
-                        role: data.role || 'asesor',
+                        role: userRole,
                         photo: data.avatar_url || 'VP',
                         tenantId: data.tenant_id,
-                        permissions: data.permissions,
+                        permissions: effectivePermissions, // <--- Esto habilita el menú "Personal"
                         phone: data.phone || '',
                     });
                 } else if (error) {
@@ -98,24 +103,21 @@ const App = () => {
         } catch (e) {
             console.error(e);
         } finally {
-            // PASE LO QUE PASE, al terminar de buscar perfil, quitamos loading
             if (mounted) setLoading(false);
         }
     };
 
-    // A. Chequeo Inicial (Al recargar página)
     const checkCurrentSession = async () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
             await loadProfile(session.user);
         } else {
-            if (mounted) setLoading(false); // Si no hay sesión, quitamos carga inmediatamente
+            if (mounted) setLoading(false);
         }
     };
 
     checkCurrentSession();
 
-    // B. Oyente de Cambios (Login/Logout futuros)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (!mounted) return;
 
@@ -123,7 +125,6 @@ const App = () => {
             setUser(null);
             navigate('/login');
         } else if (event === 'SIGNED_IN' && session?.user) {
-            // Si el usuario ya está cargado (por el chequeo inicial), NO hacemos nada.
             if (userRef.current?.id === session.user.id) return;
             loadProfile(session.user); 
         }
@@ -133,7 +134,6 @@ const App = () => {
         mounted = false;
         subscription.unsubscribe();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
 
 
@@ -154,7 +154,7 @@ const App = () => {
                     setPropietarios(contacts.propietarios);
                     setCompradores(contacts.compradores);
                 }
-                // Datos locales (fallback)
+                // Datos locales
                 setAllUsers(adapter.listUsers(user.tenantId));
                 setCompanySettings(adapter.getTenantSettings(user.tenantId));
             } catch (error) {
@@ -173,7 +173,6 @@ const App = () => {
   // --- HANDLERS ---
 
   const handleLogin = async (email: string, pass: string) => {
-    // NO activamos setLoading(true) aquí. Dejamos que Login.tsx maneje su spinner visual.
     const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
     if (error) alert(error.message);
   };
@@ -191,11 +190,9 @@ const App = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Handlers Dummy / Locales
   const handleUpdatePropiedad = () => showToast('Guardando...');
   const handleDeletePropiedad = () => showToast('Eliminando...');
   const handleAddVisita = () => showToast('Visita registrada');
-  const handlePasswordChanged = () => setShowChangePassword(false);
   const handleUpdateUser = () => showToast('Perfil actualizado');
   const handleImpersonate = () => {}; 
   const handleExitImpersonation = () => {}; 
@@ -240,7 +237,13 @@ const App = () => {
   }
 
   if (!user) {
-    return <Routes><Route path="*" element={<Login onLogin={handleLogin} />} /></Routes>;
+    return (
+        <Routes>
+            <Route path="/login" element={<Login onLogin={handleLogin} />} />
+            {/* Sin ruta de SignUp por ahora */}
+            <Route path="*" element={<Navigate to="/login" />} />
+        </Routes>
+    );
   }
 
   const MainLayout = ({ children }: { children: React.ReactNode }) => (
