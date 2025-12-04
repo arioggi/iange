@@ -20,7 +20,10 @@ import {
   UserGroupIcon,
   BanknotesIcon,
   DocumentTextIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  GlobeAltIcon,
+  Cog6ToothIcon,
+  UserIcon
 } from './components/Icons';
 import { initialKycState } from './components/clientes/KycPldForm';
 
@@ -210,6 +213,7 @@ interface MenuItem {
   name: string;
   path: string;
   permissionKey?: keyof UserPermissions;
+  icon?: React.FC<{ className?: string }>;
 }
 
 interface DashboardButton {
@@ -219,36 +223,37 @@ interface DashboardButton {
 }
 
 export const MENU_ITEMS: MenuItem[] = [
-  { name: 'Dashboard', path: '/oportunidades', permissionKey: 'operaciones' },
-  { name: 'Alta de clientes', path: '/clientes', permissionKey: 'contactos' },
-  { name: 'Catálogo', path: '/catalogo', permissionKey: 'propiedades' },
-  { name: 'Progreso', path: '/progreso', permissionKey: 'operaciones' },
-  { name: 'Reportes', path: '/reportes', permissionKey: 'reportes' },
-  { name: 'CRM', path: '/crm' },
+  { name: 'Dashboard', path: '/oportunidades', permissionKey: 'operaciones', icon: ChartBarIcon },
+  { name: 'Alta de clientes', path: '/clientes', permissionKey: 'contactos', icon: UserGroupIcon },
+  { name: 'Catálogo', path: '/catalogo', permissionKey: 'propiedades', icon: BuildingOfficeIcon },
+  { name: 'Progreso', path: '/progreso', permissionKey: 'operaciones', icon: PresentationChartLineIcon },
+  { name: 'Reportes', path: '/reportes', permissionKey: 'reportes', icon: DocumentTextIcon },
+  { name: 'CRM', path: '/crm', icon: UsersIcon },
 ];
 
 export const SETTINGS_MENU_ITEM: MenuItem = {
   name: 'Configuraciones',
   path: '/configuraciones',
+  icon: Cog6ToothIcon
 };
 
 export const SETTINGS_MENU_ITEMS: MenuItem[] = [
-  { name: 'Configuración de mi perfil', path: '/configuraciones/mi-perfil' },
-  { name: 'Perfil de empresa', path: '/configuraciones/perfil' },
-  { name: 'Personal', path: '/configuraciones/personal', permissionKey: 'equipo' },
-  { name: 'Facturación', path: '/configuraciones/facturacion' },
+  { name: 'Mi perfil', path: '/configuraciones/mi-perfil', icon: UserIcon },
+  { name: 'Perfil de empresa', path: '/configuraciones/perfil', icon: BuildingOfficeIcon },
+  { name: 'Personal', path: '/configuraciones/personal', permissionKey: 'equipo', icon: UserGroupIcon },
+  { name: 'Facturación', path: '/configuraciones/facturacion', icon: BanknotesIcon },
 ];
 
 // --- SUPER ADMIN CONSTANTS ---
 
 export const SUPERADMIN_MENU_ITEMS: MenuItem[] = [
-  { name: 'Inicio', path: '/superadmin' },
-  { name: 'Empresas', path: '/superadmin/empresas' },
-  { name: 'Usuarios Globales', path: '/superadmin/usuarios-globales' },
-  { name: 'Planes y Facturación', path: '/superadmin/planes' },
-  { name: 'Configuración del Sistema', path: '/superadmin/configuracion' },
-  { name: 'Reportes Globales', path: '/superadmin/reportes-globales' },
-  { name: 'Logs y Auditoría', path: '/superadmin/logs' },
+  { name: 'Inicio', path: '/superadmin', icon: ChartBarIcon },
+  { name: 'Empresas', path: '/superadmin/empresas', icon: BuildingOfficeIcon },
+  { name: 'Usuarios Globales', path: '/superadmin/usuarios-globales', icon: GlobeAltIcon },
+  { name: 'Planes y Facturación', path: '/superadmin/planes', icon: BanknotesIcon },
+  { name: 'Configuración', path: '/superadmin/configuracion', icon: Cog6ToothIcon },
+  { name: 'Reportes Globales', path: '/superadmin/reportes-globales', icon: DocumentTextIcon },
+  { name: 'Logs y Auditoría', path: '/superadmin/logs', icon: ShieldCheckIcon },
 ];
 
 export const SUPERADMIN_REPORTS_LIST = [

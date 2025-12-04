@@ -1,23 +1,23 @@
 import React, { useState } from 'react';
 
-// Recibe la función desde App.tsx
+// Interfaz simplificada (sin rememberMe)
 interface LoginProps {
     onLogin: (email: string, pass: string) => Promise<void>;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [email, setEmail] = useState('superadmin@iange.xyz');
-  const [password, setPassword] = useState('1234567890');
+  // CAMBIO AQUÍ: Se inician las variables con cadenas vacías ''
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     
-    // Llamamos a la función blindada de App.tsx
+    // Llamada simple
     await onLogin(email, password);
     
-    // Si llegamos aquí es porque hubo error, quitamos el loading
     setIsSubmitting(false);
   };
 
@@ -29,14 +29,13 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <img 
                 src="/logo.svg" 
                 alt="IANGE" 
-                className="h-full w-auto object-contain max-h-16" // Un poco más grande que en el sidebar
+                className="h-full w-auto object-contain max-h-16" 
                 onError={(e) => {
                     e.currentTarget.style.display = 'none';
                     document.getElementById('login-logo-fallback')?.classList.remove('hidden');
                 }}
             />
             
-            {/* Fallback si la imagen falla */}
             <div id="login-logo-fallback" className="hidden">
                 <h1 className="text-4xl font-bold tracking-wider text-iange-dark">
                 IANGE<span className="text-iange-orange">.</span>
@@ -61,9 +60,10 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <input
               type="email"
               required
+              placeholder="Tu dirección de correo"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md shadow-sm focus:ring-iange-orange focus:border-iange-orange"
+              className="mt-1 w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md shadow-sm focus:ring-iange-orange focus:border-iange-orange placeholder-gray-400"
             />
           </div>
 
@@ -74,9 +74,10 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <input
               type="password"
               required
+              placeholder="Tu contraseña"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md shadow-sm focus:ring-iange-orange focus:border-iange-orange"
+              className="mt-1 w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md shadow-sm focus:ring-iange-orange focus:border-iange-orange placeholder-gray-400"
             />
           </div>
 
@@ -89,6 +90,19 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           >
             {isSubmitting ? 'Ingresando...' : 'Ingresar'}
           </button>
+
+          <div className="mt-4 text-center text-xs text-gray-500">
+            Al iniciar sesión aceptas nuestros{' '}
+            <a 
+              href="https://iange.xyz/terminos-y-condiciones" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-iange-orange hover:underline"
+            >
+              Términos y Condiciones
+            </a>
+          </div>
+
         </form>
       </div>
     </div>
