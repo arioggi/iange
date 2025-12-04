@@ -43,22 +43,38 @@ interface NavItemProps {
     item: {
         name: string;
         path: string;
+        icon?: React.FC<{ className?: string }>; // Tipado para el icono
     };
 }
 
-const NavItem: React.FC<NavItemProps> = ({ item }) => (
-  <NavLink
-    to={item.path}
-    end={item.path === '/' || item.path === '/superadmin'}
-    className={({ isActive }) =>
-      `block py-3 px-4 rounded-md transition-colors text-gray-700 hover:bg-iange-salmon ${
-        isActive ? 'text-iange-orange font-semibold bg-iange-salmon' : ''
-      }`
-    }
-  >
-    <span>{item.name}</span>
-  </NavLink>
-);
+const NavItem: React.FC<NavItemProps> = ({ item }) => {
+  const Icon = item.icon; // Extraer el componente icono
+
+  return (
+    <NavLink
+      to={item.path}
+      end={item.path === '/' || item.path === '/superadmin'}
+      className={({ isActive }) =>
+        `flex items-center py-3 px-4 rounded-md transition-all duration-200 group ${
+          isActive 
+            ? 'bg-iange-salmon text-iange-orange font-semibold' 
+            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+        }`
+      }
+    >
+      {/* Renderizado condicional del ícono */}
+      {Icon && (
+        <Icon 
+          className={`h-5 w-5 mr-3 transition-colors ${
+            // El icono hereda el color del texto, pero puedes forzar colores específicos si lo deseas
+            '' 
+          }`} 
+        />
+      )}
+      <span>{item.name}</span>
+    </NavLink>
+  );
+};
 
 interface SidebarProps {
     user: User;
