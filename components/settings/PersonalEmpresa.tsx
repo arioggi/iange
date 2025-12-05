@@ -12,9 +12,10 @@ const TABS = ['Personal', 'Añadir usuario'];
 interface PersonalEmpresaProps {
     showToast: (message: string, type?: 'success' | 'error') => void;
     currentUser: User;
+    onDataChange?: () => void; // <--- 1. NUEVA PROP
 }
 
-const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUser }) => {
+const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUser, onDataChange }) => {
     const [activeTab, setActiveTab] = useState(TABS[0]);
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(false);
@@ -26,12 +27,11 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
 
     // Función para cargar usuarios REALES desde Supabase
     const loadUsers = async () => {
-        // Validación de seguridad: Si no hay tenantId, no cargamos nada (excepto si fuera lógica superadmin, pero aquí es panel de empresa)
+        // Validación de seguridad: Si no hay tenantId, no cargamos nada
         if (!currentUser.tenantId) return;
         
         setLoading(true);
         try {
-            // Esta función ya filtra por tenant_id en la API
             const data = await getUsersByTenant(currentUser.tenantId);
             setUsers(data);
         } catch (error) {
@@ -55,21 +55,23 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
         }
         
         try {
-            // Usamos la contraseña que viene del formulario o una temporal por defecto
-            // Nota: En un flujo real ideal, se enviaría un correo de invitación.
             const passwordToUse = newUser.password || "Temporal123!";
             
             await createTenantUser(
                 newUser.email, 
                 passwordToUse,
-                currentUser.tenantId, // <--- AQUÍ ESTÁ LA CLAVE: Vinculamos al nuevo usuario a la MISMA empresa
+                currentUser.tenantId, 
                 newUser.role || 'asesor', 
                 newUser.name
             );
 
             showToast('Usuario creado correctamente y vinculado a tu empresa.');
-            loadUsers(); // Recargamos la lista real para ver al nuevo usuario
-            setActiveTab(TABS[0]); // Volvemos a la tabla
+            loadUsers(); 
+            
+            // <--- Sincronizar estado global
+            if (onDataChange) onDataChange();
+            
+            setActiveTab(TABS[0]); 
             
         } catch (error: any) {
             console.error(error);
@@ -92,11 +94,20 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
                 full_name: updatedUser.name,
                 role: updatedUser.role,
                 permissions: updatedUser.permissions
-                // No actualizamos tenant_id para evitar mover usuarios por error
             });
             
             showToast('Usuario actualizado con éxito');
             loadUsers();
+            
+            // <--- 2. LÓGICA CRÍTICA PARA PERMISOS
+            if (onDataChange) onDataChange();
+
+            // Si me edito a mí mismo, recargo la página para aplicar cambios en Sidebar
+            if (updatedUser.id === currentUser.id) {
+                window.location.reload();
+            }
+            // ------------------------------------
+
             setEditModalOpen(false);
         } catch (error: any) {
             console.error(error);
@@ -113,11 +124,13 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
     const handleConfirmDelete = async () => { 
         if (selectedUser && currentUser.tenantId) {
             try {
-                // Usamos deleteUserSystem para borrar de Auth y DB
                 await deleteUserSystem(selectedUser.id.toString());
                 
-                // Actualizamos la UI
                 loadUsers(); 
+                
+                // <--- Sincronizar estado global
+                if (onDataChange) onDataChange();
+
                 setDeleteModalOpen(false);
                 showToast('Usuario eliminado del sistema correctamente', 'success');
                 setSelectedUser(null);
@@ -169,7 +182,6 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
         <div className="bg-white p-8 rounded-lg shadow-sm">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-iange-dark">Personal de la Empresa</h2>
-                {/* Botón rápido para añadir si estamos en la tabla */}
                 {activeTab === 'Personal' && (
                     <button 
                         onClick={() => setActiveTab('Añadir usuario')}

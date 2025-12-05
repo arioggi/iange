@@ -89,32 +89,47 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
     // Si los permisos vienen nulos (ej. superadmin recién creado), usamos un objeto vacío
     const userPermissions = user.permissions || {} as UserPermissions;
 
+    // --- FUNCIÓN DE FILTRADO PRINCIPAL ---
     const hasPermission = (item: { permissionKey?: keyof UserPermissions }): boolean => {
-      // Items sin permissionKey son siempre visibles
+      // 1. Si el ítem NO requiere permiso específico (ej. Dashboard si no tuviera key), se muestra.
+      // NOTA: En tus constantes, casi todo tiene permissionKey.
       if (!item.permissionKey) {
         return true;
       }
-      return userPermissions[item.permissionKey] === true;
+      
+      // 2. Verificamos el valor exacto en el objeto de permisos.
+      // Usamos !! para convertir a booleano real. Si es false o undefined, devuelve false.
+      // Esto soluciona problemas con datos corruptos o incompletos en la DB.
+      return !!userPermissions[item.permissionKey];
     };
 
     const visibleMenuItems = MENU_ITEMS.filter(hasPermission);
     
-    // --- AQUÍ ESTÁ EL FIX ---
+    // --- LÓGICA ESPECIAL PARA CONFIGURACIÓN ---
     // Filtramos el menú de configuración asegurando que el Admin vea TODO
+    // y que los empleados solo vean lo que les corresponde.
     const visibleSettingsMenuItems = SETTINGS_MENU_ITEMS.filter(item => {
-        // 1. "Mi Perfil" lo ven todos
+        // 1. "Mi Perfil" lo ven todos, siempre.
         if(item.path === "/configuraciones/mi-perfil") return true;
         
         // 2. Definimos quién es "Admin" (Dueño, Admin Empresa o SuperAdmin)
-        const isAdmin = user.role === ROLES.EMPRESA || user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.SUPER_ADMIN;
+        // Esto incluye el rol 'cuentaempresa' para dueños.
+        const isAdmin = user.role === ROLES.EMPRESA || user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.SUPER_ADMIN || user.role === ROLES.CUENTA_EMPRESA;
 
-        // 3. Si es Admin, tiene acceso VIP a todo el menú de configuración
+        // 3. Si es Admin, tiene acceso VIP a todo el menú de configuración.
         if (isAdmin) {
             return true;
         }
+
+        // 4. --- RESTRICCIÓN ESTRICTA PARA NO ADMINS ---
+        // Si NO es admin, ocultamos forzosamente estos apartados sensibles
+        // independientemente de lo que diga la base de datos.
+        if (item.path === '/configuraciones/perfil' || item.path === '/configuraciones/facturacion') {
+            return false;
+        }
         
-        // 4. Si es empleado normal (Asesor), revisamos sus permisos específicos
-        // (Por ejemplo, si le diste permiso de 'equipo' manualmente)
+        // 5. Para el resto (ej. 'Personal'), revisamos el permiso específico (toggle 'equipo')
+        // usando la función robusta hasPermission.
         return hasPermission(item);
     });
     
@@ -143,7 +158,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
                 </nav>
             </div>
              {canSeeSettings && (
-                <div className="space-y-2">
+                <div className="space-y-2 mt-4 pt-4 border-t border-gray-100">
                     <NavItem item={SETTINGS_MENU_ITEM} />
                 </div>
              )}
@@ -166,9 +181,9 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
             <Logo />
             <button
                 onClick={handleBack}
-                className="w-full text-left py-3 px-4 rounded-md bg-iange-salmon text-iange-dark font-semibold mb-4 hover:bg-orange-200 transition-colors"
+                className="w-full text-left py-3 px-4 rounded-md bg-iange-salmon text-iange-dark font-semibold mb-4 hover:bg-orange-200 transition-colors flex items-center"
             >
-                &larr; Atrás
+                <span className="mr-2">←</span> Atrás
             </button>
             <nav className="space-y-2">
             {visibleSettingsMenuItems.map((item) => (
@@ -192,7 +207,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
   }
 
   return (
-    <aside className="w-64 bg-white h-screen p-6 flex flex-col justify-between border-r border-gray-200 fixed top-0 left-0 z-30">
+    <aside className="w-64 bg-white h-screen p-6 flex flex-col justify-between border-r border-gray-200 fixed top-0 left-0 z-30 overflow-y-auto">
       {renderContent()}
     </aside>
   );

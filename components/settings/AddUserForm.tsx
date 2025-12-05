@@ -52,8 +52,8 @@ interface AddUserFormProps {
 }
 
 const AddUserForm: React.FC<AddUserFormProps> = ({ onUserAdded, currentUser }) => {
-    const [role, setRole] = useState('asesor');
-    const [permissions, setPermissions] = useState<UserPermissions>(ROLE_DEFAULT_PERMISSIONS['asesor']);
+    const [role, setRole] = useState(ROLES.ASESOR); // Default correcto desde constantes
+    const [permissions, setPermissions] = useState<UserPermissions>(ROLE_DEFAULT_PERMISSIONS[ROLES.ASESOR]);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [mustChangePassword, setMustChangePassword] = useState(true);
@@ -63,7 +63,11 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ onUserAdded, currentUser }) =
                           currentUser.role === ROLES.EMPRESA;
 
     useEffect(() => {
-        setPermissions(ROLE_DEFAULT_PERMISSIONS[role] || {} as UserPermissions);
+        // Cargar permisos por defecto al cambiar rol
+        const defaults = ROLE_DEFAULT_PERMISSIONS[role];
+        if (defaults) {
+            setPermissions(defaults);
+        }
     }, [role]);
 
     const handlePermissionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -102,7 +106,7 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ onUserAdded, currentUser }) =
         e.currentTarget.reset();
         setPassword('');
         setConfirmPassword('');
-        setRole('asesor');
+        setRole(ROLES.ASESOR);
     };
 
     return (
@@ -113,11 +117,10 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ onUserAdded, currentUser }) =
                 <Input label="Teléfono" name="telefono" type="tel" placeholder="81 1234 5678" />
                 <Input label="Zona (manual)" name="zona" placeholder="Ej. Monterrey Centro" />
                 <Select label="Rol" name="role" required value={role} onChange={e => setRole(e.target.value)}>
-                    <option value="adminempresa">Administrador de Empresa</option>
-                    <option value="administrador">Administrador</option>
-                    <option value="asesor">Asesor</option>
-                    <option value="gestor">Gestor</option>
-                    <option value="notaria">Notaría</option>
+                    <option value={ROLES.ADMIN_EMPRESA}>Administrador de Empresa</option>
+                    <option value={ROLES.ASESOR}>Asesor</option>
+                    <option value={ROLES.GESTOR}>Gestor</option>
+                    <option value={ROLES.NOTARIA}>Notaría</option>
                 </Select>
             </FormSection>
 

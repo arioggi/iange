@@ -336,15 +336,15 @@ export const getUsersByTenant = async (tenantId: string) => {
     email: p.email,
     role: p.role,
     tenantId: p.tenant_id,
-    // CORRECCIÓN CLAVE: Usamos 'null' en lugar de '[]' si no hay permisos.
-    // Esto permite que el formulario use los valores por defecto correctamente.
     permissions: p.permissions || null, 
     avatar: p.avatar_url,
     phone: p.phone
   }));
 };
 
-export const createTenantUser = async (email: string, password: string, tenantId: string, role: string, name: string) => {
+// AQUÍ ESTABA EL ERROR DE LOS PERMISOS:
+// Faltaba recibir el argumento 'permissions'
+export const createTenantUser = async (email: string, password: string, tenantId: string, role: string, name: string, permissions?: any) => {
     const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -360,6 +360,7 @@ export const createTenantUser = async (email: string, password: string, tenantId
     if (authError) throw authError;
 
     if (authData.user) {
+        // Al crear el perfil, INCLUIMOS los permisos
         const { error: profileError } = await supabase
             .from('profiles')
             .upsert({ 
@@ -367,7 +368,8 @@ export const createTenantUser = async (email: string, password: string, tenantId
                 email: email,
                 full_name: name,
                 tenant_id: tenantId,
-                role: role
+                role: role,
+                permissions: permissions // <--- ESTO FALTABA
             });
         
         if (profileError) console.warn("Aviso al actualizar perfil:", profileError);
