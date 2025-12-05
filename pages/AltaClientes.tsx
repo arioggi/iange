@@ -39,6 +39,7 @@ interface AltaClientesProps {
     setInitialEditPropId: (id: number | null) => void;
     asesores: User[];
     currentUser: User;
+    onDataChange?: () => void; // <--- 1. NUEVA PROP AÑADIDA
 }
 
 const AltaClientes: React.FC<AltaClientesProps> = ({ 
@@ -52,6 +53,7 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
     setInitialEditPropId,
     asesores,
     currentUser,
+    onDataChange, // <--- 2. DESESTRUCTURACIÓN
 }) => {
     const [activeTab, setActiveTab] = useState(TABS[0]);
     const [isAddPropiedadModalOpen, setAddPropiedadModalOpen] = useState(false);
@@ -112,6 +114,9 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
              adapter.updateTenantSettings(currentUser.tenantId, { onboarded: true });
         }
         
+        // <--- 3. LLAMADA A LA FUNCIÓN DE RECARGA
+        if (onDataChange) onDataChange();
+
         showToast('Propiedad y Propietario añadidos con éxito');
         setAddPropiedadModalOpen(false);
     };
@@ -143,6 +148,10 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
         }
 
         adapter.setContacts(currentUser.tenantId, { propietarios, compradores: updatedCompradores });
+        
+        // <--- RECARGA TAMBIÉN AL AÑADIR COMPRADOR
+        if (onDataChange) onDataChange();
+
         showToast('Comprador añadido con éxito');
         setAddCompradorModalOpen(false);
     };
@@ -175,6 +184,10 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
     const handleConfirmDelete = () => {
         if (propiedadToDelete) {
             handleDeletePropiedad(propiedadToDelete);
+            
+            // <--- RECARGA AL ELIMINAR
+            if (onDataChange) onDataChange();
+
             setDeleteModalOpen(false);
             setPropiedadToDelete(null);
         }
@@ -182,6 +195,10 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
 
     const localHandleUpdate = (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
         handleUpdatePropiedad(updatedPropiedad, updatedPropietario);
+        
+        // <--- RECARGA AL EDITAR
+        if (onDataChange) onDataChange();
+
         setEditModalOpen(false);
         setSelectedPropiedad(null);
     };

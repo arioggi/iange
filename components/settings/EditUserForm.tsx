@@ -57,12 +57,22 @@ interface EditUserFormProps {
 const EditUserForm: React.FC<EditUserFormProps> = ({ user, onUserUpdated, onCancel, currentUser }) => {
     const [formData, setFormData] = useState<User>(user);
     
-    // Inicialización robusta: Si permissions viene corrupto o vacío, usa los defaults del rol
+    // CORRECCIÓN: Inicialización robusta de permisos
+    // Si la DB tiene un objeto vacío o nulo, mezclamos con los defaults del rol.
     const [permissions, setPermissions] = useState<UserPermissions>(() => {
-        if (user.permissions && !Array.isArray(user.permissions)) {
-            return user.permissions;
-        }
-        return ROLE_DEFAULT_PERMISSIONS[user.role] || ROLE_DEFAULT_PERMISSIONS['asesor'];
+        const defaults = ROLE_DEFAULT_PERMISSIONS[user.role] || ROLE_DEFAULT_PERMISSIONS['asesor'];
+        const current = user.permissions || {} as Partial<UserPermissions>;
+        
+        // Prioridad: Valor actual > Default del rol
+        // El operador ?? asegura que si current.propiedades es 'false', se respete 'false' y no se vaya al default.
+        return {
+            propiedades: current.propiedades ?? defaults.propiedades,
+            contactos: current.contactos ?? defaults.contactos,
+            operaciones: current.operaciones ?? defaults.operaciones,
+            documentosKyc: current.documentosKyc ?? defaults.documentosKyc,
+            reportes: current.reportes ?? defaults.reportes,
+            equipo: current.equipo ?? defaults.equipo,
+        };
     });
 
     const [showPasswordReset, setShowPasswordReset] = useState(false);
@@ -105,7 +115,7 @@ const EditUserForm: React.FC<EditUserFormProps> = ({ user, onUserUpdated, onCanc
                 return;
             }
             if(newPassword) {
-                 adapter.setPassword(user.tenantId || null, user.id, newPassword, mustChangeOnNextLogin);
+                 adapter.setPassword(user.tenantId || null, user.id as number, newPassword, mustChangeOnNextLogin);
             }
         }
 

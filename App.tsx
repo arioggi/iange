@@ -3,16 +3,13 @@ import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-
 import { supabase } from './supabaseClient'; 
 
 // Tipos y constantes
-import { User, Propiedad, Propietario, Comprador, CompanySettings } from "./types";
-// IMPORTANTE: Mantenemos ROLE_DEFAULT_PERMISSIONS para corregir el menú
+import { User, Propiedad, Propietario, Comprador, CompanySettings, UserPermissions } from "./types";
 import { DEFAULT_ROUTES, ROLES, ROLE_DEFAULT_PERMISSIONS } from "./constants";
 import adapter from "./data/localStorageAdapter"; 
-import { getPropertiesByTenant, getContactsByTenant } from './Services/api';
+import { getPropertiesByTenant, getContactsByTenant, getUsersByTenant } from './Services/api';
 
 // Páginas
 import Login from "./pages/Login";
-// Eliminado: import SignUp from "./pages/SignUp"; <--- CAUSANTE DEL ERROR
-
 import OportunidadesDashboard from "./pages/OportunidadesDashboard";
 import AltaClientes from "./pages/AltaClientes";
 import Catalogo from "./pages/Catalogo";
@@ -80,11 +77,36 @@ const App = () => {
             
             if (mounted) {
                 if (data) {
-                    // --- CORRECCIÓN DEL MENÚ PERSONAL ---
-                    // Si el usuario no tiene permisos guardados explícitamente,
-                    // le asignamos los permisos por defecto de su rol (adminempresa = ver todo).
                     const userRole = data.role || 'asesor';
-                    const effectivePermissions = data.permissions || ROLE_DEFAULT_PERMISSIONS[userRole];
+                    
+                    // --- CORRECCIÓN CRÍTICA DE PERMISOS ---
+                    // Lógica para garantizar acceso a dueños y consistencia en permisos
+                    let effectivePermissions: UserPermissions;
+
+                    // Si es Admin o Dueño, forzamos TODOS los permisos a TRUE
+                    if (userRole === ROLES.ADMIN_EMPRESA || userRole === ROLES.CUENTA_EMPRESA || userRole === ROLES.SUPER_ADMIN) {
+                        effectivePermissions = {
+                            propiedades: true,
+                            contactos: true,
+                            operaciones: true,
+                            documentosKyc: true,
+                            reportes: true,
+                            equipo: true
+                        };
+                    } else {
+                        // Para otros roles, mezclamos DB con Defaults
+                        const defaultPerms = ROLE_DEFAULT_PERMISSIONS[userRole] || ROLE_DEFAULT_PERMISSIONS['asesor'];
+                        const dbPerms = data.permissions || {};
+
+                        effectivePermissions = {
+                            propiedades: dbPerms.propiedades ?? defaultPerms.propiedades,
+                            contactos: dbPerms.contactos ?? defaultPerms.contactos,
+                            operaciones: dbPerms.operaciones ?? defaultPerms.operaciones,
+                            documentosKyc: dbPerms.documentosKyc ?? defaultPerms.documentosKyc,
+                            reportes: dbPerms.reportes ?? defaultPerms.reportes,
+                            equipo: dbPerms.equipo ?? defaultPerms.equipo,
+                        };
+                    }
 
                     setUser({
                         id: data.id as any,
@@ -93,7 +115,7 @@ const App = () => {
                         role: userRole,
                         photo: data.avatar_url || 'VP',
                         tenantId: data.tenant_id,
-                        permissions: effectivePermissions, // <--- Esto habilita el menú "Personal"
+                        permissions: effectivePermissions, 
                         phone: data.phone || '',
                     });
                 } else if (error) {
@@ -137,33 +159,41 @@ const App = () => {
   }, []); 
 
 
-  // --- 2. CARGA DE DATOS DE NEGOCIO ---
-  useEffect(() => {
-    const loadData = async () => {
-        if (!user) return;
-        if (!user.tenantId && user.role === ROLES.SUPER_ADMIN) return;
+  // --- 2. CARGA DE DATOS DE NEGOCIO (Función expuesta) ---
+  const refreshAppData = async () => {
+      if (!user) return;
+      if (!user.tenantId && user.role === ROLES.SUPER_ADMIN) return;
 
-        if (user.tenantId) {
-            try {
-                // Datos reales Supabase
-                const props = await getPropertiesByTenant(user.tenantId);
-                const contacts = await getContactsByTenant(user.tenantId);
-                
-                if (props) setPropiedades(props);
-                if (contacts) {
-                    setPropietarios(contacts.propietarios);
-                    setCompradores(contacts.compradores);
-                }
-                // Datos locales
-                setAllUsers(adapter.listUsers(user.tenantId));
-                setCompanySettings(adapter.getTenantSettings(user.tenantId));
-            } catch (error) {
-                console.error("Error cargando datos negocio:", error);
-                setPropiedades(adapter.listProperties(user.tenantId));
-            }
-        }
-    };
-    loadData();
+      if (user.tenantId) {
+          try {
+              // Datos reales Supabase
+              const propsPromise = getPropertiesByTenant(user.tenantId);
+              const contactsPromise = getContactsByTenant(user.tenantId);
+              const usersPromise = getUsersByTenant(user.tenantId);
+
+              const [props, contacts, usersDb] = await Promise.all([propsPromise, contactsPromise, usersPromise]);
+              
+              if (props) setPropiedades(props);
+              if (contacts) {
+                  setPropietarios(contacts.propietarios);
+                  setCompradores(contacts.compradores);
+              }
+              if (usersDb) {
+                  setAllUsers(usersDb); // <-- Esto actualiza la lista de asesores para el Dashboard
+              }
+
+              // Configuración sigue local por ahora
+              setCompanySettings(adapter.getTenantSettings(user.tenantId));
+          } catch (error) {
+              console.error("Error cargando datos negocio:", error);
+              // Fallback en caso de error
+              setPropiedades(adapter.listProperties(user.tenantId));
+          }
+      }
+  };
+
+  useEffect(() => {
+    refreshAppData();
   }, [user]); 
 
   const asesores = useMemo(() => allUsers.filter(u => 
@@ -215,7 +245,6 @@ const App = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center animate-pulse flex flex-col items-center">
-          {/* LOGO DE CARGA CON FALLBACK */}
           <div className="mb-4 h-16 flex items-center justify-center">
              <img 
                 src="/logo.svg" 
@@ -240,7 +269,6 @@ const App = () => {
     return (
         <Routes>
             <Route path="/login" element={<Login onLogin={handleLogin} />} />
-            {/* Sin ruta de SignUp por ahora */}
             <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
     );
@@ -268,7 +296,24 @@ const App = () => {
           <Route path="/login" element={<Navigate to="/" />} />
           
           <Route path="/oportunidades" element={<OportunidadesDashboard propiedades={propiedades} asesores={asesores} propietarios={propietarios} compradores={compradores} companySettings={companySettings} />} />
-          <Route path="/clientes" element={<AltaClientes showToast={showToast} propiedades={propiedades} setPropiedades={setPropiedades} propietarios={propietarios} setPropietarios={setPropietarios} compradores={compradores} setCompradores={setCompradores} handleUpdatePropiedad={handleUpdatePropiedad} handleDeletePropiedad={handleDeletePropiedad} initialEditPropId={initialEditPropId} setInitialEditPropId={setInitialEditPropId} asesores={asesores} currentUser={user} />} />
+          <Route path="/clientes" element={
+            <AltaClientes 
+              showToast={showToast} 
+              propiedades={propiedades} 
+              setPropiedades={setPropiedades} 
+              propietarios={propietarios} 
+              setPropietarios={setPropietarios} 
+              compradores={compradores} 
+              setCompradores={setCompradores} 
+              handleUpdatePropiedad={handleUpdatePropiedad} 
+              handleDeletePropiedad={handleDeletePropiedad} 
+              initialEditPropId={initialEditPropId} 
+              setInitialEditPropId={setInitialEditPropId} 
+              asesores={asesores} 
+              currentUser={user} 
+              onDataChange={refreshAppData} // <--- SE PASA LA FUNCIÓN AQUÍ
+            />
+          } />
           <Route path="/catalogo" element={<Catalogo propiedades={propiedades} propietarios={propietarios} asesores={asesores} onAddVisita={handleAddVisita} handleUpdatePropiedad={handleUpdatePropiedad} showToast={showToast} />} />
           <Route path="/progreso" element={<Progreso propiedades={propiedades} propietarios={propietarios} onUpdatePropiedad={handleUpdatePropiedad} onNavigateAndEdit={onNavigateAndEdit} asesores={asesores} />} />
           <Route path="/reportes" element={<Reportes />} />
@@ -279,7 +324,13 @@ const App = () => {
              <Route index element={<Navigate to="mi-perfil" replace />} />
              <Route path="mi-perfil" element={<MiPerfil user={user} onUserUpdated={handleUpdateUser} />} />
              <Route path="perfil" element={<PerfilEmpresa user={user} />} />
-             <Route path="personal" element={<PersonalEmpresa showToast={showToast} currentUser={user} />} />
+             <Route path="personal" element={
+                <PersonalEmpresa 
+                  showToast={showToast} 
+                  currentUser={user} 
+                  onDataChange={refreshAppData} // <--- SE PASA LA FUNCIÓN AQUÍ TAMBIÉN
+                />
+             } />
              <Route path="facturacion" element={<Facturacion />} />
           </Route>
 
