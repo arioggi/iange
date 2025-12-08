@@ -1,8 +1,7 @@
-// CORRECCIÓN: Se agrega 'useMemo' a los imports de React
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Propiedad, User, CompanySettings, Propietario, Comprador } from '../types';
-import { PRIMARY_DASHBOARD_BUTTONS } from '../constants';
+import { Propiedad, User, CompanySettings, Propietario, Comprador, UserPermissions } from '../types'; // Agregamos UserPermissions
+import { PRIMARY_DASHBOARD_BUTTONS, ROLES } from '../constants'; // Agregamos ROLES
 import { BanknotesIcon, BuildingOfficeIcon, PresentationChartLineIcon, SparklesIcon, UsersIcon } from '../components/Icons';
 
 interface OportunidadesDashboardProps {
@@ -11,6 +10,8 @@ interface OportunidadesDashboardProps {
   propietarios: Propietario[];
   compradores: Comprador[];
   companySettings?: CompanySettings | null;
+  isLoading?: boolean;
+  currentUser: User; // <--- 1. Recibimos el usuario actual
 }
 
 interface StatCardProps {
@@ -83,7 +84,15 @@ const parseCurrencyString = (value: string | undefined): number => {
     return parseFloat(value.replace(/,/g, ''));
 };
 
-const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({ propiedades, asesores, propietarios, compradores, companySettings }) => {
+const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({ 
+    propiedades, 
+    asesores, 
+    propietarios, 
+    compradores, 
+    companySettings,
+    isLoading,
+    currentUser // <--- 2. Recibimos el prop
+}) => {
   const navigate = useNavigate();
   const [isChartVisible, setIsChartVisible] = useState(false);
 
@@ -94,6 +103,29 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({ propied
     return () => clearTimeout(timer);
   }, []);
   
+  // Lógica de filtrado de botones
+  const visibleButtons = useMemo(() => {
+      // Si es Super Admin, ve todo
+      if (currentUser.role === ROLES.SUPER_ADMIN) return PRIMARY_DASHBOARD_BUTTONS;
+
+      const perms = currentUser.permissions || {} as UserPermissions;
+
+      return PRIMARY_DASHBOARD_BUTTONS.filter(btn => {
+          // Si el botón no requiere permiso, se muestra
+          if (!btn.permissionKey) return true;
+          // Si requiere permiso, verificamos si es true en el usuario
+          return !!perms[btn.permissionKey];
+      });
+  }, [currentUser]);
+
+  if (isLoading) {
+      return (
+          <div className="flex items-center justify-center min-h-[60vh]">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-iange-orange"></div>
+          </div>
+      );
+  }
+
   const hasRealActivity = useMemo(() => {
       const hasProperties = propiedades.length > 0;
       const hasTeam = asesores.length > 1; 
@@ -229,8 +261,9 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({ propied
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-lg shadow-sm border">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Accesos Rápidos</h3>
+                {/* AQUI USAMOS LA LISTA FILTRADA 'visibleButtons' */}
                 <div className="grid grid-cols-2 gap-4">
-                    {PRIMARY_DASHBOARD_BUTTONS.map((button) => (
+                    {visibleButtons.map((button) => (
                         <button
                             key={button.label}
                             onClick={() => navigate(button.path)}
@@ -240,6 +273,9 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({ propied
                         </button>
                     ))}
                 </div>
+                {visibleButtons.length === 0 && (
+                    <p className="text-center text-gray-500 py-4 text-sm">No tienes accesos directos disponibles.</p>
+                )}
             </div>
              <div className="bg-white p-6 rounded-lg shadow-sm border">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Equipo</h3>

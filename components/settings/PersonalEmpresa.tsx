@@ -12,7 +12,7 @@ const TABS = ['Personal', 'Añadir usuario'];
 interface PersonalEmpresaProps {
     showToast: (message: string, type?: 'success' | 'error') => void;
     currentUser: User;
-    onDataChange?: () => void; // <--- 1. NUEVA PROP
+    onDataChange?: () => void; 
 }
 
 const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUser, onDataChange }) => {
@@ -57,12 +57,14 @@ const PersonalEmpresa: React.FC<PersonalEmpresaProps> = ({ showToast, currentUse
         try {
             const passwordToUse = newUser.password || "Temporal123!";
             
+            // --- CORRECCIÓN AQUÍ: SE AGREGA EL ARGUMENTO DE PERMISOS ---
             await createTenantUser(
                 newUser.email, 
                 passwordToUse,
                 currentUser.tenantId, 
                 newUser.role || 'asesor', 
-                newUser.name
+                newUser.name,
+                newUser.permissions // <--- ¡ESTO FALTABA! Ahora los toggles se guardan al crear.
             );
 
             showToast('Usuario creado correctamente y vinculado a tu empresa.');

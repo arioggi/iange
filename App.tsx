@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 
 // Tipos y constantes
 import { User, Propiedad, Propietario, Comprador, CompanySettings, UserPermissions } from "./types";
-import { DEFAULT_ROUTES, ROLES, ROLE_DEFAULT_PERMISSIONS } from "./constants";
+import { ROLES, ROLE_DEFAULT_PERMISSIONS } from "./constants";
 import adapter from "./data/localStorageAdapter"; 
 import { getPropertiesByTenant, getContactsByTenant, getUsersByTenant } from './Services/api';
 
@@ -40,11 +40,24 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Toast from './components/ui/Toast';
 
+// --- 1. COMPONENTE DE PROTECCIÓN DE RUTAS ---
+const ProtectedRoute = ({ user, permissionKey, children }: { user: User, permissionKey?: keyof UserPermissions, children: React.ReactNode }) => {
+    if (!user) return <Navigate to="/login" replace />;
+    if (user.role === ROLES.SUPER_ADMIN) return <>{children}</>;
+    if (permissionKey && !user.permissions?.[permissionKey]) {
+        return <Navigate to="/configuraciones/mi-perfil" replace />;
+    }
+    return <>{children}</>;
+};
+
 const App = () => {
   // --- ESTADO ---
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true); 
   const [isImpersonating, setIsImpersonating] = useState(false);
+  
+  // Mantenemos este estado para pasarlo al Dashboard, pero ya no bloqueará la App entera
+  const [dataLoading, setDataLoading] = useState(false);
 
   const userRef = useRef<User | null>(null);
   useEffect(() => { userRef.current = user; }, [user]);
@@ -63,7 +76,7 @@ const App = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // --- 1. AUTENTICACIÓN ESTABLE ---
+  // --- AUTENTICACIÓN ---
   useEffect(() => {
     let mounted = true;
 
@@ -79,34 +92,21 @@ const App = () => {
                 if (data) {
                     const userRole = data.role || 'asesor';
                     
-                    // --- CORRECCIÓN CRÍTICA DE PERMISOS ---
-                    // Lógica para garantizar acceso a dueños y consistencia en permisos
-                    let effectivePermissions: UserPermissions;
+                    const defaultPerms = ROLE_DEFAULT_PERMISSIONS[userRole] || ROLE_DEFAULT_PERMISSIONS['asesor'];
+                    const dbPerms = data.permissions || {};
 
-                    // Si es Admin o Dueño, forzamos TODOS los permisos a TRUE
-                    if (userRole === ROLES.ADMIN_EMPRESA || userRole === ROLES.CUENTA_EMPRESA || userRole === ROLES.SUPER_ADMIN) {
-                        effectivePermissions = {
-                            propiedades: true,
-                            contactos: true,
-                            operaciones: true,
-                            documentosKyc: true,
-                            reportes: true,
-                            equipo: true
-                        };
-                    } else {
-                        // Para otros roles, mezclamos DB con Defaults
-                        const defaultPerms = ROLE_DEFAULT_PERMISSIONS[userRole] || ROLE_DEFAULT_PERMISSIONS['asesor'];
-                        const dbPerms = data.permissions || {};
+                    const effectivePermissions: UserPermissions = {
+                        dashboard: dbPerms.dashboard ?? defaultPerms.dashboard,
+                        contactos: dbPerms.contactos ?? defaultPerms.contactos,
+                        propiedades: dbPerms.propiedades ?? defaultPerms.propiedades,
+                        progreso: dbPerms.progreso ?? defaultPerms.progreso,
+                        reportes: dbPerms.reportes ?? defaultPerms.reportes,
+                        crm: dbPerms.crm ?? defaultPerms.crm,
+                        equipo: dbPerms.equipo ?? defaultPerms.equipo,
+                    };
 
-                        effectivePermissions = {
-                            propiedades: dbPerms.propiedades ?? defaultPerms.propiedades,
-                            contactos: dbPerms.contactos ?? defaultPerms.contactos,
-                            operaciones: dbPerms.operaciones ?? defaultPerms.operaciones,
-                            documentosKyc: dbPerms.documentosKyc ?? defaultPerms.documentosKyc,
-                            reportes: dbPerms.reportes ?? defaultPerms.reportes,
-                            equipo: dbPerms.equipo ?? defaultPerms.equipo,
-                        };
-                    }
+                    // Iniciamos la carga de datos
+                    setDataLoading(true);
 
                     setUser({
                         id: data.id as any,
@@ -159,14 +159,16 @@ const App = () => {
   }, []); 
 
 
-  // --- 2. CARGA DE DATOS DE NEGOCIO (Función expuesta) ---
+  // --- CARGA DE DATOS ---
   const refreshAppData = async () => {
       if (!user) return;
-      if (!user.tenantId && user.role === ROLES.SUPER_ADMIN) return;
+      if (!user.tenantId && user.role === ROLES.SUPER_ADMIN) {
+          setDataLoading(false);
+          return;
+      }
 
       if (user.tenantId) {
           try {
-              // Datos reales Supabase
               const propsPromise = getPropertiesByTenant(user.tenantId);
               const contactsPromise = getContactsByTenant(user.tenantId);
               const usersPromise = getUsersByTenant(user.tenantId);
@@ -179,16 +181,18 @@ const App = () => {
                   setCompradores(contacts.compradores);
               }
               if (usersDb) {
-                  setAllUsers(usersDb); // <-- Esto actualiza la lista de asesores para el Dashboard
+                  setAllUsers(usersDb);
               }
-
-              // Configuración sigue local por ahora
               setCompanySettings(adapter.getTenantSettings(user.tenantId));
           } catch (error) {
               console.error("Error cargando datos negocio:", error);
-              // Fallback en caso de error
               setPropiedades(adapter.listProperties(user.tenantId));
+          } finally {
+              // Finalizamos la carga de datos
+              setDataLoading(false);
           }
+      } else {
+          setDataLoading(false);
       }
   };
 
@@ -200,7 +204,20 @@ const App = () => {
     u.role === ROLES.ASESOR || u.role === ROLES.ADMIN_EMPRESA || u.role === ROLES.EMPRESA
   ), [allUsers]);
 
-  // --- HANDLERS ---
+  const getInitialRoute = (currentUser: User) => {
+      if (currentUser.role === ROLES.SUPER_ADMIN) return '/superadmin';
+      
+      const p = currentUser.permissions || {} as UserPermissions;
+      
+      if (p.dashboard) return '/oportunidades';
+      if (p.contactos) return '/clientes';
+      if (p.propiedades) return '/catalogo';
+      if (p.progreso) return '/progreso';
+      if (p.reportes) return '/reportes';
+      if (p.crm) return '/crm';
+      
+      return '/configuraciones/mi-perfil';
+  };
 
   const handleLogin = async (email: string, pass: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
@@ -239,8 +256,7 @@ const App = () => {
     return routes[path] || 'IANGE';
   };
 
-  // --- RENDER ---
-
+  // --- CARGA INICIAL DE SESIÓN (SOLO AUTH) ---
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -259,7 +275,7 @@ const App = () => {
                <div className="text-3xl font-bold text-iange-orange mb-2">IANGE<span className="text-gray-800">.</span></div>
             </div>
           </div>
-          <div className="text-gray-500">Cargando sistema...</div>
+          <div className="text-gray-500">Iniciando sesión...</div>
         </div>
       </div>
     );
@@ -292,46 +308,86 @@ const App = () => {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       <MainLayout>
         <Routes>
-          <Route path="/" element={<Navigate to={DEFAULT_ROUTES[user.role] || '/oportunidades'} />} />
+          <Route path="/" element={<Navigate to={getInitialRoute(user)} replace />} />
           <Route path="/login" element={<Navigate to="/" />} />
           
-          <Route path="/oportunidades" element={<OportunidadesDashboard propiedades={propiedades} asesores={asesores} propietarios={propietarios} compradores={compradores} companySettings={companySettings} />} />
-          <Route path="/clientes" element={
-            <AltaClientes 
-              showToast={showToast} 
-              propiedades={propiedades} 
-              setPropiedades={setPropiedades} 
-              propietarios={propietarios} 
-              setPropietarios={setPropietarios} 
-              compradores={compradores} 
-              setCompradores={setCompradores} 
-              handleUpdatePropiedad={handleUpdatePropiedad} 
-              handleDeletePropiedad={handleDeletePropiedad} 
-              initialEditPropId={initialEditPropId} 
-              setInitialEditPropId={setInitialEditPropId} 
-              asesores={asesores} 
-              currentUser={user} 
-              onDataChange={refreshAppData} // <--- SE PASA LA FUNCIÓN AQUÍ
-            />
+          {/* El Dashboard recibe 'isLoading' y ahora también 'currentUser' */}
+          <Route path="/oportunidades" element={
+            <ProtectedRoute user={user} permissionKey="dashboard">
+                <OportunidadesDashboard 
+                    propiedades={propiedades} 
+                    asesores={asesores} 
+                    propietarios={propietarios} 
+                    compradores={compradores} 
+                    companySettings={companySettings} 
+                    isLoading={dataLoading} 
+                    currentUser={user} // <--- NUEVA PROP PASADA AL COMPONENTE
+                />
+            </ProtectedRoute>
           } />
-          <Route path="/catalogo" element={<Catalogo propiedades={propiedades} propietarios={propietarios} asesores={asesores} onAddVisita={handleAddVisita} handleUpdatePropiedad={handleUpdatePropiedad} showToast={showToast} />} />
-          <Route path="/progreso" element={<Progreso propiedades={propiedades} propietarios={propietarios} onUpdatePropiedad={handleUpdatePropiedad} onNavigateAndEdit={onNavigateAndEdit} asesores={asesores} />} />
-          <Route path="/reportes" element={<Reportes />} />
-          <Route path="/reportes/:reportId" element={<ReporteDetalle propiedades={propiedades} asesores={asesores} />} />
-          <Route path="/crm" element={<PlaceholderPage title="CRM" />} />
+          
+          <Route path="/clientes" element={
+            <ProtectedRoute user={user} permissionKey="contactos">
+                <AltaClientes 
+                  showToast={showToast} 
+                  propiedades={propiedades} setPropiedades={setPropiedades} 
+                  propietarios={propietarios} setPropietarios={setPropietarios} 
+                  compradores={compradores} setCompradores={setCompradores} 
+                  handleUpdatePropiedad={handleUpdatePropiedad} handleDeletePropiedad={handleDeletePropiedad} 
+                  initialEditPropId={initialEditPropId} setInitialEditPropId={setInitialEditPropId} 
+                  asesores={asesores} currentUser={user} onDataChange={refreshAppData} 
+                />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/catalogo" element={
+            <ProtectedRoute user={user} permissionKey="propiedades">
+                <Catalogo propiedades={propiedades} propietarios={propietarios} asesores={asesores} onAddVisita={handleAddVisita} handleUpdatePropiedad={handleUpdatePropiedad} showToast={showToast} />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/progreso" element={
+            <ProtectedRoute user={user} permissionKey="progreso">
+                <Progreso propiedades={propiedades} propietarios={propietarios} onUpdatePropiedad={handleUpdatePropiedad} onNavigateAndEdit={onNavigateAndEdit} asesores={asesores} />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/reportes" element={
+            <ProtectedRoute user={user} permissionKey="reportes">
+                <Reportes />
+            </ProtectedRoute>
+          } />
+          <Route path="/reportes/:reportId" element={
+            <ProtectedRoute user={user} permissionKey="reportes">
+                <ReporteDetalle propiedades={propiedades} asesores={asesores} />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/crm" element={
+            <ProtectedRoute user={user} permissionKey="crm">
+                <PlaceholderPage title="CRM" />
+            </ProtectedRoute>
+          } />
 
           <Route path="/configuraciones" element={<Configuraciones />}>
              <Route index element={<Navigate to="mi-perfil" replace />} />
              <Route path="mi-perfil" element={<MiPerfil user={user} onUserUpdated={handleUpdateUser} />} />
-             <Route path="perfil" element={<PerfilEmpresa user={user} />} />
-             <Route path="personal" element={
-                <PersonalEmpresa 
-                  showToast={showToast} 
-                  currentUser={user} 
-                  onDataChange={refreshAppData} // <--- SE PASA LA FUNCIÓN AQUÍ TAMBIÉN
-                />
+             
+             <Route path="perfil" element={
+                (user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ?
+                <PerfilEmpresa user={user} /> : <Navigate to="/configuraciones/mi-perfil" />
              } />
-             <Route path="facturacion" element={<Facturacion />} />
+             
+             <Route path="facturacion" element={
+                (user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ?
+                <Facturacion /> : <Navigate to="/configuraciones/mi-perfil" />
+             } />
+
+             <Route path="personal" element={
+                <ProtectedRoute user={user} permissionKey="equipo">
+                    <PersonalEmpresa showToast={showToast} currentUser={user} onDataChange={refreshAppData} />
+                </ProtectedRoute>
+             } />
           </Route>
 
           <Route path="/superadmin/*" element={

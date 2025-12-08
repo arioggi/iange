@@ -53,7 +53,10 @@ interface AddUserFormProps {
 
 const AddUserForm: React.FC<AddUserFormProps> = ({ onUserAdded, currentUser }) => {
     const [role, setRole] = useState(ROLES.ASESOR); // Default correcto desde constantes
+    
+    // Inicializamos permisos usando los defaults definidos en constants.ts (que ya incluyen las nuevas llaves)
     const [permissions, setPermissions] = useState<UserPermissions>(ROLE_DEFAULT_PERMISSIONS[ROLES.ASESOR]);
+    
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [mustChangePassword, setMustChangePassword] = useState(true);
@@ -154,11 +157,25 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ onUserAdded, currentUser }) =
             </FormSection>
 
             <FormSection title="Permisos de Acceso (Barra Lateral)">
-                <Toggle label="Catálogo (Propiedades)" name="propiedades" checked={!!permissions.propiedades} onChange={handlePermissionChange} />
-                <Toggle label="Alta de Clientes (Contactos)" name="contactos" checked={!!permissions.contactos} onChange={handlePermissionChange} />
-                <Toggle label="Operaciones (Dashboard/Progreso)" name="operaciones" checked={!!permissions.operaciones} onChange={handlePermissionChange} />
-                <Toggle label="Documentos y KYC" name="documentosKyc" checked={!!permissions.documentosKyc} onChange={handlePermissionChange} />
-                <Toggle label="Reportes" name="reportes" checked={!!permissions.reportes} onChange={handlePermissionChange} />
+                {/* 1. Dashboard */}
+                <Toggle label="Dashboard (Oportunidades)" name="dashboard" checked={!!permissions.dashboard} onChange={handlePermissionChange} />
+                
+                {/* 2. Alta de Clientes */}
+                <Toggle label="Alta de Clientes" name="contactos" checked={!!permissions.contactos} onChange={handlePermissionChange} />
+                
+                {/* 3. Catálogo de Propiedades */}
+                <Toggle label="Catálogo de Propiedades" name="propiedades" checked={!!permissions.propiedades} onChange={handlePermissionChange} />
+                
+                {/* 4. Progreso de Ventas */}
+                <Toggle label="Progreso de Ventas" name="progreso" checked={!!permissions.progreso} onChange={handlePermissionChange} />
+                
+                {/* 5. Reportes */}
+                <Toggle label="Reportes Generales" name="reportes" checked={!!permissions.reportes} onChange={handlePermissionChange} />
+                
+                {/* 6. CRM */}
+                <Toggle label="CRM" name="crm" checked={!!permissions.crm} onChange={handlePermissionChange} />
+
+                {/* 7. Personal (Solo visible si el usuario actual es Admin) */}
                 {canManageTeam && (
                   <Toggle label="Personal (Configuración)" name="equipo" checked={!!permissions.equipo} onChange={handlePermissionChange} />
                 )}
