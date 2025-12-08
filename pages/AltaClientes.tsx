@@ -3,10 +3,17 @@ import { Propietario, Propiedad, Comprador, ChecklistStatus, User, KycData } fro
 import Modal from '../components/ui/Modal';
 import AddPropiedadPropietarioForm from '../components/clientes/AddPropiedadPropietarioForm';
 import PropiedadesTable from '../components/clientes/PropiedadesTable';
-import KycPldForm, { initialKycState } from '../components/clientes/KycPldForm';
+import KycPldForm from '../components/clientes/KycPldForm';
+import { initialKycState } from '../constants'; 
 import EditPropiedadForm from '../components/clientes/EditPropiedadForm';
 import { FLUJO_PROGRESO } from '../constants';
-import adapter from '../data/localStorageAdapter';
+import { 
+    createContact, 
+    createProperty, 
+    uploadPropertyImage, 
+    compressImage,
+    deleteContact // <--- AHORA SÍ FUNCIONARÁ PORQUE YA EXISTE EN API.TS
+} from '../Services/api';
 
 const TABS = ['Propiedades y Propietarios', 'Compradores'];
 
@@ -16,13 +23,6 @@ const calculateProgress = (checklist: ChecklistStatus): number => {
     if (totalChecklistItems === 0) return 0;
     const checkedCount = Object.values(checklist).filter(value => value === true).length;
     return Math.round((checkedCount / totalChecklistItems) * 100);
-};
-
-const getStatusFromChecklist = (checklist: ChecklistStatus, compradorId: number | null | undefined): Propiedad['status'] => {
-    if (checklist.ventaConcluida) return 'Vendida';
-    if (checklist.propiedadSeparada || compradorId) return 'Separada';
-    if (checklist.propiedadVerificada) return 'En Promoción';
-    return 'Validación Pendiente';
 };
 
 interface AltaClientesProps {
@@ -39,21 +39,21 @@ interface AltaClientesProps {
     setInitialEditPropId: (id: number | null) => void;
     asesores: User[];
     currentUser: User;
-    onDataChange?: () => void; // <--- 1. NUEVA PROP AÑADIDA
+    onDataChange?: () => void;
 }
 
 const AltaClientes: React.FC<AltaClientesProps> = ({ 
     showToast, 
-    propiedades, setPropiedades, 
-    propietarios, setPropietarios, 
-    compradores, setCompradores,
+    propiedades, 
+    propietarios, 
+    compradores, 
     handleUpdatePropiedad,
-    handleDeletePropiedad,
+    handleDeletePropiedad, 
     initialEditPropId,
     setInitialEditPropId,
     asesores,
     currentUser,
-    onDataChange, // <--- 2. DESESTRUCTURACIÓN
+    onDataChange, 
 }) => {
     const [activeTab, setActiveTab] = useState(TABS[0]);
     const [isAddPropiedadModalOpen, setAddPropiedadModalOpen] = useState(false);
@@ -65,6 +65,9 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
     const [propiedadToDelete, setPropiedadToDelete] = useState<Propiedad | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     
+    // Estado para indicar que estamos subiendo/guardando
+    const [isProcessing, setIsProcessing] = useState(false);
+
     const filteredPropiedades = useMemo(() => {
         if (!searchTerm) {
             return propiedades;
@@ -76,88 +79,82 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
         });
     }, [searchTerm, propiedades, propietarios]);
 
-    const handleAddPropiedadPropietario = (nuevaPropiedad: Omit<Propiedad, 'id' | 'propietarioId' | 'fecha_captacion' | 'progreso' | 'checklist' | 'status' | 'fecha_venta'>, nuevoPropietario: Omit<Propietario, 'id'>) => {
-        if (!currentUser.tenantId) return;
-
-        const propietarioId = Date.now();
-        const newPropietarioConId = { ...nuevoPropietario, id: propietarioId };
-        
-        const initialChecklist: ChecklistStatus = {
-            propiedadRegistrada: true, propietarioRegistrado: true, documentacionCompleta: false, entrevistaPLD: false, propiedadVerificada: false,
-            fichaTecnicaGenerada: false, publicadaEnPortales: false, campanasMarketing: false, seguimientoEnCurso: false,
-            compradorInteresado: false, documentosCompradorCompletos: false, propiedadSeparada: false, checklistTramitesIniciado: false,
-            contratoGenerado: false, firmaCompletada: false, ventaConcluida: false, seguimientoPostventa: false,
-        };
-
-        const newPropiedadConId: Propiedad = { 
-            ...nuevaPropiedad, 
-            id: Date.now() + 1, 
-            propietarioId,
-            fecha_captacion: new Date().toISOString(),
-            fecha_venta: null,
-            compradorId: null,
-            progreso: calculateProgress(initialChecklist),
-            checklist: initialChecklist,
-            status: getStatusFromChecklist(initialChecklist, null),
-            visitas: [],
-        };
-
-        const updatedPropietarios = [...propietarios, newPropietarioConId];
-        const updatedPropiedades = [...propiedades, newPropiedadConId];
-        
-        setPropietarios(updatedPropietarios);
-        setPropiedades(updatedPropiedades);
-
-        adapter.setContacts(currentUser.tenantId, { propietarios: updatedPropietarios, compradores });
-        adapter.setProperties(currentUser.tenantId, updatedPropiedades);
-        if (currentUser.tenantId) {
-             adapter.updateTenantSettings(currentUser.tenantId, { onboarded: true });
+    // --- FUNCIÓN PRINCIPAL DE GUARDADO (CON COMPRESIÓN Y SUBIDA) ---
+    const handleAddPropiedadPropietario = async (nuevaPropiedad: any, nuevoPropietario: any) => {
+        if (!currentUser.tenantId) {
+            showToast('Error: No se identificó la empresa.', 'error');
+            return;
         }
-        
-        // <--- 3. LLAMADA A LA FUNCIÓN DE RECARGA
-        if (onDataChange) onDataChange();
 
-        showToast('Propiedad y Propietario añadidos con éxito');
-        setAddPropiedadModalOpen(false);
+        setIsProcessing(true); // Bloquear botón para evitar doble clic
+        showToast('Procesando imágenes y guardando...', 'success');
+
+        try {
+            // 1. Guardar al Propietario en Supabase
+            const ownerDb = await createContact(nuevoPropietario, currentUser.tenantId, 'propietario');
+            console.log("Propietario creado:", ownerDb);
+
+            // 2. Procesar y Subir Imágenes
+            const uploadedImageUrls: string[] = [];
+            
+            if (nuevaPropiedad.fotos && nuevaPropiedad.fotos.length > 0) {
+                // Procesamos secuencialmente o en paralelo
+                for (const file of nuevaPropiedad.fotos) {
+                    try {
+                        // A. Compresión (Tipo WhatsApp)
+                        const compressedFile = await compressImage(file);
+                        // B. Subida a Storage
+                        const publicUrl = await uploadPropertyImage(compressedFile);
+                        uploadedImageUrls.push(publicUrl);
+                    } catch (imgError) {
+                        console.error("Error con imagen:", imgError);
+                        // Continuamos con las siguientes imágenes aunque una falle
+                    }
+                }
+            }
+
+            // 3. Guardar la Propiedad con las URLs y el ID del propietario
+            const propertyDb = await createProperty({
+                ...nuevaPropiedad,
+                imageUrls: uploadedImageUrls // Pasamos las URLs de la nube
+            }, currentUser.tenantId, ownerDb.id);
+
+            console.log("Propiedad creada:", propertyDb);
+
+            // 4. Actualizar la vista
+            if (onDataChange) onDataChange();
+            
+            showToast('¡Propiedad registrada exitosamente!');
+            setAddPropiedadModalOpen(false);
+
+        } catch (error: any) {
+            console.error("Error al guardar:", error);
+            showToast('Error al guardar: ' + error.message, 'error');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
-    const handleAddComprador = (propiedadId?: number) => {
+    const handleAddComprador = async (propiedadId?: number) => {
         if (!currentUser.tenantId) return;
-
-        const compradorId = Date.now();
-        const nuevoCompradorConId: Comprador = { 
-            ...nuevoCompradorData, 
-            id: compradorId,
-            propiedadId: propiedadId || null,
-        };
         
-        const updatedCompradores = [...compradores, nuevoCompradorConId];
-        setCompradores(updatedCompradores);
-        
-        let updatedPropiedades = propiedades;
-        if (propiedadId) {
-            updatedPropiedades = propiedades.map(p => {
-                if (p.id === propiedadId) {
-                    const updatedChecklist: ChecklistStatus = { ...p.checklist, compradorInteresado: true, documentosCompradorCompletos: true, propiedadSeparada: true };
-                    return { ...p, compradorId: compradorId, checklist: updatedChecklist, progreso: calculateProgress(updatedChecklist), status: getStatusFromChecklist(updatedChecklist, compradorId) };
-                }
-                return p;
-            });
-            setPropiedades(updatedPropiedades);
-            adapter.setProperties(currentUser.tenantId, updatedPropiedades);
+        setIsProcessing(true);
+        try {
+            // 1. Guardar Comprador
+            const compradorDb = await createContact(nuevoCompradorData, currentUser.tenantId, 'comprador');
+            
+            if (onDataChange) onDataChange();
+            showToast('Comprador añadido con éxito');
+            setAddCompradorModalOpen(false);
+        } catch (error: any) {
+            showToast('Error al guardar comprador: ' + error.message, 'error');
+        } finally {
+            setIsProcessing(false);
         }
-
-        adapter.setContacts(currentUser.tenantId, { propietarios, compradores: updatedCompradores });
-        
-        // <--- RECARGA TAMBIÉN AL AÑADIR COMPRADOR
-        if (onDataChange) onDataChange();
-
-        showToast('Comprador añadido con éxito');
-        setAddCompradorModalOpen(false);
     };
 
     const openCompradorModal = () => {
-        setNuevoCompradorData(initialKycState); // Resetea el formulario a su estado inicial
+        setNuevoCompradorData(initialKycState); 
         setAddCompradorModalOpen(true);
     };
 
@@ -172,7 +169,7 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
             if (propiedadToEdit) {
                 handleEditClick(propiedadToEdit);
             }
-            setInitialEditPropId(null); // Reset after use to avoid re-triggering
+            setInitialEditPropId(null);
         }
     }, [initialEditPropId, propiedades, setInitialEditPropId]);
     
@@ -181,24 +178,30 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
         setDeleteModalOpen(true);
     };
 
-    const handleConfirmDelete = () => {
+    // --- CORRECCIÓN CRÍTICA: BORRADO REAL ---
+    const handleConfirmDelete = async () => {
         if (propiedadToDelete) {
-            handleDeletePropiedad(propiedadToDelete);
-            
-            // <--- RECARGA AL ELIMINAR
-            if (onDataChange) onDataChange();
-
-            setDeleteModalOpen(false);
-            setPropiedadToDelete(null);
+            try {
+                // Borramos al Contacto (Dueño). Por la regla CASCADE de SQL, la propiedad se borra sola.
+                await deleteContact(propiedadToDelete.propietarioId);
+                
+                showToast('Propiedad y Propietario eliminados.', 'success');
+                
+                // Recargamos los datos de la pantalla
+                if (onDataChange) onDataChange();
+            } catch (error: any) {
+                console.error(error);
+                showToast('Error al eliminar: ' + error.message, 'error');
+            } finally {
+                setDeleteModalOpen(false);
+                setPropiedadToDelete(null);
+            }
         }
     };
 
     const localHandleUpdate = (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
         handleUpdatePropiedad(updatedPropiedad, updatedPropietario);
-        
-        // <--- RECARGA AL EDITAR
         if (onDataChange) onDataChange();
-
         setEditModalOpen(false);
         setSelectedPropiedad(null);
     };
@@ -233,8 +236,7 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                                 Añadir Comprador
                             </button>
                         </div>
-                        {/* Aquí iría la tabla de compradores */}
-                         <p className="text-center text-gray-500 p-8">La tabla de compradores está en construcción.</p>
+                         <p className="text-center text-gray-500 p-8">La tabla de compradores se visualizará aquí.</p>
                     </div>
                 );
             default:
@@ -268,19 +270,36 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                 {renderContent()}
             </div>
             
-            <Modal title="Añadir Nueva Propiedad y Propietario" isOpen={isAddPropiedadModalOpen} onClose={() => setAddPropiedadModalOpen(false)}>
-                <AddPropiedadPropietarioForm onSave={handleAddPropiedadPropietario} onCancel={() => setAddPropiedadModalOpen(false)} asesores={asesores} />
+            <Modal title="Añadir Nueva Propiedad y Propietario" isOpen={isAddPropiedadModalOpen} onClose={() => !isProcessing && setAddPropiedadModalOpen(false)}>
+                {isProcessing ? (
+                    <div className="text-center py-12">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-iange-orange mx-auto mb-4"></div>
+                        <p className="text-lg font-semibold text-gray-700">Subiendo fotos y guardando...</p>
+                        <p className="text-sm text-gray-500">Esto puede tardar unos segundos dependiendo de tu conexión.</p>
+                    </div>
+                ) : (
+                    <AddPropiedadPropietarioForm onSave={handleAddPropiedadPropietario} onCancel={() => setAddPropiedadModalOpen(false)} asesores={asesores} />
+                )}
             </Modal>
-             <Modal title="Añadir Nuevo Comprador" isOpen={isAddCompradorModalOpen} onClose={() => setAddCompradorModalOpen(false)}>
-                <KycPldForm 
-                    formData={nuevoCompradorData}
-                    onFormChange={setNuevoCompradorData}
-                    onSave={handleAddComprador}
-                    onCancel={() => setAddCompradorModalOpen(false)} 
-                    userType="Comprador"
-                    propiedades={propiedades.filter(p => !p.compradorId)}
-                />
+
+             <Modal title="Añadir Nuevo Comprador" isOpen={isAddCompradorModalOpen} onClose={() => !isProcessing && setAddCompradorModalOpen(false)}>
+                {isProcessing ? (
+                    <div className="text-center py-12">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-iange-orange mx-auto mb-4"></div>
+                        <p>Guardando comprador...</p>
+                    </div>
+                ) : (
+                    <KycPldForm 
+                        formData={nuevoCompradorData}
+                        onFormChange={setNuevoCompradorData}
+                        onSave={handleAddComprador}
+                        onCancel={() => setAddCompradorModalOpen(false)} 
+                        userType="Comprador"
+                        propiedades={propiedades.filter(p => !p.compradorId)}
+                    />
+                )}
             </Modal>
+
             {selectedPropiedad && selectedPropietario && (
                 <Modal title="Editar Propiedad y Propietario" isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)}>
                     <EditPropiedadForm
@@ -292,6 +311,7 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                     />
                 </Modal>
             )}
+            
             {propiedadToDelete && (
                  <Modal title="Confirmar Eliminación" isOpen={isDeleteModalOpen} onClose={() => setDeleteModalOpen(false)}>
                     <div className="text-center">

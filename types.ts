@@ -126,7 +126,8 @@ export interface Propiedad {
   forma_pago?: string;
   notas_adicionales?: string;
   ubicacion_destacada?: string;
-  fotos: File[];
+  fotos: File[]; // Archivos locales (durante la carga)
+  imageUrls?: string[]; // <--- NUEVO: URLs de Supabase Storage (para mostrar)
   fecha_captacion: string;
   fecha_venta: string | null;
   fichaTecnicaPdf: string;

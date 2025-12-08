@@ -186,7 +186,9 @@ const App = () => {
               setCompanySettings(adapter.getTenantSettings(user.tenantId));
           } catch (error) {
               console.error("Error cargando datos negocio:", error);
-              setPropiedades(adapter.listProperties(user.tenantId));
+              // CORRECCIÓN: ELIMINAMOS LA LÍNEA DE ADAPTER (LOCALSTORAGE)
+              // setPropiedades(adapter.listProperties(user.tenantId)); <-- ESTO SE VA
+              setPropiedades([]); 
           } finally {
               // Finalizamos la carga de datos
               setDataLoading(false);
@@ -321,7 +323,7 @@ const App = () => {
                     compradores={compradores} 
                     companySettings={companySettings} 
                     isLoading={dataLoading} 
-                    currentUser={user} // <--- NUEVA PROP PASADA AL COMPONENTE
+                    currentUser={user} 
                 />
             </ProtectedRoute>
           } />

@@ -141,9 +141,19 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
                 </div>
             )}
             
+            {/* CORRECCIÓN: Título vacío para ocultar header blanco + pasar onClose */}
             {selectedPropiedad && (
-                <Modal title={`${selectedPropiedad.calle} ${selectedPropiedad.numero_exterior}`} isOpen={isDetailModalOpen} onClose={() => setDetailModalOpen(false)}>
-                    <PropertyDetailModal propiedad={selectedPropiedad} propietario={selectedPropietario} />
+                <Modal 
+                    title="" 
+                    isOpen={isDetailModalOpen} 
+                    onClose={() => setDetailModalOpen(false)}
+                    maxWidth="max-w-4xl" // Ancho extra para la galería
+                >
+                    <PropertyDetailModal 
+                        propiedad={selectedPropiedad} 
+                        propietario={selectedPropietario}
+                        onClose={() => setDetailModalOpen(false)} 
+                    />
                 </Modal>
             )}
 

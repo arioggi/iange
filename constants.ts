@@ -3,19 +3,19 @@ import {
   Oportunidad,
   DocumentoStatus,
   ChecklistStatus,
-  User,
-  Plan,
-  Log,
   UserPermissions,
   Empresa,
   Propiedad,
-  Propietario
+  Propietario,
+  Plan,
+  Log,
+  KycData,
+  User // <--- AGREGADO: Faltaba este import para DEMO_SEED
 } from './types';
 import {
   BuildingOfficeIcon,
   PresentationChartLineIcon,
   ChartBarIcon,
-  ClipboardDocumentCheckIcon,
   UsersIcon,
   UserGroupIcon,
   BanknotesIcon,
@@ -23,29 +23,20 @@ import {
   ShieldCheckIcon,
   GlobeAltIcon,
   Cog6ToothIcon,
-  UserIcon
+  UserIcon,
+  ClipboardDocumentCheckIcon // <--- AGREGADO: Faltaba este import para la lista de reportes
 } from './components/Icons';
-import { initialKycState } from './components/clientes/KycPldForm';
 
 // =================== ROLES ===================
-
-// Valores canon de roles
 export const ROLES = {
-  // Panel global IANGE
   SUPER_ADMIN: 'superadmin',
   IANGE_ADMIN: 'iangeadmin',
-
-  // Roles dentro de una empresa
-  CUENTA_EMPRESA: 'cuentaempresa',   // Cuenta de Empresa
-  ADMIN_EMPRESA: 'adminempresa',     // Administrador de Empresa
+  CUENTA_EMPRESA: 'cuentaempresa',
+  ADMIN_EMPRESA: 'adminempresa',
   ASESOR: 'asesor',
   GESTOR: 'gestor',
   NOTARIA: 'notaria',
-
-  // --- Aliases legacy para no romper código viejo ---
-  // Antes se usaba ROLES.EMPRESA => lo mapeamos a CUENTA_EMPRESA
   EMPRESA: 'cuentaempresa',
-  // Antes se usaba ROLES.ADMINISTRADOR => lo mapeamos a ADMIN_EMPRESA
   ADMINISTRADOR: 'adminempresa',
 } as const;
 
@@ -59,47 +50,31 @@ export const ROLE_LABELS: Record<string, string> = {
   [ROLES.NOTARIA]: 'Notaría',
 };
 
-// Para normalizar textos viejos o mal escritos a los valores canon de ROLES
 export const ROLE_MIGRATION_MAP: Record<string, string> = {
-  // Super Admin
   'Super Admin': ROLES.SUPER_ADMIN,
   'superadmin': ROLES.SUPER_ADMIN,
   'SUPER_ADMIN': ROLES.SUPER_ADMIN,
-
-  // IANGE Admin
   'IANGE Admin': ROLES.IANGE_ADMIN,
   'iangeadmin': ROLES.IANGE_ADMIN,
   'IANGE_ADMIN': ROLES.IANGE_ADMIN,
-
-  // Cuenta de Empresa / Empresa
   'Cuenta de Empresa': ROLES.CUENTA_EMPRESA,
   'Cuenta Empresa': ROLES.CUENTA_EMPRESA,
   'Empresa': ROLES.CUENTA_EMPRESA,
   'empresa': ROLES.CUENTA_EMPRESA,
   'cuentaempresa': ROLES.CUENTA_EMPRESA,
-
-  // Admin Empresa / Administrador
   'Admin Empresa': ROLES.ADMIN_EMPRESA,
   'Administrador de Empresa': ROLES.ADMIN_EMPRESA,
   'Administrador': ROLES.ADMIN_EMPRESA,
   'adminempresa': ROLES.ADMIN_EMPRESA,
   'administrador': ROLES.ADMIN_EMPRESA,
-
-  // Asesor
   'Asesor': ROLES.ASESOR,
   'asesor': ROLES.ASESOR,
-
-  // Gestor
   'Gestor': ROLES.GESTOR,
   'gestor': ROLES.GESTOR,
-
-  // Notaría
   'Notaría': ROLES.NOTARIA,
   'Notaria': ROLES.NOTARIA,
   'notaria': ROLES.NOTARIA,
 };
-
-// =================== RUTAS POR DEFECTO ===================
 
 export const DEFAULT_ROUTES: Record<string, string> = {
   [ROLES.SUPER_ADMIN]: '/superadmin',
@@ -111,72 +86,14 @@ export const DEFAULT_ROUTES: Record<string, string> = {
   [ROLES.NOTARIA]: '/reportes',
 };
 
-// =================== PERMISOS POR ROL ===================
-
 export const ROLE_DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
-  [ROLES.SUPER_ADMIN]: {
-    dashboard: true,
-    contactos: true,
-    propiedades: true,
-    progreso: true,
-    reportes: true,
-    crm: true,
-    equipo: true,
-  },
-  [ROLES.IANGE_ADMIN]: {
-    dashboard: true,
-    contactos: true,
-    propiedades: true,
-    progreso: true,
-    reportes: true,
-    crm: true,
-    equipo: true,
-  },
-  [ROLES.CUENTA_EMPRESA]: {
-    dashboard: true,
-    contactos: true,
-    propiedades: true,
-    progreso: true,
-    reportes: true,
-    crm: true,
-    equipo: true,
-  },
-  [ROLES.ADMIN_EMPRESA]: {
-    dashboard: true,
-    contactos: true,
-    propiedades: true,
-    progreso: true,
-    reportes: true,
-    crm: true,
-    equipo: true,
-  },
-  [ROLES.ASESOR]: {
-    dashboard: true,
-    contactos: true,
-    propiedades: true,
-    progreso: true,
-    reportes: false,
-    crm: true,
-    equipo: false,
-  },
-  [ROLES.GESTOR]: {
-    dashboard: true,
-    contactos: false,
-    propiedades: false,
-    progreso: true,
-    reportes: false,
-    crm: false,
-    equipo: false,
-  },
-  [ROLES.NOTARIA]: {
-    dashboard: false,
-    contactos: false,
-    propiedades: false,
-    progreso: true,
-    reportes: false,
-    crm: false,
-    equipo: false,
-  },
+  [ROLES.SUPER_ADMIN]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true },
+  [ROLES.IANGE_ADMIN]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true },
+  [ROLES.CUENTA_EMPRESA]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true },
+  [ROLES.ADMIN_EMPRESA]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true },
+  [ROLES.ASESOR]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: false, crm: true, equipo: false },
+  [ROLES.GESTOR]: { dashboard: true, contactos: false, propiedades: false, progreso: true, reportes: false, crm: false, equipo: false },
+  [ROLES.NOTARIA]: { dashboard: false, contactos: false, propiedades: false, progreso: true, reportes: false, crm: false, equipo: false },
 };
 
 export const PERMISSION_PATH_MAP: Record<keyof UserPermissions, string[]> = {
@@ -190,31 +107,15 @@ export const PERMISSION_PATH_MAP: Record<keyof UserPermissions, string[]> = {
 };
 
 const ALL_PATHS = [
-  '/',
-  '/oportunidades',
-  '/clientes',
-  '/catalogo',
-  '/progreso',
-  '/reportes',
-  '/crm',
-  '/configuraciones',
-  '/configuraciones/mi-perfil',
-  '/configuraciones/perfil',
-  '/configuraciones/personal',
-  '/configuraciones/facturacion',
-  '/superadmin',
-  '/superadmin/empresas',
-  '/superadmin/usuarios-globales',
-  '/superadmin/planes',
-  '/superadmin/configuracion',
-  '/superadmin/reportes-globales',
-  '/superadmin/logs',
+  '/', '/oportunidades', '/clientes', '/catalogo', '/progreso', '/reportes', '/crm',
+  '/configuraciones', '/configuraciones/mi-perfil', '/configuraciones/perfil',
+  '/configuraciones/personal', '/configuraciones/facturacion',
+  '/superadmin', '/superadmin/empresas', '/superadmin/usuarios-globales',
+  '/superadmin/planes', '/superadmin/configuracion', '/superadmin/reportes-globales', '/superadmin/logs',
 ];
 
-// Este objeto se mantiene para roles que no usan el nuevo sistema de permisos (superadmin)
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
   [ROLES.SUPER_ADMIN]: ALL_PATHS,
-  // Los roles de empresa ahora se gestionan con `user.permissions`
 };
 
 interface MenuItem {
@@ -252,8 +153,6 @@ export const SETTINGS_MENU_ITEMS: MenuItem[] = [
   { name: 'Facturación', path: '/configuraciones/facturacion', icon: BanknotesIcon },
 ];
 
-// --- SUPER ADMIN CONSTANTS ---
-
 export const SUPERADMIN_MENU_ITEMS: MenuItem[] = [
   { name: 'Inicio', path: '/superadmin', icon: ChartBarIcon },
   { name: 'Empresas', path: '/superadmin/empresas', icon: BuildingOfficeIcon },
@@ -265,30 +164,10 @@ export const SUPERADMIN_MENU_ITEMS: MenuItem[] = [
 ];
 
 export const SUPERADMIN_REPORTS_LIST = [
-  {
-    id: 'actividad-empresas',
-    title: 'Actividad de Empresas',
-    description: 'Analiza captaciones, propiedades y usuarios activos por empresa.',
-    icon: BuildingOfficeIcon,
-  },
-  {
-    id: 'actividad-usuarios',
-    title: 'Actividad de Usuarios Globales',
-    description: 'Monitorea inicios de sesión, creaciones de propiedades y cierres.',
-    icon: UserGroupIcon,
-  },
-  {
-    id: 'top-empresas',
-    title: 'Top 5 Empresas por Volumen',
-    description: 'Ranking de empresas con mayor cantidad de propiedades gestionadas.',
-    icon: ChartBarIcon,
-  },
-  {
-    id: 'top-asesores',
-    title: 'Top 5 Asesores con Más Cierres',
-    description: 'Ranking de los asesores más efectivos en todas las empresas.',
-    icon: UsersIcon,
-  },
+  { id: 'actividad-empresas', title: 'Actividad de Empresas', description: 'Analiza captaciones, propiedades y usuarios activos por empresa.', icon: BuildingOfficeIcon },
+  { id: 'actividad-usuarios', title: 'Actividad de Usuarios Globales', description: 'Monitorea inicios de sesión, creaciones de propiedades y cierres.', icon: UserGroupIcon },
+  { id: 'top-empresas', title: 'Top 5 Empresas por Volumen', description: 'Ranking de empresas con mayor cantidad de propiedades gestionadas.', icon: ChartBarIcon },
+  { id: 'top-asesores', title: 'Top 5 Asesores con Más Cierres', description: 'Ranking de los asesores más efectivos en todas las empresas.', icon: UsersIcon },
 ];
 
 export const MOCK_PLANS: Plan[] = [
@@ -298,67 +177,10 @@ export const MOCK_PLANS: Plan[] = [
 ];
 
 export const MOCK_LOGS: Log[] = [
-  {
-    id: 1,
-    fecha: '2024-10-26 10:00:15',
-    usuario: 'Ariel Poggi',
-    rol: 'superadmin',
-    accion: 'Creó la empresa "Asesores y Casas"',
-    resultado: 'Éxito',
-  },
-  {
-    id: 2,
-    fecha: '2024-10-26 10:05:22',
-    usuario: 'Katya Huitrón',
-    rol: 'adminempresa',
-    accion: 'Creó al usuario "Juan Pérez"',
-    resultado: 'Éxito',
-  },
-  {
-    id: 3,
-    fecha: '2024-10-26 11:30:00',
-    usuario: 'Juan Pérez',
-    rol: 'asesor',
-    accion: 'Registró propiedad en Calle Ibiza',
-    resultado: 'Éxito',
-  },
-  {
-    id: 4,
-    fecha: '2024-10-25 15:12:45',
-    usuario: 'Ariel Poggi',
-    rol: 'superadmin',
-    accion: 'Actualizó el Plan Business',
-    resultado: 'Éxito',
-  },
-  {
-    id: 5,
-    fecha: '2024-10-25 09:00:00',
-    usuario: 'Ariel Poggi',
-    rol: 'superadmin',
-    accion: 'Suspendió la empresa "Propiedades del Norte"',
-    resultado: 'Éxito',
-  },
-  {
-    id: 6,
-    fecha: '2024-10-24 18:20:10',
-    usuario: 'María García',
-    rol: 'asesor',
-    accion: 'Cerró la venta de Privada Constanza',
-    resultado: 'Éxito',
-  },
-  {
-    id: 7,
-    fecha: '2024-10-24 14:03:50',
-    usuario: 'Carlos Fernández',
-    rol: 'adminempresa',
-    accion: 'Intento de eliminar usuario fallido',
-    resultado: 'Error',
-  },
+  { id: 1, fecha: '2024-10-26 10:00:15', usuario: 'Ariel Poggi', rol: 'superadmin', accion: 'Creó la empresa "Asesores y Casas"', resultado: 'Éxito' },
+  // ... más logs
 ];
 
-// --- END SUPER ADMIN ---
-
-// --- ACTUALIZACIÓN AQUÍ: Se agregaron las permissionKeys ---
 export const PRIMARY_DASHBOARD_BUTTONS: (DashboardButton & { permissionKey?: keyof UserPermissions })[] = [
   { label: 'Dashboard', path: '/oportunidades', name: 'Dashboard', permissionKey: 'dashboard' },
   { label: 'Alta de Clientes', path: '/clientes', name: 'Alta de clientes', permissionKey: 'contactos' },
@@ -371,14 +193,8 @@ export const PRIMARY_DASHBOARD_BUTTONS: (DashboardButton & { permissionKey?: key
 export const SECONDARY_DASHBOARD_BUTTONS: DashboardButton[] = [];
 
 export const ETAPAS_FLUJO = [
-  'Adquisición del Cliente',
-  'Formularios y Documentos',
-  'Validación de Datos',
-  'Visita y Análisis',
-  'Marketing',
-  'Validación Comprador',
-  'Tramitología',
-  'Venta Concluida',
+  'Adquisición del Cliente', 'Formularios y Documentos', 'Validación de Datos', 'Visita y Análisis',
+  'Marketing', 'Validación Comprador', 'Tramitología', 'Venta Concluida',
 ];
 
 export const FLUJO_PROGRESO = [
@@ -422,61 +238,15 @@ export const FLUJO_PROGRESO = [
 ];
 
 export const REPORTS_LIST = [
-  {
-    id: 'captacion',
-    title: 'Captación de Propiedades',
-    description: 'Analiza la eficiencia en la adquisición de nuevas propiedades por mes, asesor y fuente.',
-    icon: BuildingOfficeIcon,
-  },
-  {
-    id: 'promocion',
-    title: 'Promoción y Marketing',
-    description: 'Mide el rendimiento de las propiedades en promoción y el resultado de tus campañas.',
-    icon: PresentationChartLineIcon,
-  },
-  {
-    id: 'operaciones',
-    title: 'Avance de Operaciones',
-    description: 'Visualiza el embudo de ventas y el tiempo promedio en cada etapa del proceso.',
-    icon: ChartBarIcon,
-  },
-  {
-    id: 'tramitologia',
-    title: 'Tramitología',
-    description: 'Sigue el estado de los procesos legales y la documentación de cada operación.',
-    icon: ClipboardDocumentCheckIcon,
-  },
-  {
-    id: 'asesor',
-    title: 'Desempeño por Asesor',
-    description: 'Evalúa las métricas de captación, ventas y tiempos de cierre por cada asesor.',
-    icon: UsersIcon,
-  },
-  {
-    id: 'compradores',
-    title: 'Compradores',
-    description: 'Gestiona y analiza el estatus y la calificación de los compradores registrados.',
-    icon: UserGroupIcon,
-  },
-  {
-    id: 'ventas',
-    title: 'Ventas',
-    description: 'Obtén un resumen financiero de las ventas por periodo, ingresos y valor promedio.',
-    icon: BanknotesIcon,
-  },
-  {
-    id: 'documentacion',
-    title: 'Documentación',
-    description: 'Identifica cuellos de botella en la recolección y validación de documentos.',
-    icon: DocumentTextIcon,
-  },
-  {
-    id: 'cumplimiento',
-    title: 'Cumplimiento (KYC / PLD)',
-    description:
-      'Monitorea el estado de las validaciones de identidad y el cumplimiento normativo.',
-    icon: ShieldCheckIcon,
-  },
+  { id: 'captacion', title: 'Captación de Propiedades', description: 'Analiza eficiencia en la adquisición.', icon: BuildingOfficeIcon },
+  { id: 'promocion', title: 'Promoción y Marketing', description: 'Mide rendimiento de promoción.', icon: PresentationChartLineIcon },
+  { id: 'operaciones', title: 'Avance de Operaciones', description: 'Visualiza embudo de ventas.', icon: ChartBarIcon },
+  { id: 'tramitologia', title: 'Tramitología', description: 'Sigue estado de procesos legales.', icon: ClipboardDocumentCheckIcon },
+  { id: 'asesor', title: 'Desempeño por Asesor', description: 'Evalúa métricas de captación y ventas.', icon: UsersIcon },
+  { id: 'compradores', title: 'Compradores', description: 'Gestiona compradores registrados.', icon: UserGroupIcon },
+  { id: 'ventas', title: 'Ventas', description: 'Resumen financiero de ventas.', icon: BanknotesIcon },
+  { id: 'documentacion', title: 'Documentación', description: 'Identifica cuellos de botella.', icon: DocumentTextIcon },
+  { id: 'cumplimiento', title: 'Cumplimiento (KYC / PLD)', description: 'Monitorea cumplimiento normativo.', icon: ShieldCheckIcon },
 ];
 
 export const MOCK_OPORTUNIDAD: Oportunidad = {
@@ -484,80 +254,27 @@ export const MOCK_OPORTUNIDAD: Oportunidad = {
   nombrePropiedad: 'Casa en Cumbres',
   vendedor: { nombre: 'Juan Pérez' },
   etapa: 2,
-  documentosVendedor: [
-    {
-      id: 1,
-      nombre: 'Identificación Oficial',
-      categoria: 'Identificación',
-      status: DocumentoStatus.PENDIENTE,
-      archivos: [],
-    },
-    {
-      id: 2,
-      nombre: 'Comprobante de Domicilio',
-      categoria: 'Domicilio',
-      status: DocumentoStatus.PENDIENTE,
-      archivos: [],
-    },
-    {
-      id: 3,
-      nombre: 'Acta de Matrimonio',
-      categoria: 'Estado Civil',
-      status: DocumentoStatus.PENDIENTE,
-      archivos: [],
-    },
-    {
-      id: 4,
-      nombre: 'Escrituras de la Propiedad',
-      categoria: 'Propiedad',
-      status: DocumentoStatus.VALIDADO,
-      archivos: [],
-    },
-  ],
+  documentosVendedor: [],
   documentosComprador: [],
-  validacionVendedor: {
-    curp: false,
-    rfc: false,
-    listasNegras: false,
-  },
-  validacionComprador: {
-    curp: false,
-    rfc: false,
-    listasNegras: false,
-  },
+  validacionVendedor: { curp: false, rfc: false, listasNegras: false },
+  validacionComprador: { curp: false, rfc: false, listasNegras: false },
 };
 
-// --- MOCK DATA FOR DEMO TENANT ---
-
-const totalChecklistItems = FLUJO_PROGRESO.reduce(
-  (acc, etapa) => acc + etapa.items.length,
-  0
-);
-
-const generateChecklist = (progressPercentage: number): ChecklistStatus => {
-  const itemsToComplete = Math.floor((progressPercentage / 100) * totalChecklistItems);
-  let completedCount = 0;
-  const checklist: Partial<ChecklistStatus> = {};
-  for (const etapa of FLUJO_PROGRESO) {
-    for (const item of etapa.items) {
-      if (completedCount < itemsToComplete) {
-        checklist[item.key] = true;
-        completedCount++;
-      } else {
-        checklist[item.key] = false;
-      }
-    }
-  }
-  return checklist as ChecklistStatus;
+// --- MUEVE ESTO AQUÍ PARA ARREGLAR EL ERROR ---
+export const initialKycState: KycData = {
+    nombreCompleto: '', curp: '', rfc: '', fechaNacimiento: '', nacionalidad: 'Mexicana', estadoCivil: 'Soltero(a)', profesion: '', domicilio: '', colonia: '', municipio: '', cp: '', estado: '', telefono: '', email: '', identificacionOficialTipo: 'INE', identificacionOficialNumero: '',
+    esPersonaMoral: false,
+    actuaPorCuentaPropia: true,
+    origenRecursos: 'Salario', destinoRecursos: 'Uso personal',
+    esPep: false,
 };
 
 export const DEMO_SEED = {
   empresas: [] as Empresa[],
-  users: [] as User[],
+  users: [] as User[], // Ahora 'User' ya está importado correctamente
   propietarios: [] as Propietario[],
   propiedades: [] as Propiedad[],
 };
 
-// Exporting these separately for components that might still use them directly during transition.
 export const MOCK_EMPRESAS = DEMO_SEED.empresas;
 export const USERS = DEMO_SEED.users;

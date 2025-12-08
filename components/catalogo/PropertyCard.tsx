@@ -24,7 +24,16 @@ const formatDate = (dateString: string) => {
 };
 
 const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario }) => {
-    const imageUrl = propiedad.fotos.length > 0 ? URL.createObjectURL(propiedad.fotos[0]) : 'https://via.placeholder.com/400x300.png?text=Sin+Imagen';
+    // --- LÓGICA DE IMAGEN CORREGIDA ---
+    // 1. Intentamos usar la foto local (si acabas de subirla)
+    // 2. Si no, usamos la URL de Supabase (si viene de la BD)
+    // 3. Si no hay nada, usamos el placeholder
+    const imageUrl = 
+        propiedad.fotos && propiedad.fotos.length > 0 
+            ? URL.createObjectURL(propiedad.fotos[0]) 
+            : (propiedad.imageUrls && propiedad.imageUrls.length > 0)
+                ? propiedad.imageUrls[0]
+                : 'https://via.placeholder.com/400x300.png?text=Sin+Imagen';
 
     return (
         <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden transform transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
@@ -37,7 +46,6 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario }) =
                 </p>
                  <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500">
                     <p>Propietario: <span className="font-medium text-gray-700">{propietario?.nombreCompleto || 'No asignado'}</span></p>
-                    {/* FIX: Corrected property name from 'fecha_alta' to 'fecha_captacion' to align with the Propiedad type. */}
                     <p className="mt-1">Fecha de alta: <span className="font-medium text-gray-700">{formatDate(propiedad.fecha_captacion)}</span></p>
                 </div>
             </div>

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Propiedad, Propietario } from '../../types';
 
 interface PropertyDetailModalProps {
     propiedad: Propiedad;
     propietario?: Propietario;
+    onClose?: () => void;
 }
 
 const formatCurrency = (value?: string) => {
@@ -17,81 +18,145 @@ const formatCurrency = (value?: string) => {
 };
 
 const DetailItem: React.FC<{ label: string, value?: string | number }> = ({ label, value }) => (
-    <div>
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="font-semibold text-gray-800">{value || 'N/A'}</p>
+    <div className="border-b border-gray-100 py-2">
+        <p className="text-xs text-gray-500 uppercase">{label}</p>
+        <p className="font-medium text-gray-800">{value || 'N/A'}</p>
     </div>
 );
 
-const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ propiedad, propietario }) => {
-    const [mainImageIndex, setMainImageIndex] = useState(0);
+const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ propiedad, propietario, onClose }) => {
+    const [currentImageIndex, setCurrentImageIndex] = useState(0);
+    const [imageLoading, setImageLoading] = useState(true);
 
-    const imageUrls = propiedad.fotos.map(file => URL.createObjectURL(file));
+    const images = (propiedad.imageUrls && propiedad.imageUrls.length > 0) 
+        ? propiedad.imageUrls 
+        : (propiedad.fotos && propiedad.fotos.length > 0) 
+            ? propiedad.fotos.map(f => URL.createObjectURL(f)) 
+            : [];
+
+    const hasImages = images.length > 0;
+
+    useEffect(() => {
+        setCurrentImageIndex(0);
+        setImageLoading(true);
+    }, [propiedad.id]);
+
+    const nextImage = () => {
+        setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
+        setImageLoading(true);
+    };
+
+    const prevImage = () => {
+        setCurrentImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
+        setImageLoading(true);
+    };
 
     return (
-        <div className="max-h-[75vh] overflow-y-auto pr-2">
-            {/* Photo Gallery */}
-            <section className="mb-6">
-                <div className="w-full h-80 rounded-lg bg-gray-200 mb-2 overflow-hidden">
-                    {imageUrls.length > 0 ? (
+        <div className="flex flex-col h-full bg-white">
+            
+            {/* --- SECCIÓN GALERÍA --- */}
+            <div className="relative w-full h-[50vh] bg-gray-900 group shrink-0">
+                {/* Botón Cerrar Flotante */}
+                {onClose && (
+                    <button 
+                        onClick={onClose}
+                        className="absolute top-4 right-4 z-50 bg-black/50 text-white rounded-full p-2 hover:bg-black/80 transition-colors"
+                        title="Cerrar"
+                    >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                )}
+
+                {!hasImages ? (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                        <svg className="w-16 h-16 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        <span>Sin imágenes</span>
+                    </div>
+                ) : (
+                    <>
+                        {imageLoading && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                            </div>
+                        )}
                         <img 
-                            src={imageUrls[mainImageIndex]} 
-                            alt={`Propiedad ${mainImageIndex + 1}`}
-                            className="w-full h-full object-cover"
+                            src={images[currentImageIndex]} 
+                            alt={`Imagen ${currentImageIndex + 1}`}
+                            className={`w-full h-full object-contain transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+                            onLoad={() => setImageLoading(false)}
                         />
-                    ) : (
-                         <div className="flex items-center justify-center h-full text-gray-500">Sin imágenes</div>
-                    )}
-                </div>
-                <div className="flex space-x-2 overflow-x-auto pb-2">
-                    {imageUrls.map((url, index) => (
-                        <button key={index} onClick={() => setMainImageIndex(index)} className={`flex-shrink-0 w-20 h-20 rounded-md overflow-hidden border-2 ${index === mainImageIndex ? 'border-iange-orange' : 'border-transparent'}`}>
-                            <img src={url} alt={`Thumbnail ${index + 1}`} className="w-full h-full object-cover" />
-                        </button>
-                    ))}
-                </div>
-            </section>
+                        
+                        {/* Flechas */}
+                        {images.length > 1 && (
+                            <>
+                                <button onClick={(e) => { e.stopPropagation(); prevImage(); }} className="absolute left-0 top-0 bottom-0 px-4 hover:bg-black/20 text-white transition-colors flex items-center">
+                                    <svg className="w-8 h-8 drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); nextImage(); }} className="absolute right-0 top-0 bottom-0 px-4 hover:bg-black/20 text-white transition-colors flex items-center">
+                                    <svg className="w-8 h-8 drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                </button>
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 px-3 py-1 rounded-full text-white text-xs">
+                                    {currentImageIndex + 1} / {images.length}
+                                </div>
+                            </>
+                        )}
+                    </>
+                )}
+            </div>
 
-            {/* Download Button */}
-            {propiedad.fichaTecnicaPdf && (
-                 <a 
-                    href={propiedad.fichaTecnicaPdf} 
-                    download={`Ficha-Tecnica-${propiedad.calle.replace(/\s/g, '-')}.pdf`}
-                    className="w-full block text-center bg-iange-orange text-white py-3 px-6 rounded-md hover:bg-orange-600 transition-colors shadow-sm font-bold text-lg mb-6"
-                >
-                    Descargar Ficha Técnica (PDF)
-                </a>
-            )}
-
-            {/* Property Details */}
-            <section>
-                <h3 className="text-xl font-bold text-iange-dark mb-4 border-b pb-2">Detalles de la Propiedad</h3>
-                
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    <DetailItem label="Valor de Operación" value={formatCurrency(propiedad.valor_operacion)} />
-                    <DetailItem label="Tipo de Inmueble" value={propiedad.tipo_inmueble} />
-                    <DetailItem label="Propietario" value={propietario?.nombreCompleto} />
-                     <DetailItem 
-                        label="Status" 
-                        value={propiedad.compradorId ? 'Vendida' : 'Disponible'} 
-                    />
-                </div>
-                
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    <DetailItem label="Terreno" value={propiedad.terreno_m2 ? `${propiedad.terreno_m2} m²` : 'N/A'} />
-                    <DetailItem label="Construcción" value={propiedad.construccion_m2 ? `${propiedad.construccion_m2} m²` : 'N/A'} />
-                    <DetailItem label="Recámaras" value={propiedad.recamaras} />
-                    <DetailItem label="Baños" value={`${propiedad.banos_completos || 0} completos, ${propiedad.medios_banos || 0} medios`} />
-                    <DetailItem label="Cochera" value={propiedad.cochera_autos ? `${propiedad.cochera_autos} autos` : 'N/A'} />
+            {/* --- SECCIÓN INFO --- */}
+            <div className="p-6 md:p-8 overflow-y-auto">
+                <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900">{propiedad.calle} {propiedad.numero_exterior}</h2>
+                        <p className="text-gray-500">{propiedad.colonia}, {propiedad.municipio}</p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-2xl font-bold text-iange-orange">{formatCurrency(propiedad.valor_operacion)}</p>
+                        <div className="mt-1 flex justify-end gap-2">
+                             <span className="text-sm text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded">{propiedad.tipo_inmueble}</span>
+                             
+                             {/* STATUS GLOBAL EXACTO */}
+                             <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                    propiedad.status === 'Vendida' ? 'bg-green-100 text-green-800' : 
+                                    propiedad.status === 'Separada' ? 'bg-yellow-100 text-yellow-800' :
+                                    propiedad.status === 'En Promoción' ? 'bg-blue-100 text-blue-800' :
+                                    'bg-gray-100 text-gray-800'
+                                }`}>
+                                    {propiedad.status}
+                            </span>
+                        </div>
+                    </div>
                 </div>
 
+                {/* DESCRIPCIÓN LIMPIA (Sin barra naranja) */}
                 {propiedad.descripcion_breve && (
-                    <div className="text-sm text-gray-700 bg-iange-salmon p-4 rounded-md">
-                        <h4 className="font-bold mb-1">Descripción</h4>
-                        <p>{propiedad.descripcion_breve}</p>
+                    <div className="mb-8">
+                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Descripción</h4>
+                        <p className="text-gray-700 text-sm leading-relaxed">
+                            {propiedad.descripcion_breve}
+                        </p>
                     </div>
                 )}
-            </section>
+
+                <h3 className="font-bold text-gray-900 mb-4 text-sm uppercase tracking-wider border-b pb-2">Detalles de la Propiedad</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-4">
+                    <DetailItem label="Terreno" value={propiedad.terreno_m2 ? `${propiedad.terreno_m2} m²` : undefined} />
+                    <DetailItem label="Construcción" value={propiedad.construccion_m2 ? `${propiedad.construccion_m2} m²` : undefined} />
+                    <DetailItem label="Recámaras" value={propiedad.recamaras} />
+                    <DetailItem label="Baños" value={`${propiedad.banos_completos || 0} / ${propiedad.medios_banos || 0}`} />
+                    <DetailItem label="Cochera" value={propiedad.cochera_autos} />
+                    <DetailItem label="Propietario" value={propietario?.nombreCompleto} />
+                </div>
+                
+                {propiedad.fichaTecnicaPdf && (
+                    <div className="mt-8 pt-6 border-t border-gray-100 text-center">
+                        <a href={propiedad.fichaTecnicaPdf} download className="text-iange-orange font-bold hover:underline">
+                            Descargar Ficha Técnica PDF
+                        </a>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
