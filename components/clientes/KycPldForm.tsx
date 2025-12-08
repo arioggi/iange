@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { KycData, Propiedad } from '../../types';
 
+// --- COMPONENTES INTERNOS (DEFINICIÓN LOCAL PARA QUE FUNCIONE) ---
 const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
     <section className="mb-6">
         <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">{title}</h3>
@@ -47,15 +48,6 @@ const Checkbox: React.FC<{ label: string; name: string; checked: boolean; onChan
     </label>
 );
 
-
-export const initialKycState: KycData = {
-    nombreCompleto: '', curp: '', rfc: '', fechaNacimiento: '', nacionalidad: 'Mexicana', estadoCivil: 'Soltero(a)', profesion: '', domicilio: '', colonia: '', municipio: '', cp: '', estado: '', telefono: '', email: '', identificacionOficialTipo: 'INE', identificacionOficialNumero: '',
-    esPersonaMoral: false,
-    actuaPorCuentaPropia: true,
-    origenRecursos: 'Salario', destinoRecursos: 'Uso personal',
-    esPep: false,
-};
-
 interface KycPldFormProps {
     onSave: (selectedPropiedadId?: number) => void;
     onCancel: () => void;
@@ -80,9 +72,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         onSave(selectedPropiedadId ? Number(selectedPropiedadId) : undefined);
     };
 
-    const formClasses = isEmbedded 
-        ? "" // No extra classes when embedded
-        : "max-h-[65vh] overflow-y-auto pr-2 custom-scrollbar";
+    const formClasses = "";
 
     return (
         <form onSubmit={handleSubmit} className={formClasses}>
@@ -166,17 +156,16 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                  </>}
             </FormSection>
 
-
-             <div className="flex justify-end mt-8 pt-4 border-t space-x-4">
-                 {!isEmbedded && (
+            {!isEmbedded && (
+                 <div className="flex justify-end mt-8 pt-4 border-t space-x-4">
                     <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-800 py-2 px-6 rounded-md hover:bg-gray-300">
                         Cancelar
                     </button>
-                 )}
-                <button type="submit" className="bg-iange-orange text-white py-2 px-6 rounded-md hover:bg-orange-600">
-                    {isEmbedded ? `Continuar a Datos de la Propiedad` : `Añadir ${userType}`}
-                </button>
-            </div>
+                    <button type="submit" className="bg-iange-orange text-white py-2 px-6 rounded-md hover:bg-orange-600">
+                        Añadir {userType}
+                    </button>
+                </div>
+            )}
         </form>
     );
 };

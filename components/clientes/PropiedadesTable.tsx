@@ -25,12 +25,25 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
             maximumFractionDigits: 0,
         }).format(number);
     };
+
+    // Helper para obtener imagen
+    const getThumbnail = (propiedad: Propiedad) => {
+        if (propiedad.fotos && propiedad.fotos.length > 0) {
+            return URL.createObjectURL(propiedad.fotos[0]);
+        }
+        if (propiedad.imageUrls && propiedad.imageUrls.length > 0) {
+            return propiedad.imageUrls[0];
+        }
+        return 'https://via.placeholder.com/100x100.png?text=N/A';
+    };
     
     return (
         <div className="overflow-x-auto">
             <table className="min-w-full bg-white">
                 <thead className="bg-gray-50">
                     <tr>
+                        {/* NUEVA COLUMNA */}
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Portada</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dirección</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Propietario</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
@@ -41,6 +54,14 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
                 <tbody className="divide-y divide-gray-200">
                     {propiedades.map(propiedad => (
                         <tr key={propiedad.id} className="hover:bg-gray-50">
+                            {/* CELDA DE IMAGEN */}
+                            <td className="px-6 py-4">
+                                <img 
+                                    src={getThumbnail(propiedad)} 
+                                    alt="Miniatura" 
+                                    className="h-12 w-16 object-cover rounded-md border border-gray-200"
+                                />
+                            </td>
                             <td className="px-6 py-4">
                                 <div className="text-sm font-medium text-gray-900">{`${propiedad.calle} ${propiedad.numero_exterior}`}</div>
                                 <div className="text-sm text-gray-500">{`${propiedad.colonia}, ${propiedad.municipio}`}</div>
@@ -69,7 +90,7 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
                     ))}
                     {propiedades.length === 0 && (
                          <tr>
-                            <td colSpan={5} className="text-center py-10 text-gray-500">
+                            <td colSpan={6} className="text-center py-10 text-gray-500">
                                 No se encontraron propiedades.
                             </td>
                         </tr>

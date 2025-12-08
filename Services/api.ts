@@ -2,6 +2,54 @@ import { supabase } from '../supabaseClient';
 import { ROLE_DEFAULT_PERMISSIONS } from '../constants';
 
 // ==========================================
+// 0. UTILIDADES (COMPRESIÓN DE IMÁGENES)
+// ==========================================
+
+export const compressImage = async (file: File, quality = 0.7, maxWidth = 1280): Promise<File> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob(
+                    (blob) => {
+                        if (blob) {
+                            const newFile = new File([blob], file.name, {
+                                type: 'image/jpeg',
+                                lastModified: Date.now(),
+                            });
+                            resolve(newFile);
+                        } else {
+                            reject(new Error('Error al comprimir la imagen'));
+                        }
+                    },
+                    'image/jpeg',
+                    quality
+                );
+            };
+            img.onerror = (error) => reject(error);
+        };
+        reader.onerror = (error) => reject(error);
+    });
+};
+
+// ==========================================
 // 1. GESTIÓN DE EMPRESAS (TENANTS)
 // ==========================================
 
@@ -162,7 +210,8 @@ const getDefaultPermissions = (role: string) => {
         operaciones: true,
         documentosKyc: true,
         reportes: role === 'superadmin' || role === 'adminempresa',
-        equipo: role === 'superadmin' || role === 'adminempresa'
+        equipo: role === 'superadmin' || role === 'adminempresa',
+        crm: true
     };
 };
 
@@ -171,13 +220,17 @@ const getDefaultPermissions = (role: string) => {
 // ==========================================
 
 export const uploadPropertyImage = async (file: File) => {
-  const fileExt = file.name.split('.').pop();
+  const cleanName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+  const fileExt = cleanName.split('.').pop();
   const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
   const filePath = `${fileName}`;
 
   const { error: uploadError } = await supabase.storage
-    .from('propiedades')
-    .upload(filePath, file);
+    .from('propiedades') 
+    .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+    });
 
   if (uploadError) throw uploadError;
 
@@ -193,7 +246,8 @@ export const createContact = async (contactData: any, tenantId: string, tipo: 'p
             nombre: contactData.nombreCompleto,
             email: contactData.email,
             telefono: contactData.telefono,
-            tipo: tipo
+            tipo: tipo,
+            datos_kyc: contactData 
         }])
         .select()
         .single();
@@ -206,19 +260,30 @@ export const createProperty = async (propertyData: any, tenantId: string, ownerI
   const { 
     titulo, direccion, valor_operacion, tipo_inmueble, status, 
     fotos, 
+    imageUrls, 
+    fichaTecnicaPdf, 
     ...restDetails 
   } = propertyData;
+
+  const precioNumerico = parseFloat(String(valor_operacion).replace(/[^0-9.]/g, '')) || 0;
 
   const dbPayload = {
     tenant_id: tenantId,
     contacto_id: ownerId,
     titulo: `${propertyData.calle} ${propertyData.numero_exterior}`,
     direccion: `${propertyData.colonia}, ${propertyData.municipio}, ${propertyData.estado}`,
-    precio: parseFloat(String(valor_operacion).replace(/[^0-9.]/g, '')) || 0,
+    precio: precioNumerico,
     tipo: tipo_inmueble,
-    estatus: 'disponible',
-    features: { ...restDetails, calle: propertyData.calle, numero_exterior: propertyData.numero_exterior },
-    images: propertyData.imageUrls || []
+    estatus: 'disponible', 
+    features: { 
+        ...restDetails, 
+        calle: propertyData.calle, 
+        numero_exterior: propertyData.numero_exterior,
+        colonia: propertyData.colonia,
+        municipio: propertyData.municipio,
+        estado: propertyData.estado
+    },
+    images: imageUrls || [] 
   };
 
   const { data, error } = await supabase
@@ -235,7 +300,8 @@ export const getPropertiesByTenant = async (tenantId: string) => {
   const { data, error } = await supabase
     .from('propiedades')
     .select('*')
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false });
 
   if (error) throw error;
 
@@ -247,7 +313,8 @@ export const getPropertiesByTenant = async (tenantId: string) => {
     status: p.estatus === 'disponible' ? 'En Promoción' : p.estatus,
     ...p.features,
     fotos: [], 
-    imageUrls: p.images
+    imageUrls: p.images || [], 
+    fecha_captacion: p.created_at
   }));
 };
 
@@ -259,11 +326,28 @@ export const getContactsByTenant = async (tenantId: string) => {
 
   if (error) throw error;
   
-  const propietarios = data.filter((c: any) => c.tipo === 'propietario').map((c: any) => ({ ...c, id: c.id, nombreCompleto: c.nombre }));
-  const compradores = data.filter((c: any) => c.tipo === 'comprador').map((c: any) => ({ ...c, id: c.id, nombreCompleto: c.nombre }));
+  const mapContact = (c: any) => ({
+      ...c.datos_kyc, 
+      id: c.id, 
+      nombreCompleto: c.nombre,
+      email: c.email,
+      telefono: c.telefono
+  });
+
+  const propietarios = data.filter((c: any) => c.tipo === 'propietario').map(mapContact);
+  const compradores = data.filter((c: any) => c.tipo === 'comprador').map(mapContact);
   
   return { propietarios, compradores };
-  
+};
+
+// --- NUEVA FUNCIÓN PARA BORRAR (AQUÍ ESTÁ LA SOLUCIÓN AL ERROR) ---
+export const deleteContact = async (contactId: number) => {
+    const { error } = await supabase
+        .from('contactos')
+        .delete()
+        .eq('id', contactId);
+    
+    if (error) throw error;
 };
 
 // ==========================================
@@ -342,8 +426,6 @@ export const getUsersByTenant = async (tenantId: string) => {
   }));
 };
 
-// AQUÍ ESTABA EL ERROR DE LOS PERMISOS:
-// Faltaba recibir el argumento 'permissions'
 export const createTenantUser = async (email: string, password: string, tenantId: string, role: string, name: string, permissions?: any) => {
     const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -360,7 +442,6 @@ export const createTenantUser = async (email: string, password: string, tenantId
     if (authError) throw authError;
 
     if (authData.user) {
-        // Al crear el perfil, INCLUIMOS los permisos
         const { error: profileError } = await supabase
             .from('profiles')
             .upsert({ 
@@ -369,7 +450,7 @@ export const createTenantUser = async (email: string, password: string, tenantId
                 full_name: name,
                 tenant_id: tenantId,
                 role: role,
-                permissions: permissions // <--- ESTO FALTABA
+                permissions: permissions 
             });
         
         if (profileError) console.warn("Aviso al actualizar perfil:", profileError);

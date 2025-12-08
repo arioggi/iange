@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Propiedad, Propietario, ChecklistStatus, User } from '../../types';
-import KycPldForm, { initialKycState as initialKycPropietarioState } from './KycPldForm';
+import KycPldForm from './KycPldForm';
+import { initialKycState as initialKycPropietarioState } from '../../constants';
 
 declare const jspdf: any;
 
@@ -34,6 +35,7 @@ interface AddPropiedadPropietarioFormProps {
     asesores: User[];
 }
 
+// --- FUNCIONES AUXILIARES ---
 const PhotoIcon = () => (
     <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
         <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -48,7 +50,6 @@ const fileToDataUrl = (file: File): Promise<string> => {
         reader.readAsDataURL(file);
     });
 };
-
 
 const generatePdf = async (propiedad: any, fotos: File[]): Promise<string> => {
     const { jsPDF } = jspdf;
@@ -73,7 +74,6 @@ const generatePdf = async (propiedad: any, fotos: File[]): Promise<string> => {
         let imgWidth = pageWidth;
         let imgHeight = imgWidth / imgRatio;
         
-        // Center the image to cover the page
         if (imgHeight < pageHeight) {
             imgHeight = pageHeight;
             imgWidth = imgHeight * imgRatio;
@@ -90,16 +90,15 @@ const generatePdf = async (propiedad: any, fotos: File[]): Promise<string> => {
     doc.addPage();
     let y = margin + 5;
 
-    // Address as title
     doc.setFont("helvetica", "normal");
     doc.setFontSize(12);
-    doc.setTextColor(100, 116, 139); // text-gray-500
+    doc.setTextColor(100, 116, 139);
     doc.text(`${propiedad.tipo_inmueble} en Venta`.toUpperCase(), margin, y);
     y += 8;
     
     doc.setFont("helvetica", "bold");
     doc.setFontSize(24);
-    doc.setTextColor(30, 30, 30); // iange-dark
+    doc.setTextColor(30, 30, 30);
     const addressLines = doc.splitTextToSize(`${propiedad.calle} ${propiedad.numero_exterior}`, usableWidth);
     doc.text(addressLines, margin, y);
     y += (addressLines.length * 8);
@@ -110,12 +109,10 @@ const generatePdf = async (propiedad: any, fotos: File[]): Promise<string> => {
     doc.text(`${propiedad.colonia}, ${propiedad.municipio}, ${propiedad.estado}`, margin, y);
     y += 15;
     
-    doc.setDrawColor(229, 231, 235); // gray-200
-    doc.line(margin, y, pageWidth - margin, y); // Separator line
+    doc.setDrawColor(229, 231, 235);
+    doc.line(margin, y, pageWidth - margin, y);
     y += 15;
 
-
-    // Details Section
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
     doc.setTextColor(30, 30, 30);
@@ -140,40 +137,30 @@ const generatePdf = async (propiedad: any, fotos: File[]): Promise<string> => {
 
     details.forEach(detail => {
         let x = col === 1 ? col1X : col2X;
-        
         doc.setFont("helvetica", "normal");
         doc.setFontSize(10);
         doc.setTextColor(100, 116, 139);
         doc.text(detail.label, x, currentY);
-        
         doc.setFont("helvetica", "bold");
         doc.setFontSize(14);
         doc.setTextColor(30, 30, 30);
         doc.text(String(detail.value), x, currentY + 7);
         
-        if (col === 1) {
-            col = 2;
-        } else {
-            col = 1;
-            currentY += 20;
-        }
+        if (col === 1) { col = 2; } else { col = 1; currentY += 20; }
     });
 
     y = currentY > initialY ? currentY : initialY + 20;
 
-    // Description Section
     if (propiedad.descripcion_breve) {
-        if (y > pageHeight - 60) { // Check if space is enough for description
+        if (y > pageHeight - 60) {
              doc.addPage();
              y = margin;
         }
-
         doc.setFont("helvetica", "bold");
         doc.setFontSize(18);
         doc.setTextColor(30, 30, 30);
         doc.text("Descripción", margin, y);
         y += 10;
-
         doc.setFont("helvetica", "normal");
         doc.setFontSize(11);
         doc.setTextColor(80, 80, 80);
@@ -183,7 +170,6 @@ const generatePdf = async (propiedad: any, fotos: File[]): Promise<string> => {
 
     return doc.output('datauristring');
 };
-
 
 const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = ({ onSave, onCancel, asesores }) => {
     const [activeTab, setActiveTab] = useState(TABS[0]);
@@ -197,8 +183,10 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
 
     const handlePropiedadChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+        
+        // CORRECCIÓN: 'asesorId' eliminado de la lista de campos numéricos
         const numericFields = [
-            'asesorId', 'recamaras', 'banos_completos', 'medios_banos', 'cochera_autos',
+            'recamaras', 'banos_completos', 'medios_banos', 'cochera_autos',
             'comisionOficina', 'comisionAsesor', 'comisionCompartida'
         ];
 
@@ -222,7 +210,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                     validFiles.push(file);
                 }
             }
-            
             setPhotos(prev => [...prev, ...validFiles]);
         }
     };
@@ -239,8 +226,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
     }, [propiedadData.comisionOficina, propiedadData.comisionAsesor, propiedadData.comisionCompartida]);
 
     const handleSavePropietario = () => {
-        // La data ya está guardada en el estado gracias a `onFormChange`.
-        // Esta función ahora solo sirve como señal de que el usuario terminó en esta pestaña.
         setActiveTab(TABS[0]);
     };
     
@@ -301,8 +286,7 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
             </div>
 
             {activeTab === 'Datos de la Propiedad' && (
-                <div className="space-y-6 max-h-[65vh] overflow-y-auto pr-2 custom-scrollbar">
-                    {/* Sección de Dirección */}
+                <div className="space-y-6">
                     <section>
                         <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dirección del Inmueble</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -490,7 +474,7 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                 />
             )}
 
-            <div className="flex justify-end mt-8 space-x-4">
+            <div className="flex justify-end mt-8 space-x-4 pt-4 border-t">
                  <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-800 py-2 px-6 rounded-md hover:bg-gray-300">
                     Cancelar
                 </button>
@@ -500,7 +484,7 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                     className="bg-iange-orange text-white py-2 px-6 rounded-md hover:bg-orange-600 disabled:bg-gray-400"
                     disabled={isSaving}
                 >
-                    {isSaving ? 'Guardando...' : 'Guardar Propiedad y Propietario'}
+                    {isSaving ? 'Guardando...' : 'Guardar'}
                 </button>
             </div>
         </div>
