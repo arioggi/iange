@@ -57,20 +57,19 @@ interface EditUserFormProps {
 const EditUserForm: React.FC<EditUserFormProps> = ({ user, onUserUpdated, onCancel, currentUser }) => {
     const [formData, setFormData] = useState<User>(user);
     
-    // CORRECCIÓN: Inicialización robusta de permisos
-    // Si la DB tiene un objeto vacío o nulo, mezclamos con los defaults del rol.
+    // CORRECCIÓN: Inicialización robusta de permisos con las nuevas llaves
     const [permissions, setPermissions] = useState<UserPermissions>(() => {
         const defaults = ROLE_DEFAULT_PERMISSIONS[user.role] || ROLE_DEFAULT_PERMISSIONS['asesor'];
         const current = user.permissions || {} as Partial<UserPermissions>;
         
-        // Prioridad: Valor actual > Default del rol
-        // El operador ?? asegura que si current.propiedades es 'false', se respete 'false' y no se vaya al default.
+        // Mapeo exacto a las llaves definidas en types.ts y constants.ts
         return {
-            propiedades: current.propiedades ?? defaults.propiedades,
+            dashboard: current.dashboard ?? defaults.dashboard,
             contactos: current.contactos ?? defaults.contactos,
-            operaciones: current.operaciones ?? defaults.operaciones,
-            documentosKyc: current.documentosKyc ?? defaults.documentosKyc,
+            propiedades: current.propiedades ?? defaults.propiedades,
+            progreso: current.progreso ?? defaults.progreso,
             reportes: current.reportes ?? defaults.reportes,
+            crm: current.crm ?? defaults.crm,
             equipo: current.equipo ?? defaults.equipo,
         };
     });
@@ -139,12 +138,25 @@ const EditUserForm: React.FC<EditUserFormProps> = ({ user, onUserUpdated, onCanc
             </FormSection>
             
             <FormSection title="Permisos de Acceso (Barra Lateral)">
-                <Toggle label="Catálogo (Propiedades)" name="propiedades" checked={!!permissions.propiedades} onChange={handlePermissionChange} />
-                <Toggle label="Alta de Clientes (Contactos)" name="contactos" checked={!!permissions.contactos} onChange={handlePermissionChange} />
-                <Toggle label="Operaciones (Dashboard/Progreso)" name="operaciones" checked={!!permissions.operaciones} onChange={handlePermissionChange} />
-                <Toggle label="Documentos y KYC" name="documentosKyc" checked={!!permissions.documentosKyc} onChange={handlePermissionChange} />
-                <Toggle label="Reportes" name="reportes" checked={!!permissions.reportes} onChange={handlePermissionChange} />
-                {/* Solo mostramos la opción de Equipo si el usuario actual es Admin */}
+                {/* 1. Dashboard */}
+                <Toggle label="Dashboard (Oportunidades)" name="dashboard" checked={!!permissions.dashboard} onChange={handlePermissionChange} />
+                
+                {/* 2. Alta de Clientes */}
+                <Toggle label="Alta de Clientes" name="contactos" checked={!!permissions.contactos} onChange={handlePermissionChange} />
+                
+                {/* 3. Catálogo de Propiedades */}
+                <Toggle label="Catálogo de Propiedades" name="propiedades" checked={!!permissions.propiedades} onChange={handlePermissionChange} />
+                
+                {/* 4. Progreso de Ventas */}
+                <Toggle label="Progreso de Ventas" name="progreso" checked={!!permissions.progreso} onChange={handlePermissionChange} />
+                
+                {/* 5. Reportes */}
+                <Toggle label="Reportes Generales" name="reportes" checked={!!permissions.reportes} onChange={handlePermissionChange} />
+                
+                {/* 6. CRM */}
+                <Toggle label="CRM" name="crm" checked={!!permissions.crm} onChange={handlePermissionChange} />
+
+                {/* 7. Personal (Solo visible si el usuario actual es Admin) */}
                 {canManageTeam && (
                   <Toggle label="Personal (Configuración)" name="equipo" checked={!!permissions.equipo} onChange={handlePermissionChange} />
                 )}

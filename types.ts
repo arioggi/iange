@@ -37,13 +37,17 @@ export interface Oportunidad {
   validacionComprador: Validacion;
 }
 
+// --- ACTUALIZACIÓN DE PERMISOS ---
+// Se eliminaron 'operaciones' y 'documentosKyc'.
+// Se agregaron 'dashboard' y 'progreso' para tener control granular.
 export interface UserPermissions {
-  propiedades: boolean;
-  contactos: boolean;
-  operaciones: boolean;
-  documentosKyc: boolean;
-  reportes: boolean;
-  equipo: boolean;
+  dashboard: boolean;    // 1. Dashboard
+  contactos: boolean;    // 2. Alta de Clientes
+  propiedades: boolean;  // 3. Catálogo
+  progreso: boolean;     // 4. Progreso de Ventas
+  reportes: boolean;     // 5. Reportes
+  crm: boolean;          // 6. CRM
+  equipo: boolean;       // Extra: Configuración de Personal
 }
 
 // --- ACTUALIZACIÓN CLAVE: IDs AHORA SON STRING | NUMBER ---

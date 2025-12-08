@@ -115,69 +115,77 @@ export const DEFAULT_ROUTES: Record<string, string> = {
 
 export const ROLE_DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
   [ROLES.SUPER_ADMIN]: {
-    propiedades: true,
+    dashboard: true,
     contactos: true,
-    operaciones: true,
-    documentosKyc: true,
+    propiedades: true,
+    progreso: true,
     reportes: true,
+    crm: true,
     equipo: true,
   },
   [ROLES.IANGE_ADMIN]: {
-    propiedades: true,
+    dashboard: true,
     contactos: true,
-    operaciones: true,
-    documentosKyc: true,
+    propiedades: true,
+    progreso: true,
     reportes: true,
+    crm: true,
     equipo: true,
   },
   [ROLES.CUENTA_EMPRESA]: {
-    propiedades: true,
+    dashboard: true,
     contactos: true,
-    operaciones: true,
-    documentosKyc: true,
+    propiedades: true,
+    progreso: true,
     reportes: true,
+    crm: true,
     equipo: true,
   },
   [ROLES.ADMIN_EMPRESA]: {
-    propiedades: true,
+    dashboard: true,
     contactos: true,
-    operaciones: true,
-    documentosKyc: true,
+    propiedades: true,
+    progreso: true,
     reportes: true,
+    crm: true,
     equipo: true,
   },
   [ROLES.ASESOR]: {
-    propiedades: true,
+    dashboard: true,
     contactos: true,
-    operaciones: true,
-    documentosKyc: true,
+    propiedades: true,
+    progreso: true,
     reportes: false,
+    crm: true,
     equipo: false,
   },
   [ROLES.GESTOR]: {
-    propiedades: false,
+    dashboard: true,
     contactos: false,
-    operaciones: true,
-    documentosKyc: true,
+    propiedades: false,
+    progreso: true,
     reportes: false,
+    crm: false,
     equipo: false,
   },
   [ROLES.NOTARIA]: {
-    propiedades: false,
+    dashboard: false,
     contactos: false,
-    operaciones: true,
-    documentosKyc: true,
+    propiedades: false,
+    progreso: true,
     reportes: false,
+    crm: false,
     equipo: false,
   },
 };
 
 export const PERMISSION_PATH_MAP: Record<keyof UserPermissions, string[]> = {
-  propiedades: ['/catalogo'],
+  dashboard: ['/oportunidades'],
   contactos: ['/clientes'],
-  operaciones: ['/oportunidades', '/progreso'],
-  documentosKyc: [], // No tiene una ruta directa en el menú, se controla dentro de las vistas.
+  propiedades: ['/catalogo'],
+  progreso: ['/progreso'],
   reportes: ['/reportes'],
+  crm: ['/crm'],
   equipo: ['/configuraciones/personal'],
 };
 
@@ -223,12 +231,12 @@ interface DashboardButton {
 }
 
 export const MENU_ITEMS: MenuItem[] = [
-  { name: 'Dashboard', path: '/oportunidades', permissionKey: 'operaciones', icon: ChartBarIcon },
+  { name: 'Dashboard', path: '/oportunidades', permissionKey: 'dashboard', icon: ChartBarIcon },
   { name: 'Alta de clientes', path: '/clientes', permissionKey: 'contactos', icon: UserGroupIcon },
   { name: 'Catálogo', path: '/catalogo', permissionKey: 'propiedades', icon: BuildingOfficeIcon },
-  { name: 'Progreso', path: '/progreso', permissionKey: 'operaciones', icon: PresentationChartLineIcon },
+  { name: 'Progreso', path: '/progreso', permissionKey: 'progreso', icon: PresentationChartLineIcon },
   { name: 'Reportes', path: '/reportes', permissionKey: 'reportes', icon: DocumentTextIcon },
-  { name: 'CRM', path: '/crm', icon: UsersIcon },
+  { name: 'CRM', path: '/crm', permissionKey: 'crm', icon: UsersIcon }, 
 ];
 
 export const SETTINGS_MENU_ITEM: MenuItem = {
@@ -350,13 +358,14 @@ export const MOCK_LOGS: Log[] = [
 
 // --- END SUPER ADMIN ---
 
-export const PRIMARY_DASHBOARD_BUTTONS: DashboardButton[] = [
-  { label: 'Dashboard', path: '/oportunidades', name: 'Dashboard' },
-  { label: 'Alta de Clientes', path: '/clientes', name: 'Alta de clientes' },
-  { label: 'Catálogo', path: '/catalogo', name: 'Catálogo' },
-  { label: 'Progreso', path: '/progreso', name: 'Progreso' },
-  { label: 'Reportes', path: '/reportes', name: 'Reportes' },
-  { label: 'CRM', path: '/crm', name: 'CRM' },
+// --- ACTUALIZACIÓN AQUÍ: Se agregaron las permissionKeys ---
+export const PRIMARY_DASHBOARD_BUTTONS: (DashboardButton & { permissionKey?: keyof UserPermissions })[] = [
+  { label: 'Dashboard', path: '/oportunidades', name: 'Dashboard', permissionKey: 'dashboard' },
+  { label: 'Alta de Clientes', path: '/clientes', name: 'Alta de clientes', permissionKey: 'contactos' },
+  { label: 'Catálogo', path: '/catalogo', name: 'Catálogo', permissionKey: 'propiedades' },
+  { label: 'Progreso', path: '/progreso', name: 'Progreso', permissionKey: 'progreso' },
+  { label: 'Reportes', path: '/reportes', name: 'Reportes', permissionKey: 'reportes' },
+  { label: 'CRM', path: '/crm', name: 'CRM', permissionKey: 'crm' },
 ];
 
 export const SECONDARY_DASHBOARD_BUTTONS: DashboardButton[] = [];
