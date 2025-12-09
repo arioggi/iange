@@ -54,9 +54,8 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ propiedad, pr
     return (
         <div className="flex flex-col h-full bg-white">
             
-            {/* --- SECCIÓN GALERÍA --- */}
+            {/* --- SECCIÓN GALERÍA (Sin cambios) --- */}
             <div className="relative w-full h-[50vh] bg-gray-900 group shrink-0">
-                {/* Botón Cerrar Flotante */}
                 {onClose && (
                     <button 
                         onClick={onClose}
@@ -86,7 +85,6 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ propiedad, pr
                             onLoad={() => setImageLoading(false)}
                         />
                         
-                        {/* Flechas */}
                         {images.length > 1 && (
                             <>
                                 <button onClick={(e) => { e.stopPropagation(); prevImage(); }} className="absolute left-0 top-0 bottom-0 px-4 hover:bg-black/20 text-white transition-colors flex items-center">
@@ -106,22 +104,29 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ propiedad, pr
 
             {/* --- SECCIÓN INFO --- */}
             <div className="p-6 md:p-8 overflow-y-auto">
-                <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
+                <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
                     <div>
                         <h2 className="text-2xl font-bold text-gray-900">{propiedad.calle} {propiedad.numero_exterior}</h2>
                         <p className="text-gray-500">{propiedad.colonia}, {propiedad.municipio}</p>
                     </div>
-                    <div className="text-right">
-                        <p className="text-2xl font-bold text-iange-orange">{formatCurrency(propiedad.valor_operacion)}</p>
-                        <div className="mt-1 flex justify-end gap-2">
-                             <span className="text-sm text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded">{propiedad.tipo_inmueble}</span>
+                    <div className="text-right flex flex-col items-end">
+                        <p className="text-3xl font-extrabold text-iange-orange leading-tight">{formatCurrency(propiedad.valor_operacion)}</p>
+                        
+                        {/* --- AQUÍ ESTÁ EL "DISEÑO TOTALMENTE NUEVO" DEL ESTADO --- */}
+                        <div className="mt-2 flex items-center gap-2">
+                             <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{propiedad.tipo_inmueble}</span>
                              
-                             {/* STATUS GLOBAL EXACTO */}
-                             <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                    propiedad.status === 'Vendida' ? 'bg-green-100 text-green-800' : 
-                                    propiedad.status === 'Separada' ? 'bg-yellow-100 text-yellow-800' :
-                                    propiedad.status === 'En Promoción' ? 'bg-blue-100 text-blue-800' :
-                                    'bg-gray-100 text-gray-800'
+                             {/* DISEÑO DE "SELLO PREMIUM" */}
+                             {/* - text-[10px]: Letra muy pequeña.
+                                 - font-extrabold uppercase tracking-widest: Letra gruesa, mayúscula y separada.
+                                 - py-[2px] leading-none: Altura mínima, súper delgada.
+                                 - flex items-center: Centrado perfecto.
+                             */}
+                             <span className={`inline-flex items-center px-3 py-[3px] rounded-full text-[10px] font-extrabold uppercase tracking-widest leading-none shadow-sm ${
+                                    propiedad.status === 'Vendida' ? 'bg-green-50 text-green-700 border border-green-200' : 
+                                    propiedad.status === 'Separada' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                                    propiedad.status === 'En Promoción' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                    'bg-gray-50 text-gray-700 border border-gray-200'
                                 }`}>
                                     {propiedad.status}
                             </span>
@@ -129,7 +134,7 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ propiedad, pr
                     </div>
                 </div>
 
-                {/* DESCRIPCIÓN LIMPIA (Sin barra naranja) */}
+                {/* DESCRIPCIÓN (Sin cambios) */}
                 {propiedad.descripcion_breve && (
                     <div className="mb-8">
                         <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Descripción</h4>

@@ -1,10 +1,67 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Propiedad, Propietario, Visita, User } from '../types';
 import PropertyCard from '../components/catalogo/PropertyCard';
 import PropertyDetailModal from '../components/catalogo/PropertyDetailModal';
 import EditPropiedadForm from '../components/clientes/EditPropiedadForm';
 import Modal from '../components/ui/Modal';
 import { SparklesIcon, PencilIcon } from '../components/Icons';
+
+// ==========================================
+// COMPONENTE: MODAL FULL SCREEN (LIMPIO)
+// ==========================================
+const ModalParaFotos: React.FC<{ isOpen: boolean; onClose: () => void; children: React.ReactNode }> = ({ isOpen, onClose, children }) => {
+    const modalRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleEscape = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+        if (isOpen) {
+            document.addEventListener('keydown', handleEscape);
+            document.body.style.overflow = 'hidden'; 
+        }
+        return () => {
+            document.removeEventListener('keydown', handleEscape);
+            document.body.style.overflow = 'unset';
+        };
+    }, [isOpen, onClose]);
+
+    if (!isOpen) return null;
+
+    return createPortal(
+        <div 
+            className="fixed inset-0 z-[99999] flex justify-center items-center bg-black bg-opacity-90 backdrop-blur-sm p-2" // p-2: Padding mínimo
+            onClick={onClose}
+        >
+            {/* Estilos para ocultar la barra de scroll visualmente pero mantener la funcionalidad */}
+            <style>{`
+                .hide-scrollbar::-webkit-scrollbar {
+                    display: none;
+                }
+                .hide-scrollbar {
+                    -ms-overflow-style: none;
+                    scrollbar-width: none;
+                }
+            `}</style>
+
+            <div 
+                ref={modalRef}
+                // AJUSTE: max-h-[98vh] aprovecha casi toda la altura de la pantalla
+                className="bg-white rounded-lg shadow-2xl w-full max-w-5xl h-auto max-h-[98vh] flex flex-col overflow-hidden relative"
+                onClick={(e) => e.stopPropagation()} 
+            >
+                {/* ELIMINADO: El botón "X" flotante que estaba aquí se borró 
+                   para evitar duplicados, ya que el hijo (children) trae el suyo.
+                */}
+
+                {/* Contenido con scroll invisible */}
+                <div className="p-0 overflow-y-auto h-full bg-white hide-scrollbar">
+                    {children}
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+};
 
 interface CatalogoProps {
     propiedades: Propiedad[];
@@ -80,7 +137,7 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
     };
 
     const selectedPropietario = selectedPropiedad ? propietarios.find(p => p.id === selectedPropiedad.propietarioId) : undefined;
-    
+     
     return (
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-lg shadow-sm border flex flex-wrap justify-between items-center gap-4">
@@ -140,21 +197,18 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
                     <p className="text-gray-500 mt-2">No hay propiedades disponibles que coincidan con tu búsqueda.</p>
                 </div>
             )}
-            
-            {/* CORRECCIÓN: Título vacío para ocultar header blanco + pasar onClose */}
+             
             {selectedPropiedad && (
-                <Modal 
-                    title="" 
+                <ModalParaFotos
                     isOpen={isDetailModalOpen} 
                     onClose={() => setDetailModalOpen(false)}
-                    maxWidth="max-w-4xl" // Ancho extra para la galería
                 >
                     <PropertyDetailModal 
                         propiedad={selectedPropiedad} 
                         propietario={selectedPropietario}
                         onClose={() => setDetailModalOpen(false)} 
                     />
-                </Modal>
+                </ModalParaFotos>
             )}
 
             {selectedPropiedad && selectedPropietario && (
