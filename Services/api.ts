@@ -296,6 +296,9 @@ export const createProperty = async (propertyData: any, tenantId: string, ownerI
   return data;
 };
 
+// =========================================================================
+// FUNCIÓN DE LECTURA (ya corregida)
+// =========================================================================
 export const getPropertiesByTenant = async (tenantId: string) => {
   const { data, error } = await supabase
     .from('propiedades')
@@ -308,15 +311,81 @@ export const getPropertiesByTenant = async (tenantId: string) => {
   return data.map((p: any) => ({
     id: p.id,
     propietarioId: p.contacto_id,
-    valor_operacion: p.precio?.toString(),
+    
+    valor_operacion: p.precio?.toString() || '',
     tipo_inmueble: p.tipo,
-    status: p.estatus === 'disponible' ? 'En Promoción' : p.estatus,
+    
+    status: p.estatus === 'Vendida' ? 'Vendida' : 
+            p.estatus === 'Separada' ? 'Separada' :
+            p.estatus === 'En Promoción' ? 'En Promoción' :
+            p.estatus === 'disponible' ? 'En Promoción' : 
+            'Validación Pendiente',
+
     ...p.features,
+    
+    fecha_venta: p.fecha_venta || null,
     fotos: [], 
     imageUrls: p.images || [], 
-    fecha_captacion: p.created_at
+    fecha_captacion: p.created_at,
+    
+    progreso: p.features?.progreso || 0,
+    checklist: p.features?.checklist || {},
+    visitas: p.features?.visitas || [],
+    
   }));
 };
+
+// --- FUNCIÓN DE ESCRITURA: Actualizar Propiedad (FIX PARA ERROR DE COLUMNA) ---
+export const updateProperty = async (propertyData: any, ownerId: string) => {
+    // 1. Desestructura el objeto plano (como lo recibe de la UI)
+    const { 
+        id, 
+        valor_operacion, 
+        tipo_inmueble, 
+        status, 
+        propietarioId, 
+        fecha_captacion, 
+        compradorId,
+        imageUrls, 
+        fecha_venta, // MANTENEMOS ESTA VARIABLE FUERA DEL PAYLOAD DIRECTO
+        fotos, 
+        ...restDetails 
+    } = propertyData;
+
+    const precioNumerico = parseFloat(String(valor_operacion).replace(/[^0-9.]/g, '')) || 0;
+    
+    let dbStatus = 'disponible';
+    if (status === 'Vendida') dbStatus = 'vendida';
+    else if (status === 'Separada') dbStatus = 'separada';
+    else if (status === 'En Promoción' || status === 'Validación Pendiente') dbStatus = 'disponible';
+
+    // Para features, usamos restDetails que contiene todos los campos de texto del formulario.
+    // Esto es seguro porque los campos que causaban conflicto (como fecha_venta) se enviarán dentro del JSON features.
+    const featuresPayload = restDetails; 
+
+    const dbPayload = {
+        titulo: `${restDetails.calle} ${restDetails.numero_exterior}`, 
+        direccion: `${restDetails.colonia}, ${restDetails.municipio}, ${restDetails.estado}`,
+        precio: precioNumerico,
+        tipo: tipo_inmueble,
+        estatus: dbStatus,
+        // ** CRÍTICO: El objeto features limpio **
+        features: featuresPayload, 
+        images: imageUrls || [],
+        // NO incluimos fecha_venta aquí para evitar el error de columna.
+    };
+
+    const { data, error } = await supabase
+        .from('propiedades')
+        .update(dbPayload)
+        .eq('id', id.toString()) // <--- CORRECCIÓN: Asegurar ID de la propiedad a string
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+};
+
 
 export const getContactsByTenant = async (tenantId: string) => {
   const { data, error } = await supabase
@@ -338,6 +407,29 @@ export const getContactsByTenant = async (tenantId: string) => {
   const compradores = data.filter((c: any) => c.tipo === 'comprador').map(mapContact);
   
   return { propietarios, compradores };
+};
+
+// --- FUNCIÓN DE ESCRITURA: Actualizar Contacto (Fix de ID) ---
+export const updateContact = async (contactId: number, updatedKycData: any) => {
+    // 1. Convertir el ID a string. Esto previene el error 400 de tipo de UUID.
+    const contactIdString = contactId.toString();
+
+    const { nombreCompleto, email, telefono } = updatedKycData;
+
+    const { data, error } = await supabase
+        .from('contactos')
+        .update({
+            nombre: nombreCompleto,
+            email: email,
+            telefono: telefono,
+            datos_kyc: updatedKycData, 
+        })
+        .eq('id', contactIdString) // <--- CORRECCIÓN: Asegurar que el ID del contacto sea string
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
 };
 
 // --- NUEVA FUNCIÓN PARA BORRAR (AQUÍ ESTÁ LA SOLUCIÓN AL ERROR) ---
@@ -400,7 +492,7 @@ export const getSuperAdminStats = async () => {
 };
 
 // ==========================================
-// 5. FUNCIONES PARA PERSONAL EMPRESA
+// 5. FUNCIONES PARA PERSONAL EMMPRESA
 // ==========================================
 
 export const getUsersByTenant = async (tenantId: string) => {

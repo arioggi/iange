@@ -76,85 +76,87 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
 
     return (
         <form onSubmit={handleSubmit} className={formClasses}>
-            {userType === 'Comprador' && (
-                <FormSection title="Vincular a Propiedad">
-                    <div className="md:col-span-2">
-                        {propiedades && propiedades.length > 0 ? (
-                            <>
-                                <Select
-                                    label="Selecciona una propiedad disponible para este comprador (Opcional)"
-                                    name="propiedadId"
-                                    value={selectedPropiedadId}
-                                    onChange={(e) => setSelectedPropiedadId(e.target.value)}
-                                >
-                                    <option value="">No vincular por ahora</option>
-                                    {propiedades.map(prop => (
-                                        <option key={prop.id} value={prop.id}>
-                                            {`${prop.calle} ${prop.numero_exterior}, ${prop.colonia}`}
-                                        </option>
-                                    ))}
-                                </Select>
-                                <p className="mt-2 text-xs text-gray-500">
-                                    Al vincular un comprador, el estatus de la propiedad cambiará a "Vendida" en el catálogo.
-                                </p>
-                            </>
-                        ) : (
-                            <div className="p-4 bg-gray-100 rounded-md text-center">
-                                <p className="text-sm font-medium text-gray-700">No hay propiedades disponibles</p>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Para poder vincular un comprador, primero debes dar de alta una propiedad que no tenga un comprador asignado.
-                                </p>
-                            </div>
-                        )}
-                    </div>
+            {/* NOTA: Este componente no tiene clases de scrollbar ni padding. El padre lo maneja. */}
+
+                {userType === 'Comprador' && (
+                    <FormSection title="Vincular a Propiedad">
+                        <div className="md:col-span-2">
+                            {propiedades && propiedades.length > 0 ? (
+                                <>
+                                    <Select
+                                        label="Selecciona una propiedad disponible para este comprador (Opcional)"
+                                        name="propiedadId"
+                                        value={selectedPropiedadId}
+                                        onChange={(e) => setSelectedPropiedadId(e.target.value)}
+                                    >
+                                        <option value="">No vincular por ahora</option>
+                                        {propiedades.map(prop => (
+                                            <option key={prop.id} value={prop.id}>
+                                                {`${prop.calle} ${prop.numero_exterior}, ${prop.colonia}`}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                    <p className="mt-2 text-xs text-gray-500">
+                                        Al vincular un comprador, el estatus de la propiedad cambiará a "Vendida" en el catálogo.
+                                    </p>
+                                </>
+                            ) : (
+                                <div className="p-4 bg-gray-100 rounded-md text-center">
+                                    <p className="text-sm font-medium text-gray-700">No hay propiedades disponibles</p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Para poder vincular un comprador, primero debes dar de alta una propiedad que no tenga un comprador asignado.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </FormSection>
+                )}
+
+                <FormSection title={`Datos de Identificación del ${userType} (Persona Física)`}>
+                    <Input label="Nombre(s) y apellidos" name="nombreCompleto" value={formData.nombreCompleto} onChange={handleChange} fullWidth/>
+                    <Input label="CURP" name="curp" value={formData.curp} onChange={handleChange} />
+                    <Input label="RFC" name="rfc" value={formData.rfc} onChange={handleChange} />
+                    <Input label="Fecha de nacimiento" name="fechaNacimiento" value={formData.fechaNacimiento} onChange={handleChange} type="date" />
+                    <Input label="Nacionalidad" name="nacionalidad" value={formData.nacionalidad} onChange={handleChange} />
+                    <Select label="Estado civil" name="estadoCivil" value={formData.estadoCivil} onChange={handleChange}>
+                        <option>Soltero(a)</option>
+                        <option>Casado(a)</option>
+                    </Select>
+                    <Input label="Profesión/Ocupación" name="profesion" value={formData.profesion} onChange={handleChange} />
+                    <Input label="Domicilio (Calle y número)" name="domicilio" value={formData.domicilio} onChange={handleChange} fullWidth />
+                    <Input label="Colonia" name="colonia" value={formData.colonia} onChange={handleChange} />
+                    <Input label="Municipio/Alcaldía" name="municipio" value={formData.municipio} onChange={handleChange} />
+                    <Input label="Código Postal" name="cp" value={formData.cp} onChange={handleChange} />
+                    <Input label="Estado" name="estado" value={formData.estado} onChange={handleChange} />
+                    <Input label="Teléfono" name="telefono" value={formData.telefono} onChange={handleChange} type="tel"/>
+                    <Input label="Correo electrónico" name="email" value={formData.email} onChange={handleChange} type="email" />
+                    <Select label="Identificación Oficial" name="identificacionOficialTipo" value={formData.identificacionOficialTipo} onChange={handleChange}>
+                        <option>INE</option>
+                        <option>Pasaporte</option>
+                        <option>Cédula Profesional</option>
+                    </Select>
+                    <Input label="Número de Identificación" name="identificacionOficialNumero" value={formData.identificacionOficialNumero} onChange={handleChange} />
                 </FormSection>
-            )}
 
-            <FormSection title={`Datos de Identificación del ${userType} (Persona Física)`}>
-                <Input label="Nombre(s) y apellidos" name="nombreCompleto" value={formData.nombreCompleto} onChange={handleChange} fullWidth/>
-                <Input label="CURP" name="curp" value={formData.curp} onChange={handleChange} />
-                <Input label="RFC" name="rfc" value={formData.rfc} onChange={handleChange} />
-                <Input label="Fecha de nacimiento" name="fechaNacimiento" value={formData.fechaNacimiento} onChange={handleChange} type="date" />
-                <Input label="Nacionalidad" name="nacionalidad" value={formData.nacionalidad} onChange={handleChange} />
-                <Select label="Estado civil" name="estadoCivil" value={formData.estadoCivil} onChange={handleChange}>
-                    <option>Soltero(a)</option>
-                    <option>Casado(a)</option>
-                </Select>
-                <Input label="Profesión/Ocupación" name="profesion" value={formData.profesion} onChange={handleChange} />
-                <Input label="Domicilio (Calle y número)" name="domicilio" value={formData.domicilio} onChange={handleChange} fullWidth />
-                <Input label="Colonia" name="colonia" value={formData.colonia} onChange={handleChange} />
-                <Input label="Municipio/Alcaldía" name="municipio" value={formData.municipio} onChange={handleChange} />
-                <Input label="Código Postal" name="cp" value={formData.cp} onChange={handleChange} />
-                <Input label="Estado" name="estado" value={formData.estado} onChange={handleChange} />
-                <Input label="Teléfono" name="telefono" value={formData.telefono} onChange={handleChange} type="tel"/>
-                <Input label="Correo electrónico" name="email" value={formData.email} onChange={handleChange} type="email" />
-                <Select label="Identificación Oficial" name="identificacionOficialTipo" value={formData.identificacionOficialTipo} onChange={handleChange}>
-                    <option>INE</option>
-                    <option>Pasaporte</option>
-                    <option>Cédula Profesional</option>
-                </Select>
-                 <Input label="Número de Identificación" name="identificacionOficialNumero" value={formData.identificacionOficialNumero} onChange={handleChange} />
-            </FormSection>
+                <FormSection title={`Beneficiario Final`}>
+                    <Checkbox label={`El ${userType} actúa por cuenta propia`} name="actuaPorCuentaPropia" checked={formData.actuaPorCuentaPropia} onChange={handleChange} />
+                    {!formData.actuaPorCuentaPropia && (
+                        <Input label="Nombre completo del Beneficiario Final" name="beneficiarioFinalNombre" value={formData.beneficiarioFinalNombre || ''} onChange={handleChange} fullWidth />
+                    )}
+                </FormSection>
 
-             <FormSection title={`Beneficiario Final`}>
-                <Checkbox label={`El ${userType} actúa por cuenta propia`} name="actuaPorCuentaPropia" checked={formData.actuaPorCuentaPropia} onChange={handleChange} />
-                 {!formData.actuaPorCuentaPropia && (
-                    <Input label="Nombre completo del Beneficiario Final" name="beneficiarioFinalNombre" value={formData.beneficiarioFinalNombre || ''} onChange={handleChange} fullWidth />
-                 )}
-            </FormSection>
+                <FormSection title={`Origen y Destino de los Recursos`}>
+                    <Input label="Origen (salario/ahorros/crédito/otro)" name="origenRecursos" value={formData.origenRecursos} onChange={handleChange} />
+                    <Input label="Destino de los recursos (uso previsto)" name="destinoRecursos" value={formData.destinoRecursos} onChange={handleChange} />
+                </FormSection>
 
-            <FormSection title={`Origen y Destino de los Recursos`}>
-                 <Input label="Origen (salario/ahorros/crédito/otro)" name="origenRecursos" value={formData.origenRecursos} onChange={handleChange} />
-                 <Input label="Destino de los recursos (uso previsto)" name="destinoRecursos" value={formData.destinoRecursos} onChange={handleChange} />
-            </FormSection>
-
-            <FormSection title={`Declaración PEP (Persona Políticamente Expuesta)`}>
-                 <Checkbox label={`¿El ${userType}, familiar o asociado cercano es PEP?`} name="esPep" checked={formData.esPep} onChange={handleChange} />
-                 {formData.esPep && <>
-                    <Input label="Nombre del PEP" name="pepNombre" value={formData.pepNombre || ''} onChange={handleChange} />
-                    <Input label="Cargo/Función" name="pepCargo" value={formData.pepCargo || ''} onChange={handleChange} />
-                 </>}
-            </FormSection>
+                <FormSection title={`Declaración PEP (Persona Políticamente Expuesta)`}>
+                    <Checkbox label={`¿El ${userType}, familiar o asociado cercano es PEP?`} name="esPep" checked={formData.esPep} onChange={handleChange} />
+                    {formData.esPep && <>
+                        <Input label="Nombre del PEP" name="pepNombre" value={formData.pepNombre || ''} onChange={handleChange} />
+                        <Input label="Cargo/Función" name="pepCargo" value={formData.pepCargo || ''} onChange={handleChange} />
+                    </>}
+                </FormSection>
 
             {!isEmbedded && (
                  <div className="flex justify-end mt-8 pt-4 border-t space-x-4">
