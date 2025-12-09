@@ -3,20 +3,11 @@ import React, { useEffect, useRef } from 'react';
 interface ModalProps {
     isOpen: boolean;
     onClose: () => void;
-    title?: string;
     children: React.ReactNode;
-    maxWidth?: string;
-    hideHeader?: boolean;
+    title?: string; // Lo dejamos opcional pero no lo usaremos para pintar barra
 }
 
-const Modal: React.FC<ModalProps> = ({ 
-    isOpen, 
-    onClose, 
-    title, 
-    children, 
-    maxWidth = "max-w-2xl",
-    hideHeader = false 
-}) => {
+const ModalSinBordes: React.FC<ModalProps> = ({ isOpen, onClose, children }) => {
     const modalRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -41,27 +32,19 @@ const Modal: React.FC<ModalProps> = ({
 
     if (!isOpen) return null;
 
-    // LÓGICA: Mostrar barra solo si NO está oculta Y tiene título
-    const showHeader = !hideHeader && (title && title.trim().length > 0);
-
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4 backdrop-blur-sm transition-opacity">
             <div
                 ref={modalRef}
-                className={`bg-white rounded-xl shadow-2xl w-full ${maxWidth} max-h-[95vh] flex flex-col overflow-hidden`}
+                className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden"
                 role="dialog"
                 aria-modal="true"
             >
-                {showHeader && (
-                    <div className="p-4 border-b flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
-                        <h2 className="text-lg font-bold text-iange-dark">{title}</h2>
-                        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-                            <span className="text-2xl">&times;</span>
-                        </button>
-                    </div>
-                )}
-                
-                <div className={`${showHeader ? "p-6" : "p-0"} overflow-y-auto`}>
+                {/* AQUÍ ESTÁ LA SOLUCIÓN:
+                   1. NO hay bloque de título/header.
+                   2. El padding es 0 (p-0) forzado. 
+                */}
+                <div className="p-0 overflow-y-auto h-full">
                     {children}
                 </div>
             </div>
@@ -69,4 +52,4 @@ const Modal: React.FC<ModalProps> = ({
     );
 };
 
-export default Modal;
+export default ModalSinBordes;
