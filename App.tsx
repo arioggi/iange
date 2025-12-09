@@ -6,7 +6,9 @@ import { supabase } from './supabaseClient';
 import { User, Propiedad, Propietario, Comprador, CompanySettings, UserPermissions } from "./types";
 import { ROLES, ROLE_DEFAULT_PERMISSIONS } from "./constants";
 import adapter from "./data/localStorageAdapter"; 
-import { getPropertiesByTenant, getContactsByTenant, getUsersByTenant } from './Services/api';
+// === INICIO MODIFICACIÓN 2.1: Importar funciones de guardado ===
+import { getPropertiesByTenant, getContactsByTenant, getUsersByTenant, updateProperty, updateContact } from './Services/api';
+// === FIN MODIFICACIÓN 2.1 ===
 
 // Páginas
 import Login from "./pages/Login";
@@ -239,8 +241,34 @@ const App = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleUpdatePropiedad = () => showToast('Guardando...');
+  // === INICIO MODIFICACIÓN 2.2: Lógica de Persistencia REAL ===
+  const handleUpdatePropiedad = async (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
+    if (!user) return;
+    
+    showToast('Guardando cambios...', 'success');
+    
+    try {
+        // 1. Actualizar Propietario (Contacto)
+        // El ID del propietario es el ID del contacto en la tabla 'contactos'
+        await updateContact(updatedPropietario.id, updatedPropietario);
+        
+        // 2. Actualizar Propiedad
+        // El ID del propietario es el ID del contacto (debe ser string para la API)
+        await updateProperty(updatedPropiedad, updatedPropietario.id.toString());
+        
+        showToast('Propiedad y Propietario actualizados con éxito.', 'success');
+        refreshAppData(); // Re-obtiene los datos actualizados para refrescar toda la UI
+        
+    } catch (error) {
+        console.error("Error al actualizar propiedad:", error);
+        showToast('Error al guardar cambios.', 'error');
+    }
+  };
+
+  // Mantenemos esta función de placeholder si se requiere en otros puntos
   const handleDeletePropiedad = () => showToast('Eliminando...');
+  // === FIN MODIFICACIÓN 2.2 ===
+  
   const handleAddVisita = () => showToast('Visita registrada');
   const handleUpdateUser = () => showToast('Perfil actualizado');
   const handleImpersonate = () => {}; 

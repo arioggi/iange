@@ -3,7 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- LÍNEA AÑADIDA: Favicon -->
     <link rel="icon" type="image/png" href="/favicon.svg" />
     
     <title>IANGE - Gestión Inmobiliaria</title>
@@ -38,15 +37,18 @@
         height: 8px;
       }
       .custom-scrollbar::-webkit-scrollbar-track {
-        background: #FFF5F2; /* iange-salmon */
+        /* Fondo del track (barra gris de fondo) */
+        background: #F4F4F4; /* Gris muy claro */
         border-radius: 10px;
       }
       .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #F37321; /* iange-orange */
+        /* Pulgar (elemento arrastrable) ahora es Gris sutil */
+        background: #D1D5DB; /* Gris sutil */
         border-radius: 10px;
       }
       .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: #d96319; /* darker orange */
+        /* Al hacer hover, toma el tono de acento Salmón */
+        background: #FFF5F2; /* iange-salmon */
       }
 </style>
 <link rel="stylesheet" href="/index.css">

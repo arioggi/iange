@@ -3,6 +3,38 @@ import { Propiedad, Propietario, User, ChecklistStatus, KycData } from '../../ty
 import { FLUJO_PROGRESO } from '../../constants';
 import KycPldForm from './KycPldForm';
 
+// === COMPONENTES REUSABLES AÑADIDOS/MEJORADOS ===
+
+const LabeledInput: React.FC<{ label: string; name: string; value: string | number; onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void; type?: string; placeholder?: string; }> = ({ label, name, value, onChange, type = 'text', placeholder }) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <input 
+            type={type} 
+            name={name} 
+            id={name} 
+            value={value || ''} 
+            onChange={onChange} 
+            placeholder={placeholder} 
+            className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500 focus:ring-iange-orange focus:border-iange-orange sm:text-sm" 
+        />
+    </div>
+);
+
+const LabeledSelect: React.FC<{ label: string; name: string; value: string | number; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; children: React.ReactNode }> = ({ label, name, value, onChange, children }) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <select 
+            name={name} 
+            id={name} 
+            value={String(value || '')} 
+            onChange={onChange} 
+            className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500 focus:ring-iange-orange focus:border-iange-orange sm:text-sm"
+        >
+            {children}
+        </select>
+    </div>
+);
+
 // Helper: Calculate progress percentage from checklist status
 const totalChecklistItems = FLUJO_PROGRESO.reduce((acc, etapa) => acc + etapa.items.length, 0);
 const calculateProgress = (checklist: ChecklistStatus): number => {
@@ -51,12 +83,22 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
     const [activeTab, setActiveTab] = useState(viewMode === 'progressOnly' ? TABS[2] : TABS[0]);
     const [editedPropiedad, setEditedPropiedad] = useState<Propiedad>(propiedad);
     const [editedPropietario, setEditedPropietario] = useState<Propietario>(propietario);
-    const [photos, setPhotos] = useState<File[]>(propiedad.fotos || []);
+    
+    // Inicializar fotos con la combinación de URLs existentes y fotos locales
+    const [photos, setPhotos] = useState<Array<File | string>>([
+        ...(propiedad.imageUrls || []), 
+        ...(propiedad.fotos || []),
+    ]);
 
     useEffect(() => {
         setEditedPropiedad(propiedad);
         setEditedPropietario(propietario);
-        setPhotos(propiedad.fotos || []);
+        
+        // Sincronizar el estado 'photos' con las URLs y objetos File al cargar
+        setPhotos([
+            ...(propiedad.imageUrls || []), 
+            ...(propiedad.fotos || []), 
+        ]);
     }, [propiedad, propietario]);
     
     // --- Photo Management ---
@@ -76,10 +118,12 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                 }
             }
             
-            setPhotos(prev => [...prev, ...validFiles]);
+            // Añadimos solo los nuevos objetos File al estado existente
+            setPhotos(prev => [...prev, ...validFiles]); 
         }
     };
     
+    // Función para eliminar fotos
     const removePhoto = (indexToRemove: number) => {
         setPhotos(prev => prev.filter((_, index) => index !== indexToRemove));
     };
@@ -94,7 +138,11 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
 
         if (numericFields.includes(name)) {
             const numericValue = parseFloat(value);
-            setEditedPropiedad(prev => ({ ...prev, [name]: isNaN(numericValue) ? 0 : numericValue }));
+            if (name === 'asesorId') {
+                 setEditedPropiedad(prev => ({ ...prev, [name]: value === '0' ? 0 : value }));
+            } else {
+                 setEditedPropiedad(prev => ({ ...prev, [name]: isNaN(numericValue) ? 0 : numericValue }));
+            }
         } else {
             setEditedPropiedad(prev => ({ ...prev, [name]: value }));
         }
@@ -119,7 +167,14 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
     };
 
     const handleFinalSave = () => {
-        const finalPropiedad = { ...editedPropiedad, fotos: photos };
+        const existingImageUrls = photos.filter(f => typeof f === 'string') as string[];
+        const newFilesToUpload = photos.filter(f => f instanceof File) as File[];
+
+        const finalPropiedad = { 
+            ...editedPropiedad, 
+            fotos: newFilesToUpload,
+            imageUrls: existingImageUrls,
+        };
         onSave(finalPropiedad, editedPropietario);
     };
     
@@ -168,35 +223,35 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
         <div className="space-y-6">
             {/* Address */}
             <section>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dirección</h3>
+                <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dirección del Inmueble</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input name="calle" value={editedPropiedad.calle} onChange={handlePropiedadChange} placeholder="Calle" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="numero_exterior" value={editedPropiedad.numero_exterior || ''} onChange={handlePropiedadChange} placeholder="Número exterior" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="colonia" value={editedPropiedad.colonia} onChange={handlePropiedadChange} placeholder="Colonia" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="municipio" value={editedPropiedad.municipio} onChange={handlePropiedadChange} placeholder="Municipio" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="estado" value={editedPropiedad.estado} onChange={handlePropiedadChange} placeholder="Estado" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="codigo_postal" value={editedPropiedad.codigo_postal} onChange={handlePropiedadChange} placeholder="Código Postal" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                    <LabeledInput label="Calle" name="calle" value={editedPropiedad.calle} onChange={handlePropiedadChange} placeholder="Ej. Av. Fundidora" />
+                    <LabeledInput label="Número exterior" name="numero_exterior" value={editedPropiedad.numero_exterior || ''} onChange={handlePropiedadChange} placeholder="Ej. 501" />
+                    <LabeledInput label="Colonia" name="colonia" value={editedPropiedad.colonia} onChange={handlePropiedadChange} placeholder="Ej. Obrera" />
+                    <LabeledInput label="Municipio / Alcaldía" name="municipio" value={editedPropiedad.municipio} onChange={handlePropiedadChange} placeholder="Ej. Monterrey" />
+                    <LabeledInput label="Estado" name="estado" value={editedPropiedad.estado} onChange={handlePropiedadChange} placeholder="Ej. Nuevo León" />
+                    <LabeledInput label="Código Postal" name="codigo_postal" value={editedPropiedad.codigo_postal} onChange={handlePropiedadChange} placeholder="Ej. 64010" />
                 </div>
             </section>
             {/* Dimensions & Distribution */}
              <section>
                 <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dimensiones y Distribución</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <input name="terreno_m2" value={editedPropiedad.terreno_m2 || ''} onChange={handlePropiedadChange} placeholder="Terreno m²" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="construccion_m2" value={editedPropiedad.construccion_m2 || ''} onChange={handlePropiedadChange} placeholder="Construcción m²" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="recamaras" type="number" min="0" value={editedPropiedad.recamaras || ''} onChange={handlePropiedadChange} placeholder="Recámaras" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="banos_completos" type="number" min="0" value={editedPropiedad.banos_completos || ''} onChange={handlePropiedadChange} placeholder="Baños completos" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="medios_banos" type="number" min="0" value={editedPropiedad.medios_banos || ''} onChange={handlePropiedadChange} placeholder="Medios baños" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="cochera_autos" type="number" min="0" value={editedPropiedad.cochera_autos || ''} onChange={handlePropiedadChange} placeholder="Cochera (autos)" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                    <LabeledInput label="Terreno (m²)" name="terreno_m2" value={editedPropiedad.terreno_m2 || ''} onChange={handlePropiedadChange} placeholder="120" />
+                    <LabeledInput label="Construcción (m²)" name="construccion_m2" value={editedPropiedad.construccion_m2 || ''} onChange={handlePropiedadChange} placeholder="150" />
+                    <LabeledInput label="Recámaras" name="recamaras" type="number" value={editedPropiedad.recamaras || ''} onChange={handlePropiedadChange} placeholder="3" />
+                    <LabeledInput label="Baños completos" name="banos_completos" type="number" value={editedPropiedad.banos_completos || ''} onChange={handlePropiedadChange} placeholder="2" />
+                    <LabeledInput label="Medios baños" name="medios_banos" type="number" value={editedPropiedad.medios_banos || ''} onChange={handlePropiedadChange} placeholder="1" />
+                    <LabeledInput label="Cochera (autos)" name="cochera_autos" type="number" value={editedPropiedad.cochera_autos || ''} onChange={handlePropiedadChange} placeholder="2" />
                 </div>
             </section>
             {/* Commission */}
             <section>
                 <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Comisión</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
-                    <input name="comisionOficina" type="number" min="0" value={editedPropiedad.comisionOficina || ''} onChange={handlePropiedadChange} placeholder="Comisión Oficina" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="comisionAsesor" type="number" min="0" value={editedPropiedad.comisionAsesor || ''} onChange={handlePropiedadChange} placeholder="Comisión Asesor/a" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                    <input name="comisionCompartida" type="number" min="0" value={editedPropiedad.comisionCompartida || ''} onChange={handlePropiedadChange} placeholder="Comisión Compartida" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                    <LabeledInput label="Comisión Oficina" name="comisionOficina" type="number" value={editedPropiedad.comisionOficina || ''} onChange={handlePropiedadChange} placeholder="25000" />
+                    <LabeledInput label="Comisión Asesor/a" name="comisionAsesor" type="number" value={editedPropiedad.comisionAsesor || ''} onChange={handlePropiedadChange} placeholder="25000" />
+                    <LabeledInput label="Comisión Compartida" name="comisionCompartida" type="number" value={editedPropiedad.comisionCompartida || ''} onChange={handlePropiedadChange} placeholder="50000" />
                     <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Total</label>
                         <p className="w-full px-3 py-2 bg-gray-100 border rounded-md text-gray-800 font-bold">
@@ -209,43 +264,84 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
              <section>
                  <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Detalles Adicionales</h3>
                 <div className="space-y-4">
-                    <textarea name="descripcion_breve" value={editedPropiedad.descripcion_breve || ''} onChange={handlePropiedadChange} rows={3} placeholder="Descripción breve..." className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                    <div className="md:col-span-2">
+                         <label htmlFor="descripcion_breve" className="block text-sm font-medium text-gray-700 mb-1">Descripción breve</label>
+                         <textarea id="descripcion_breve" name="descripcion_breve" value={editedPropiedad.descripcion_breve || ''} onChange={handlePropiedadChange} rows={3} placeholder="Descripción breve..." className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500 focus:ring-iange-orange focus:border-iange-orange sm:text-sm" />
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <input name="valor_operacion" value={editedPropiedad.valor_operacion || ''} onChange={handlePropiedadChange} placeholder="Valor de operación (MXN)" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                         <select name="asesorId" value={editedPropiedad.asesorId} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md">
+                         <LabeledInput label="Valor de la operación (MXN)" name="valor_operacion" value={editedPropiedad.valor_operacion || ''} onChange={handlePropiedadChange} placeholder="2,500,000" />
+                         <LabeledSelect label="Asesor/a Asignado/a" name="asesorId" value={editedPropiedad.asesorId} onChange={handlePropiedadChange as any}>
                             <option value={0}>Seleccione un asesor</option>
                             {asesores.map(asesor => (
-                                <option key={asesor.id} value={asesor.id}>{asesor.name}</option>
+                                <option key={asesor.id} value={String(asesor.id)}>{asesor.name}</option>
                             ))}
-                        </select>
+                        </LabeledSelect>
+                    </div>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                         <LabeledSelect label="Tipo de Inmueble" name="tipo_inmueble" value={editedPropiedad.tipo_inmueble} onChange={handlePropiedadChange as any}>
+                            <option>Casa</option>
+                            <option>Departamento</option>
+                            <option>Terreno</option>
+                            <option>Local Comercial</option>
+                            <option>Oficina</option>
+                        </LabeledSelect>
+                         <LabeledSelect label="Fuente de Captación" name="fuente_captacion" value={editedPropiedad.fuente_captacion} onChange={handlePropiedadChange as any}>
+                            <option>Portal Web</option>
+                            <option>Recomendación</option>
+                            <option>Redes Sociales</option>
+                            <option>Otro</option>
+                        </LabeledSelect>
                     </div>
                 </div>
             </section>
-            {/* Photos */}
+            
+            {/* Photos (Galería Interactiva con Eliminación Mejorada) */}
              <section>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Fotografías</h3>
-                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+                <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Fotografías ({photos.length})</h3>
+                <p className="text-sm text-gray-600 my-2">La primera foto será la portada. Haz clic en '×' para eliminar una foto (el cambio se guardará al presionar "Guardar Cambios").</p>
+                
+                {/* Visualización de Galería Horizontal */}
+                {photos.length > 0 && (
+                    <div className="flex space-x-3 overflow-x-auto pb-4 custom-scrollbar">
+                        {photos.map((file, index) => {
+                             const imageUrl = file instanceof File ? URL.createObjectURL(file) : file;
+                             return (
+                                 <div 
+                                     key={index} 
+                                     className={`relative flex-shrink-0 w-32 h-24 rounded-md overflow-hidden group border ${index === 0 ? 'border-2 border-iange-orange' : 'border-gray-200'}`}
+                                 >
+                                    <img src={imageUrl} alt={`preview ${index}`} className="w-full h-full object-cover" />
+                                    {index === 0 && <div className="absolute top-0 left-0 bg-iange-orange text-white text-xs font-bold px-1 rounded-br-md">Portada</div>}
+                                    
+                                    {/* Botón de Eliminar CORREGIDO: Gris, más grande y centrado */}
+                                    <button 
+                                        type="button"
+                                        onClick={() => removePhoto(index)} 
+                                        className="absolute top-1 right-1 bg-gray-500 text-white rounded-full h-7 w-7 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-700 z-10"
+                                        title="Eliminar foto"
+                                    >
+                                        <span className="text-xl font-bold leading-none pb-1">&times;</span>
+                                    </button>
+                                 </div>
+                             );
+                        })}
+                    </div>
+                )}
+                
+                {/* Zona de Arrastrar y Soltar para Añadir */}
+                 <div className="mt-4 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
                     <div className="space-y-1 text-center">
                         <PhotoIcon />
-                        <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-iange-orange hover:text-orange-500">
-                            <span>Añadir fotos</span>
-                            <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/*" onChange={handlePhotoChange} />
-                        </label>
+                        <div className="flex text-sm text-gray-600">
+                            <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-iange-orange hover:text-orange-500 focus-within:outline-none">
+                                <span>Añadir fotos</span>
+                                <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/*" onChange={handlePhotoChange} />
+                            </label>
+                             <p className="pl-1">o arrástralos aquí</p>
+                        </div>
+                         <p className="text-xs text-gray-500">Imágenes hasta 5MB</p>
                     </div>
                 </div>
-             {photos.length > 0 && (
-                <div className="mt-4">
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4 mt-2">
-                        {photos.map((file, index) => (
-                            <div key={index} className={`relative group ${index === 0 ? 'border-2 border-iange-orange p-1 rounded-md' : ''}`}>
-                                <img src={URL.createObjectURL(file)} alt={`preview ${index}`} className="h-24 w-full object-cover rounded-md" />
-                                {index === 0 && <div className="absolute top-0 left-0 bg-iange-orange text-white text-xs px-1 rounded-br-md">Portada</div>}
-                                <button onClick={() => removePhoto(index)} className="absolute top-0 right-0 m-1 bg-red-600 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
             </section>
         </div>
     );

@@ -184,7 +184,7 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
     const handlePropiedadChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         
-        // CORRECCIÓN: 'asesorId' eliminado de la lista de campos numéricos
+        // El campo 'asesorId' no debe estar en numericFields
         const numericFields = [
             'recamaras', 'banos_completos', 'medios_banos', 'cochera_autos',
             'comisionOficina', 'comisionAsesor', 'comisionCompartida'
@@ -267,6 +267,7 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
 
     return (
         <div>
+            {/* Sección de pestañas sin padding */}
             <div className="border-b border-gray-200 mb-6">
                 <nav className="-mb-px flex space-x-8" aria-label="Tabs">
                     {TABS.map((tab) => (
@@ -285,196 +286,201 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                 </nav>
             </div>
 
-            {activeTab === 'Datos de la Propiedad' && (
-                <div className="space-y-6">
-                    <section>
-                        <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dirección del Inmueble</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                               <label htmlFor="calle" className="block text-sm font-medium text-gray-700 mb-1">Calle</label>
-                               <input id="calle" name="calle" value={propiedadData.calle} onChange={handlePropiedadChange} placeholder="Ej. Av. Fundidora" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                            </div>
-                             <div>
-                                <label htmlFor="numero_exterior" className="block text-sm font-medium text-gray-700 mb-1">Número exterior</label>
-                                <input id="numero_exterior" name="numero_exterior" value={propiedadData.numero_exterior || ''} onChange={handlePropiedadChange} placeholder="Ej. 501" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                            </div>
-                             <div>
-                                <label htmlFor="colonia" className="block text-sm font-medium text-gray-700 mb-1">Colonia</label>
-                                <input id="colonia" name="colonia" value={propiedadData.colonia} onChange={handlePropiedadChange} placeholder="Ej. Obrera" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                            </div>
-                             <div>
-                                <label htmlFor="municipio" className="block text-sm font-medium text-gray-700 mb-1">Municipio / Alcaldía</label>
-                                <input id="municipio" name="municipio" value={propiedadData.municipio} onChange={handlePropiedadChange} placeholder="Ej. Monterrey" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                            </div>
-                            <div>
-                                <label htmlFor="estado" className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-                                <input id="estado" name="estado" value={propiedadData.estado} onChange={handlePropiedadChange} placeholder="Ej. Nuevo León" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                            </div>
-                            <div>
-                                <label htmlFor="codigo_postal" className="block text-sm font-medium text-gray-700 mb-1">Código Postal</label>
-                                <input id="codigo_postal" name="codigo_postal" value={propiedadData.codigo_postal} onChange={handlePropiedadChange} placeholder="Ej. 64010" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                            </div>
-                        </div>
-                    </section>
+            {/* Contenedor principal del contenido con scrollbar y padding horizontal uniforme (px-4) */}
+            <div className="max-h-[70vh] overflow-y-auto px-4 custom-scrollbar">
 
-                     {/* Sección de Dimensiones */}
-                    <section>
-                        <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dimensiones</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div>
-                                <label htmlFor="terreno_m2" className="block text-sm font-medium text-gray-700 mb-1">Terreno (m²)</label>
-                                <input id="terreno_m2" name="terreno_m2" value={propiedadData.terreno_m2} onChange={handlePropiedadChange} placeholder="Ej. 200" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                           </div>
-                           <div>
-                                <label htmlFor="construccion_m2" className="block text-sm font-medium text-gray-700 mb-1">Construcción (m²)</label>
-                                <input id="construccion_m2" name="construccion_m2" value={propiedadData.construccion_m2} onChange={handlePropiedadChange} placeholder="Ej. 180" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                           </div>
-                        </div>
-                    </section>
-                    
-                    {/* Sección de Distribución */}
-                    <section>
-                        <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Distribución</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                           <div>
-                                <label htmlFor="recamaras" className="block text-sm font-medium text-gray-700 mb-1">Recámaras</label>
-                                <input id="recamaras" name="recamaras" type="number" min="0" value={propiedadData.recamaras} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                           </div>
-                           <div>
-                                <label htmlFor="banos_completos" className="block text-sm font-medium text-gray-700 mb-1">Baños completos</label>
-                                <input id="banos_completos" name="banos_completos" type="number" min="0" value={propiedadData.banos_completos} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                           </div>
-                           <div>
-                                <label htmlFor="medios_banos" className="block text-sm font-medium text-gray-700 mb-1">Medios baños</label>
-                                <input id="medios_banos" name="medios_banos" type="number" min="0" value={propiedadData.medios_banos} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                           </div>
-                           <div>
-                                <label htmlFor="cochera_autos" className="block text-sm font-medium text-gray-700 mb-1">Cochera (autos)</label>
-                                <input id="cochera_autos" name="cochera_autos" type="number" min="0" value={propiedadData.cochera_autos} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                           </div>
-                        </div>
-                    </section>
-                    
-                     {/* Sección de Comisión */}
-                    <section>
-                        <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Comisión</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
-                            <div>
-                                <label htmlFor="comisionOficina" className="block text-sm font-medium text-gray-700 mb-1">Comisión Oficina</label>
-                                <input id="comisionOficina" name="comisionOficina" type="number" min="0" value={propiedadData.comisionOficina} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                            </div>
-                            <div>
-                                <label htmlFor="comisionAsesor" className="block text-sm font-medium text-gray-700 mb-1">Comisión Asesor/a</label>
-                                <input id="comisionAsesor" name="comisionAsesor" type="number" min="0" value={propiedadData.comisionAsesor} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                            </div>
-                            <div>
-                                <label htmlFor="comisionCompartida" className="block text-sm font-medium text-gray-700 mb-1">Comisión Compartida</label>
-                                <input id="comisionCompartida" name="comisionCompartida" type="number" min="0" value={propiedadData.comisionCompartida} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                            </div>
-                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Comisión Total</label>
-                                <p className="w-full px-3 py-2 bg-gray-100 border rounded-md text-gray-800 font-bold">
-                                    {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(comisionTotal)}
-                                </p>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* Sección de Detalles Adicionales */}
-                    <section>
-                        <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Detalles Adicionales</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label htmlFor="descripcion_breve" className="block text-sm font-medium text-gray-700 mb-1">Descripción breve (para ficha técnica)</label>
-                                <textarea id="descripcion_breve" name="descripcion_breve" value={propiedadData.descripcion_breve} onChange={handlePropiedadChange} rows={3} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                            </div>
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label htmlFor="valor_operacion" className="block text-sm font-medium text-gray-700 mb-1">Valor de la operación (MXN)</label>
-                                    <input id="valor_operacion" name="valor_operacion" value={propiedadData.valor_operacion} onChange={handlePropiedadChange} placeholder="Ej. 2500000" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                                </div>
-                                 <div>
-                                    <label htmlFor="fuente_captacion" className="block text-sm font-medium text-gray-700 mb-1">Fuente de Captación</label>
-                                    <select id="fuente_captacion" name="fuente_captacion" value={propiedadData.fuente_captacion} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md">
-                                        <option>Portal Web</option>
-                                        <option>Recomendación</option>
-                                        <option>Redes Sociales</option>
-                                        <option>Otro</option>
-                                    </select>
-                                </div>
-                            </div>
+                {activeTab === 'Datos de la Propiedad' && (
+                    <div className="space-y-6">
+                        <section>
+                            <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dirección del Inmueble</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label htmlFor="tipo_inmueble" className="block text-sm font-medium text-gray-700 mb-1">Tipo de Inmueble</label>
-                                    <select id="tipo_inmueble" name="tipo_inmueble" value={propiedadData.tipo_inmueble} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md">
-                                        <option>Casa</option>
-                                        <option>Departamento</option>
-                                        <option>Terreno</option>
-                                        <option>Local Comercial</option>
-                                        <option>Oficina</option>
-                                    </select>
+                                <label htmlFor="calle" className="block text-sm font-medium text-gray-700 mb-1">Calle</label>
+                                <input id="calle" name="calle" value={propiedadData.calle} onChange={handlePropiedadChange} placeholder="Ej. Av. Fundidora" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
                                 </div>
-                                 <div>
-                                    <label htmlFor="asesorId" className="block text-sm font-medium text-gray-700 mb-1">Asesor/a Asignado/a</label>
-                                    <select id="asesorId" name="asesorId" value={propiedadData.asesorId} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md">
-                                        <option value={0}>Seleccione un asesor</option>
-                                        {asesores.map(asesor => (
-                                            <option key={asesor.id} value={asesor.id}>{asesor.name}</option>
-                                        ))}
-                                    </select>
+                                <div>
+                                    <label htmlFor="numero_exterior" className="block text-sm font-medium text-gray-700 mb-1">Número exterior</label>
+                                    <input id="numero_exterior" name="numero_exterior" value={propiedadData.numero_exterior || ''} onChange={handlePropiedadChange} placeholder="Ej. 501" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                                </div>
+                                <div>
+                                    <label htmlFor="colonia" className="block text-sm font-medium text-gray-700 mb-1">Colonia</label>
+                                    <input id="colonia" name="colonia" value={propiedadData.colonia} onChange={handlePropiedadChange} placeholder="Ej. Obrera" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                                </div>
+                                <div>
+                                    <label htmlFor="municipio" className="block text-sm font-medium text-gray-700 mb-1">Municipio / Alcaldía</label>
+                                    <input id="municipio" name="municipio" value={propiedadData.municipio} onChange={handlePropiedadChange} placeholder="Ej. Monterrey" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                                </div>
+                                <div>
+                                    <label htmlFor="estado" className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                                    <input id="estado" name="estado" value={propiedadData.estado} onChange={handlePropiedadChange} placeholder="Ej. Nuevo León" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                                </div>
+                                <div>
+                                    <label htmlFor="codigo_postal" className="block text-sm font-medium text-gray-700 mb-1">Código Postal</label>
+                                    <input id="codigo_postal" name="codigo_postal" value={propiedadData.codigo_postal} onChange={handlePropiedadChange} placeholder="Ej. 64010" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
                                 </div>
                             </div>
-                        </div>
-                    </section>
+                        </section>
 
-                    {/* Sección de Fotos */}
-                    <section>
-                        <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Fotografías del Inmueble</h3>
-                        <p className="text-sm text-gray-600 my-2">La primera foto será la portada. Sube un mínimo de 1. Sugerimos 12 para una mejor presentación.</p>
-                         <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
-                            <div className="space-y-1 text-center">
-                                <PhotoIcon />
-                                <div className="flex text-sm text-gray-600">
-                                    <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-iange-orange hover:text-orange-500 focus-within:outline-none">
-                                        <span>Selecciona tus archivos</span>
-                                        <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/*" onChange={handlePhotoChange} />
-                                    </label>
-                                    <p className="pl-1">o arrástralos aquí</p>
-                                </div>
-                                <p className="text-xs text-gray-500">Imágenes hasta 5MB</p>
+                        {/* Sección de Dimensiones */}
+                        <section>
+                            <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dimensiones</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                    <label htmlFor="terreno_m2" className="block text-sm font-medium text-gray-700 mb-1">Terreno (m²)</label>
+                                    <input id="terreno_m2" name="terreno_m2" value={propiedadData.terreno_m2} onChange={handlePropiedadChange} placeholder="Ej. 200" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
                             </div>
-                        </div>
-                     {photos.length > 0 && (
-                        <div className="mt-4">
-                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4 mt-2">
-                                {photos.map((file, index) => (
-                                    <div key={URL.createObjectURL(file)} className={`relative group ${index === 0 ? 'border-2 border-iange-orange rounded-md p-1' : ''}`}>
-                                        <img src={URL.createObjectURL(file)} alt={`preview ${index}`} className="h-24 w-full object-cover rounded-md" />
-                                        {index === 0 && <div className="absolute top-0 left-0 bg-iange-orange text-white text-xs font-bold px-1 rounded-br-md">Portada</div>}
-                                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center transition-opacity">
-                                            <button onClick={() => removePhoto(index)} className="text-white text-3xl opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
-                                        </div>
+                            <div>
+                                    <label htmlFor="construccion_m2" className="block text-sm font-medium text-gray-700 mb-1">Construcción (m²)</label>
+                                    <input id="construccion_m2" name="construccion_m2" value={propiedadData.construccion_m2} onChange={handlePropiedadChange} placeholder="Ej. 180" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                            </div>
+                            </div>
+                        </section>
+                        
+                        {/* Sección de Distribución */}
+                        <section>
+                            <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Distribución</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                    <label htmlFor="recamaras" className="block text-sm font-medium text-gray-700 mb-1">Recámaras</label>
+                                    <input id="recamaras" name="recamaras" type="number" min="0" value={propiedadData.recamaras} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                            </div>
+                            <div>
+                                    <label htmlFor="banos_completos" className="block text-sm font-medium text-gray-700 mb-1">Baños completos</label>
+                                    <input id="banos_completos" name="banos_completos" type="number" min="0" value={propiedadData.banos_completos} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                            </div>
+                            <div>
+                                    <label htmlFor="medios_banos" className="block text-sm font-medium text-gray-700 mb-1">Medios baños</label>
+                                    <input id="medios_banos" name="medios_banos" type="number" min="0" value={propiedadData.medios_banos} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                            </div>
+                            <div>
+                                    <label htmlFor="cochera_autos" className="block text-sm font-medium text-gray-700 mb-1">Cochera (autos)</label>
+                                    <input id="cochera_autos" name="cochera_autos" type="number" min="0" value={propiedadData.cochera_autos} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                            </div>
+                            </div>
+                        </section>
+                        
+                        {/* Sección de Comisión */}
+                        <section>
+                            <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Comisión</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                                <div>
+                                    <label htmlFor="comisionOficina" className="block text-sm font-medium text-gray-700 mb-1">Comisión Oficina</label>
+                                    <input id="comisionOficina" name="comisionOficina" type="number" min="0" value={propiedadData.comisionOficina} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                                </div>
+                                <div>
+                                    <label htmlFor="comisionAsesor" className="block text-sm font-medium text-gray-700 mb-1">Comisión Asesor/a</label>
+                                    <input id="comisionAsesor" name="comisionAsesor" type="number" min="0" value={propiedadData.comisionAsesor} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                                </div>
+                                <div>
+                                    <label htmlFor="comisionCompartida" className="block text-sm font-medium text-gray-700 mb-1">Comisión Compartida</label>
+                                    <input id="comisionCompartida" name="comisionCompartida" type="number" min="0" value={propiedadData.comisionCompartida} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Comisión Total</label>
+                                    <p className="w-full px-3 py-2 bg-gray-100 border rounded-md text-gray-800 font-bold">
+                                        {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(comisionTotal)}
+                                    </p>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Sección de Detalles Adicionales */}
+                        <section>
+                            <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Detalles Adicionales</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label htmlFor="descripcion_breve" className="block text-sm font-medium text-gray-700 mb-1">Descripción breve (para ficha técnica)</label>
+                                    <textarea id="descripcion_breve" name="descripcion_breve" value={propiedadData.descripcion_breve} onChange={handlePropiedadChange} rows={3} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label htmlFor="valor_operacion" className="block text-sm font-medium text-gray-700 mb-1">Valor de la operación (MXN)</label>
+                                        <input id="valor_operacion" name="valor_operacion" value={propiedadData.valor_operacion} onChange={handlePropiedadChange} placeholder="Ej. 2500000" className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
                                     </div>
-                                ))}
+                                    <div>
+                                        <label htmlFor="fuente_captacion" className="block text-sm font-medium text-gray-700 mb-1">Fuente de Captación</label>
+                                        <select id="fuente_captacion" name="fuente_captacion" value={propiedadData.fuente_captacion} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md">
+                                            <option>Portal Web</option>
+                                            <option>Recomendación</option>
+                                            <option>Redes Sociales</option>
+                                            <option>Otro</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label htmlFor="tipo_inmueble" className="block text-sm font-medium text-gray-700 mb-1">Tipo de Inmueble</label>
+                                        <select id="tipo_inmueble" name="tipo_inmueble" value={propiedadData.tipo_inmueble} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md">
+                                            <option>Casa</option>
+                                            <option>Departamento</option>
+                                            <option>Terreno</option>
+                                            <option>Local Comercial</option>
+                                            <option>Oficina</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label htmlFor="asesorId" className="block text-sm font-medium text-gray-700 mb-1">Asesor/a Asignado/a</label>
+                                        <select id="asesorId" name="asesorId" value={propiedadData.asesorId} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md">
+                                            <option value={0}>Seleccione un asesor</option>
+                                            {asesores.map(asesor => (
+                                                <option key={asesor.id} value={asesor.id}>{asesor.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    )}
-                    </section>
-                </div>
-            )}
+                        </section>
 
-            {activeTab === 'Datos del Propietario' && (
-                <KycPldForm 
-                    formData={propietarioData}
-                    onFormChange={setPropietarioData}
-                    onSave={handleSavePropietario}
-                    onCancel={()=>{}} 
-                    userType="Propietario" 
-                    isEmbedded={true}
-                />
-            )}
+                        {/* Sección de Fotos (Galería/Grid) */}
+                        <section>
+                            <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Fotografías del Inmueble</h3>
+                            <p className="text-sm text-gray-600 my-2">La primera foto será la portada. Sube un mínimo de 1. Sugerimos 12 para una mejor presentación.</p>
+                            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+                                <div className="space-y-1 text-center">
+                                    <PhotoIcon />
+                                    <div className="flex text-sm text-gray-600">
+                                        <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-iange-orange hover:text-orange-500 focus-within:outline-none">
+                                            <span>Selecciona tus archivos</span>
+                                            <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/*" onChange={handlePhotoChange} />
+                                        </label>
+                                        <p className="pl-1">o arrástralos aquí</p>
+                                    </div>
+                                    <p className="text-xs text-gray-500">Imágenes hasta 5MB</p>
+                                </div>
+                            </div>
+                        {photos.length > 0 && (
+                            <div className="mt-4">
+                                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4 mt-2">
+                                    {photos.map((file, index) => (
+                                        <div key={URL.createObjectURL(file)} className={`relative group ${index === 0 ? 'border-2 border-iange-orange rounded-md p-1' : ''}`}>
+                                            <img src={URL.createObjectURL(file)} alt={`preview ${index}`} className="h-24 w-full object-cover rounded-md" />
+                                            {index === 0 && <div className="absolute top-0 left-0 bg-iange-orange text-white text-xs font-bold px-1 rounded-br-md">Portada</div>}
+                                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center transition-opacity">
+                                                <button onClick={() => removePhoto(index)} className="text-white text-3xl opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        </section>
+                    </div>
+                )}
 
-            <div className="flex justify-end mt-8 space-x-4 pt-4 border-t">
+                {activeTab === 'Datos del Propietario' && (
+                    <KycPldForm 
+                        formData={propietarioData}
+                        onFormChange={setPropietarioData}
+                        onSave={handleSavePropietario}
+                        onCancel={()=>{}} 
+                        userType="Propietario" 
+                        isEmbedded={true}
+                    />
+                )}
+            </div>
+            {/* Fin Contenedor principal del contenido */}
+
+            <div className="flex justify-end mt-8 space-x-4 pt-4 border-t px-4">
                  <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-800 py-2 px-6 rounded-md hover:bg-gray-300">
                     Cancelar
                 </button>
