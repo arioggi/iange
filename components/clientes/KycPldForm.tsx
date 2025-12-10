@@ -11,10 +11,10 @@ const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ t
     </section>
 );
 
-const Input: React.FC<{ label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; type?: string; fullWidth?: boolean }> = ({ label, name, value, onChange, type = 'text', fullWidth }) => (
+const Input: React.FC<{ label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; type?: string; fullWidth?: boolean; placeholder?: string }> = ({ label, name, value, onChange, type = 'text', fullWidth, placeholder }) => (
     <div className={fullWidth ? 'md:col-span-2' : ''}>
         <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <input type={type} name={name} id={name} value={value} onChange={onChange} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-iange-orange focus:border-iange-orange sm:text-sm placeholder-gray-500 text-gray-900" />
+        <input type={type} name={name} id={name} value={value} onChange={onChange} placeholder={placeholder} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-iange-orange focus:border-iange-orange sm:text-sm placeholder-gray-500 text-gray-900" />
     </div>
 );
 
@@ -213,6 +213,38 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                             )}
                         </div>
                     </FormSection>
+                )}
+
+                {/* --- SECCIÓN DE CITA (AHORA SIEMPRE VISIBLE PARA COMPRADORES) --- */}
+                {userType === 'Comprador' && (
+                    <div className="bg-blue-50 p-4 rounded-md border border-blue-200 mb-6 animate-fade-in-down">
+                        <h3 className="text-blue-800 font-bold text-sm uppercase mb-3 flex items-center gap-2">
+                            📅 Agendar Visita / Cita
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <Input 
+                                label="Fecha" 
+                                name="fechaCita" 
+                                type="date" 
+                                value={formData.fechaCita || ''} 
+                                onChange={handleChange} 
+                            />
+                            <Input 
+                                label="Hora" 
+                                name="horaCita" 
+                                type="time" 
+                                value={formData.horaCita || ''} 
+                                onChange={handleChange} 
+                            />
+                            <Input 
+                                label="Notas de la visita" 
+                                name="notasCita" 
+                                value={formData.notasCita || ''} 
+                                onChange={handleChange} 
+                                placeholder="Ej. Interesado en el patio..."
+                            />
+                        </div>
+                    </div>
                 )}
                 
                 {/* ... RESTO DEL FORMULARIO SIN CAMBIOS ... */}

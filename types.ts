@@ -37,22 +37,18 @@ export interface Oportunidad {
   validacionComprador: Validacion;
 }
 
-// --- ACTUALIZACIÓN DE PERMISOS ---
-// Se eliminaron 'operaciones' y 'documentosKyc'.
-// Se agregaron 'dashboard' y 'progreso' para tener control granular.
 export interface UserPermissions {
-  dashboard: boolean;    // 1. Dashboard
-  contactos: boolean;    // 2. Alta de Clientes
-  propiedades: boolean;  // 3. Catálogo
-  progreso: boolean;     // 4. Progreso de Ventas
-  reportes: boolean;     // 5. Reportes
-  crm: boolean;          // 6. CRM
-  equipo: boolean;       // Extra: Configuración de Personal
+  dashboard: boolean;
+  contactos: boolean;
+  propiedades: boolean;
+  progreso: boolean;
+  reportes: boolean;
+  crm: boolean;
+  equipo: boolean;
 }
 
-// --- ACTUALIZACIÓN CLAVE: IDs AHORA SON STRING | NUMBER ---
 export interface User {
-  id: number | string; // <--- CAMBIO AQUÍ (Soporta UUID de Supabase)
+  id: number | string;
   photo: string;
   name: string;
   email: string;
@@ -98,10 +94,10 @@ export interface Visita {
 }
 
 export interface Propiedad {
-  id: number; // Las propiedades locales siguen siendo number por ahora
+  id: number;
   propietarioId: number;
   compradorId?: number | null;
-  asesorId: number | string; // <--- CAMBIO AQUÍ (El asesor puede venir de Supabase)
+  asesorId: number | string;
   calle: string;
   numero_exterior: string;
   numero_interior?: string;
@@ -126,8 +122,8 @@ export interface Propiedad {
   forma_pago?: string;
   notas_adicionales?: string;
   ubicacion_destacada?: string;
-  fotos: File[]; // Archivos locales (durante la carga)
-  imageUrls?: string[]; // <--- NUEVO: URLs de Supabase Storage (para mostrar)
+  fotos: File[];
+  imageUrls?: string[];
   fecha_captacion: string;
   fecha_venta: string | null;
   fichaTecnicaPdf: string;
@@ -172,6 +168,11 @@ export interface KycData {
   esPep: boolean;
   pepNombre?: string;
   pepCargo?: string;
+  
+  // --- NUEVOS CAMPOS PARA CITAS ---
+  fechaCita?: string; // YYYY-MM-DD
+  horaCita?: string;  // HH:MM
+  notasCita?: string;
 }
 
 export interface Propietario extends KycData {
@@ -193,7 +194,7 @@ export interface CompanySettings {
 }
 
 export interface Tenant {
-  id: string; // Tenants siempre han sido string (uuid simulado o real)
+  id: string;
   nombre: string;
   ownerEmail: string;
   telefono?: string;
@@ -201,9 +202,8 @@ export interface Tenant {
   estado: 'Activo' | 'Suspendido';
 }
 
-// --- ACTUALIZACIÓN CLAVE: Empresa soporta string en ID ---
 export interface Empresa {
-  id: string | number; // <--- CAMBIO AQUÍ
+  id: string | number;
   nombre: string;
   ownerEmail: string;
   telefono: string;

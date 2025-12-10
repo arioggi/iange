@@ -1,11 +1,14 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Propiedad, Propietario, Visita, User } from '../types';
+import { Propiedad, Propietario, Visita, User, KycData } from '../types';
 import PropertyCard from '../components/catalogo/PropertyCard';
 import PropertyDetailModal from '../components/catalogo/PropertyDetailModal';
 import EditPropiedadForm from '../components/clientes/EditPropiedadForm';
+import KycPldForm from '../components/clientes/KycPldForm'; // <--- NUEVO IMPORT
 import Modal from '../components/ui/Modal';
 import { SparklesIcon, PencilIcon } from '../components/Icons';
+import { initialKycState } from '../constants'; // <--- NUEVO IMPORT
+import { createContact, assignBuyerToProperty } from '../Services/api'; // <--- NUEVOS IMPORTS
 
 // ==========================================
 // COMPONENTE: MODAL FULL SCREEN (LIMPIO)
@@ -29,10 +32,9 @@ const ModalParaFotos: React.FC<{ isOpen: boolean; onClose: () => void; children:
 
     return createPortal(
         <div 
-            className="fixed inset-0 z-[99999] flex justify-center items-center bg-black bg-opacity-90 backdrop-blur-sm p-2" // p-2: Padding mínimo
+            className="fixed inset-0 z-[99999] flex justify-center items-center bg-black bg-opacity-90 backdrop-blur-sm p-2"
             onClick={onClose}
         >
-            {/* Estilos para ocultar la barra de scroll visualmente pero mantener la funcionalidad */}
             <style>{`
                 .hide-scrollbar::-webkit-scrollbar {
                     display: none;
@@ -45,15 +47,9 @@ const ModalParaFotos: React.FC<{ isOpen: boolean; onClose: () => void; children:
 
             <div 
                 ref={modalRef}
-                // AJUSTE: max-h-[98vh] aprovecha casi toda la altura de la pantalla
                 className="bg-white rounded-lg shadow-2xl w-full max-w-5xl h-auto max-h-[98vh] flex flex-col overflow-hidden relative"
                 onClick={(e) => e.stopPropagation()} 
             >
-                {/* ELIMINADO: El botón "X" flotante que estaba aquí se borró 
-                   para evitar duplicados, ya que el hijo (children) trae el suyo.
-                */}
-
-                {/* Contenido con scroll invisible */}
                 <div className="p-0 overflow-y-auto h-full bg-white hide-scrollbar">
                     {children}
                 </div>
@@ -70,9 +66,10 @@ interface CatalogoProps {
     onAddVisita: (propiedadId: number, visitaData: Omit<Visita, 'id' | 'fecha'>) => void;
     handleUpdatePropiedad: (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => void;
     showToast: (message: string, type?: 'success' | 'error') => void;
+    currentUser: User; // <--- AGREGADO: Necesario para saber el tenantId al crear contacto
 }
 
-const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores, onAddVisita, handleUpdatePropiedad, showToast }) => {
+const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores, onAddVisita, handleUpdatePropiedad, showToast, currentUser }) => {
     const [selectedPropiedad, setSelectedPropiedad] = useState<Propiedad | null>(null);
     const [isDetailModalOpen, setDetailModalOpen] = useState(false);
     const [isVisitaModalOpen, setVisitaModalOpen] = useState(false);
@@ -80,11 +77,12 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
-    const filteredAndSortedPropiedades = useMemo(() => {
-        // CORRECCIÓN APLICADA: Eliminamos el filtro de 'availableProps' para mostrar TODO (incluidas vendidas)
-        // const availableProps = propiedades.filter(p => p.status !== 'Vendida'); <-- LÍNEA ELIMINADA
+    // Estado para el formulario de nuevo interesado (KycPldForm)
+    const [nuevoInteresadoData, setNuevoInteresadoData] = useState<KycData>(initialKycState);
 
-        const filtered = propiedades.filter(prop => { // <-- Usamos 'propiedades' directamente
+    const filteredAndSortedPropiedades = useMemo(() => {
+        // Corrección del Paso 1 ya aplicada: No filtramos por status !== 'Vendida'
+        const filtered = propiedades.filter(prop => {
             const propietario = propietarios.find(p => p.id === prop.propietarioId);
             const searchString = `${prop.calle} ${prop.colonia} ${prop.municipio} ${propietario?.nombreCompleto || ''}`.toLowerCase();
             return searchString.includes(searchTerm.toLowerCase());
@@ -108,6 +106,8 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
 
     const handleAddVisitaClick = (propiedad: Propiedad) => {
         setSelectedPropiedad(propiedad);
+        // Reseteamos el formulario al abrir
+        setNuevoInteresadoData(initialKycState);
         setVisitaModalOpen(true);
     };
 
@@ -122,19 +122,29 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
         showToast('Propiedad actualizada con éxito.');
     };
 
-    const handleVisitaSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        if (!selectedPropiedad) return;
+    // --- NUEVA LÓGICA DE GUARDADO DE INTERÉS ---
+    const handleSaveInteresado = async (propiedadId?: number, tipoRelacion?: string) => {
+        if (!selectedPropiedad || !propiedadId || !currentUser.tenantId) {
+             if(!currentUser.tenantId) showToast('Error: No se identificó la empresa del usuario.', 'error');
+             return;
+        }
 
-        const formData = new FormData(e.currentTarget);
-        const visitaData: Omit<Visita, 'id' | 'fecha'> = {
-            nombre: formData.get('nombre') as string,
-            telefono: formData.get('telefono') as string,
-            email: formData.get('email') as string,
-            formaPago: formData.get('formaPago') as 'Contado' | 'Crédito Bancario' | 'Infonavit' | 'ISSSTE' | 'FOVISSSTE',
-        };
-        onAddVisita(selectedPropiedad.id, visitaData);
-        setVisitaModalOpen(false);
+        try {
+            // 1. Crear el Contacto (Comprador) en la base de datos
+            const newBuyer = await createContact(nuevoInteresadoData, currentUser.tenantId, 'comprador');
+            
+            // 2. Vincularlo a la propiedad como "Propuesta" (o lo que haya seleccionado)
+            // Nota: El form nos devuelve el tipoRelacion
+            await assignBuyerToProperty(newBuyer.id, propiedadId, (tipoRelacion || 'Propuesta de compra') as any);
+            
+            showToast('¡Interés registrado! Cliente creado y cita agendada.', 'success');
+            setVisitaModalOpen(false);
+            setNuevoInteresadoData(initialKycState);
+            
+        } catch (error: any) {
+            console.error(error);
+            showToast('Error al registrar: ' + error.message, 'error');
+        }
     };
 
     const selectedPropietario = selectedPropiedad ? propietarios.find(p => p.id === selectedPropiedad.propietarioId) : undefined;
@@ -224,36 +234,28 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
                 </Modal>
             )}
 
+            {/* MODAL DE INTERÉS ACTUALIZADO */}
             {selectedPropiedad && (
-                <Modal title={`Registrar Interés en ${selectedPropiedad.calle}`} isOpen={isVisitaModalOpen} onClose={() => setVisitaModalOpen(false)}>
-                    <form onSubmit={handleVisitaSubmit} className="space-y-4">
-                        <div>
-                            <label className="text-sm font-medium">Nombre del interesado</label>
-                            <input name="nombre" required className="w-full mt-1 p-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                        </div>
-                        <div>
-                            <label className="text-sm font-medium">Teléfono</label>
-                            <input name="telefono" type="tel" required className="w-full mt-1 p-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                        </div>
-                        <div>
-                            <label className="text-sm font-medium">Email</label>
-                            <input name="email" type="email" required className="w-full mt-1 p-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-                        </div>
-                         <div>
-                            <label className="text-sm font-medium">Forma de Pago Potencial</label>
-                             <select name="formaPago" required className="w-full mt-1 p-2 bg-gray-50 border rounded-md text-gray-900">
-                                 <option>Contado</option>
-                                 <option>Crédito Bancario</option>
-                                 <option>Infonavit</option>
-                                 <option>ISSSTE</option>
-                                 <option>FOVISSSTE</option>
-                             </select>
-                        </div>
-                         <div className="flex justify-end space-x-4 pt-4">
-                            <button type="button" onClick={() => setVisitaModalOpen(false)} className="bg-gray-200 py-2 px-4 rounded-md">Cancelar</button>
-                            <button type="submit" className="bg-iange-orange text-white py-2 px-4 rounded-md">Registrar Visita</button>
-                        </div>
-                    </form>
+                <Modal 
+                    title={`Registrar Interés en ${selectedPropiedad.calle}`} 
+                    isOpen={isVisitaModalOpen} 
+                    onClose={() => setVisitaModalOpen(false)}
+                    maxWidth="max-w-4xl" // Modal más ancho para el formulario completo
+                >
+                    <div className="p-1">
+                        <KycPldForm 
+                            formData={{
+                                ...nuevoInteresadoData,
+                                propiedadId: selectedPropiedad.id, // Pre-asignamos la propiedad
+                                tipoRelacion: 'Propuesta de compra' // Default
+                            }}
+                            onFormChange={setNuevoInteresadoData}
+                            onSave={handleSaveInteresado} // Conectamos a la nueva función
+                            onCancel={() => setVisitaModalOpen(false)}
+                            userType="Comprador"
+                            propiedades={propiedades} // Pasamos la lista para que funcione el select
+                        />
+                    </div>
                 </Modal>
             )}
         </div>

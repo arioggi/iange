@@ -81,6 +81,8 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
     const [editingCompradorData, setEditingCompradorData] = useState<KycData>(initialKycState);
     
     const [searchTerm, setSearchTerm] = useState('');
+    // Estado separado para búsqueda de clientes para no mezclar
+    const [clientSearchTerm, setClientSearchTerm] = useState(''); 
     const [isProcessing, setIsProcessing] = useState(false);
 
     const filteredPropiedades = useMemo(() => {
@@ -93,6 +95,15 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
             return searchString.includes(searchTerm.toLowerCase());
         });
     }, [searchTerm, propiedades, propietarios]);
+
+    // Filtrado de clientes
+    const filteredCompradores = useMemo(() => {
+        if (!clientSearchTerm) return compradores;
+        return compradores.filter(c => 
+            c.nombreCompleto.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+            c.email.toLowerCase().includes(clientSearchTerm.toLowerCase())
+        );
+    }, [clientSearchTerm, compradores]);
 
     // --- PROPIEDADES LOGIC ---
     const handleAddPropiedadPropietario = async (nuevaPropiedad: any, nuevoPropietario: any) => {
@@ -299,16 +310,26 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
             case 'Clientes':
                  return (
                     <div>
-                        <div className="flex justify-end mb-4">
-                            <button onClick={openCompradorModal} className="bg-iange-orange text-white py-2 px-4 rounded-md hover:bg-orange-600">
-                                Añadir Cliente Comprador
+                        {/* DISEÑO IDÉNTICO AL TAB ANTERIOR (Barra de búsqueda + Botón) */}
+                        <div className="flex justify-between items-center mb-4">
+                             <div className="relative flex-grow mr-4">
+                                <input
+                                    type="text"
+                                    placeholder="Buscar cliente..."
+                                    value={clientSearchTerm}
+                                    onChange={e => setClientSearchTerm(e.target.value)}
+                                    className="w-full max-w-md px-4 py-2 bg-gray-50 border rounded-md focus:outline-none focus:ring-2 focus:ring-iange-orange text-gray-900 placeholder-gray-500"
+                                />
+                            </div>
+                            <button onClick={openCompradorModal} className="bg-iange-orange text-white py-2 px-4 rounded-md hover:bg-orange-600 flex-shrink-0">
+                                Añadir Comprador
                             </button>
                         </div>
                         <CompradoresTable 
-                            compradores={compradores} 
+                            compradores={filteredCompradores} 
                             onEdit={handleEditCompradorClick} 
                             onDelete={handleDeleteCompradorClick} 
-                            propiedades={propiedades} // <--- Pasamos propiedades para ver la dirección en la tabla
+                            propiedades={propiedades}
                         />
                     </div>
                 );
@@ -357,7 +378,12 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
             </Modal>
 
              {/* Modal Alta Comprador */}
-             <Modal title="Añadir Nuevo Cliente Comprador" isOpen={isAddCompradorModalOpen} onClose={() => !isProcessing && setAddCompradorModalOpen(false)}>
+             <Modal 
+                title="Añadir Nuevo Cliente Comprador" 
+                isOpen={isAddCompradorModalOpen} 
+                onClose={() => !isProcessing && setAddCompradorModalOpen(false)}
+                maxWidth="max-w-4xl"
+            >
                 {isProcessing ? (
                     <div className="text-center py-12">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-iange-orange mx-auto mb-4"></div>
@@ -370,7 +396,6 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                         onSave={handleAddComprador}
                         onCancel={() => setAddCompradorModalOpen(false)} 
                         userType="Comprador"
-                        // CAMBIO: Pasamos TODAS las propiedades para permitir selección libre
                         propiedades={propiedades}
                     />
                 )}
@@ -378,14 +403,18 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
             
             {/* Modal Editar Comprador */}
             {selectedComprador && (
-                 <Modal title="Editar Cliente Comprador" isOpen={isEditCompradorModalOpen} onClose={() => setEditCompradorModalOpen(false)}>
+                 <Modal 
+                    title="Editar Cliente Comprador" 
+                    isOpen={isEditCompradorModalOpen} 
+                    onClose={() => setEditCompradorModalOpen(false)}
+                    maxWidth="max-w-4xl"
+                >
                     <KycPldForm 
                         formData={editingCompradorData}
                         onFormChange={setEditingCompradorData}
                         onSave={handleUpdateComprador} 
                         onCancel={() => setEditCompradorModalOpen(false)} 
                         userType="Comprador"
-                        // CAMBIO: Pasamos TODAS las propiedades
                         propiedades={propiedades} 
                     />
                 </Modal>
