@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Propiedad, User, CompanySettings, Propietario, Comprador, UserPermissions } from '../types'; // Agregamos UserPermissions
-import { PRIMARY_DASHBOARD_BUTTONS, ROLES } from '../constants'; // Agregamos ROLES
+import { Propiedad, User, CompanySettings, Propietario, Comprador, UserPermissions } from '../types';
+import { PRIMARY_DASHBOARD_BUTTONS, ROLES } from '../constants';
 import { BanknotesIcon, BuildingOfficeIcon, PresentationChartLineIcon, SparklesIcon, UsersIcon } from '../components/Icons';
 
 interface OportunidadesDashboardProps {
@@ -11,7 +11,7 @@ interface OportunidadesDashboardProps {
   compradores: Comprador[];
   companySettings?: CompanySettings | null;
   isLoading?: boolean;
-  currentUser: User; // <--- 1. Recibimos el usuario actual
+  currentUser: User;
 }
 
 interface StatCardProps {
@@ -91,7 +91,7 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
     compradores, 
     companySettings,
     isLoading,
-    currentUser // <--- 2. Recibimos el prop
+    currentUser
 }) => {
   const navigate = useNavigate();
   const [isChartVisible, setIsChartVisible] = useState(false);
@@ -103,21 +103,24 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
     return () => clearTimeout(timer);
   }, []);
   
-  // Lógica de filtrado de botones
   const visibleButtons = useMemo(() => {
-      // Si es Super Admin, ve todo
       if (currentUser.role === ROLES.SUPER_ADMIN) return PRIMARY_DASHBOARD_BUTTONS;
-
       const perms = currentUser.permissions || {} as UserPermissions;
-
       return PRIMARY_DASHBOARD_BUTTONS.filter(btn => {
-          // Si el botón no requiere permiso, se muestra
           if (!btn.permissionKey) return true;
-          // Si requiere permiso, verificamos si es true en el usuario
           return !!perms[btn.permissionKey];
       });
   }, [currentUser]);
 
+  // CORRECCIÓN: MOVER ESTE useMemo ANTES DEL IF (isLoading)
+  const hasRealActivity = useMemo(() => {
+      const hasProperties = propiedades.length > 0;
+      const hasTeam = asesores.length > 1; 
+      const isOnboardedFlag = companySettings?.onboarded === true;
+      return hasProperties || hasTeam || isOnboardedFlag;
+  }, [propiedades, asesores, companySettings]);
+
+  // AHORA SÍ PODEMOS HACER EL RETURN CONDICIONAL
   if (isLoading) {
       return (
           <div className="flex items-center justify-center min-h-[60vh]">
@@ -125,13 +128,6 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
           </div>
       );
   }
-
-  const hasRealActivity = useMemo(() => {
-      const hasProperties = propiedades.length > 0;
-      const hasTeam = asesores.length > 1; 
-      const isOnboardedFlag = companySettings?.onboarded === true;
-      return hasProperties || hasTeam || isOnboardedFlag;
-  }, [propiedades, asesores, companySettings]);
 
   if (!hasRealActivity) {
       return <WelcomeCard />;
@@ -261,7 +257,6 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-lg shadow-sm border">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Accesos Rápidos</h3>
-                {/* AQUI USAMOS LA LISTA FILTRADA 'visibleButtons' */}
                 <div className="grid grid-cols-2 gap-4">
                     {visibleButtons.map((button) => (
                         <button
