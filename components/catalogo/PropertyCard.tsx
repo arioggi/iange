@@ -36,8 +36,27 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario }) =
                 : 'https://via.placeholder.com/400x300.png?text=Sin+Imagen';
 
     return (
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden transform transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-            <div className="h-48 bg-cover bg-center" style={{ backgroundImage: `url(${imageUrl})` }}></div>
+        // CAMBIO 1: Agregamos 'relative group' para poder posicionar la pastilla absoluta
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden transform transition-all duration-300 hover:shadow-lg hover:-translate-y-1 relative group">
+            
+            {/* CAMBIO 2: Lógica de las pastillas (Badges) */}
+            {propiedad.status === 'Vendida' && (
+                <div className="absolute top-3 right-3 z-10 bg-red-600 text-white text-xs font-extrabold px-3 py-1 rounded-full shadow-md tracking-wider">
+                    VENDIDA
+                </div>
+            )}
+            {propiedad.status === 'Separada' && (
+                <div className="absolute top-3 right-3 z-10 bg-yellow-500 text-white text-xs font-extrabold px-3 py-1 rounded-full shadow-md tracking-wider">
+                    SEPARADA
+                </div>
+            )}
+
+            {/* CAMBIO 3: Efecto visual en la imagen (blanco y negro si está vendida) */}
+            <div 
+                className={`h-48 bg-cover bg-center ${propiedad.status === 'Vendida' ? 'grayscale opacity-80' : ''}`} 
+                style={{ backgroundImage: `url(${imageUrl})` }}
+            ></div>
+            
             <div className="p-4">
                 <p className="text-sm font-semibold text-iange-orange">{propiedad.tipo_inmueble} en Venta</p>
                 <h3 className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(propiedad.valor_operacion)}</h3>

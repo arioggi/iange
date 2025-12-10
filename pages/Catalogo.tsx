@@ -81,9 +81,10 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
     const filteredAndSortedPropiedades = useMemo(() => {
-        const availableProps = propiedades.filter(p => p.status !== 'Vendida');
+        // CORRECCIÓN APLICADA: Eliminamos el filtro de 'availableProps' para mostrar TODO (incluidas vendidas)
+        // const availableProps = propiedades.filter(p => p.status !== 'Vendida'); <-- LÍNEA ELIMINADA
 
-        const filtered = availableProps.filter(prop => {
+        const filtered = propiedades.filter(prop => { // <-- Usamos 'propiedades' directamente
             const propietario = propietarios.find(p => p.id === prop.propietarioId);
             const searchString = `${prop.calle} ${prop.colonia} ${prop.municipio} ${propietario?.nombreCompleto || ''}`.toLowerCase();
             return searchString.includes(searchTerm.toLowerCase());
