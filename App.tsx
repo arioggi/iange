@@ -6,9 +6,7 @@ import { supabase } from './supabaseClient';
 import { User, Propiedad, Propietario, Comprador, CompanySettings, UserPermissions } from "./types";
 import { ROLES, ROLE_DEFAULT_PERMISSIONS } from "./constants";
 import adapter from "./data/localStorageAdapter"; 
-// === INICIO MODIFICACIÓN 2.1: Importar funciones de guardado ===
 import { getPropertiesByTenant, getContactsByTenant, getUsersByTenant, updateProperty, updateContact } from './Services/api';
-// === FIN MODIFICACIÓN 2.1 ===
 
 // Páginas
 import Login from "./pages/Login";
@@ -52,13 +50,32 @@ const ProtectedRoute = ({ user, permissionKey, children }: { user: User, permiss
     return <>{children}</>;
 };
 
+// --- 2. LAYOUT PRINCIPAL (DEFINIDO FUERA DE APP PARA EVITAR EL BUG DE HOOKS) ---
+const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitImpersonation }: { 
+    children: React.ReactNode, 
+    user: User, 
+    title: string, 
+    onLogout: () => void,
+    isImpersonating: boolean,
+    onExitImpersonation: () => void
+}) => (
+    <div className="flex bg-gray-50 min-h-screen font-sans">
+      <Sidebar user={user} />
+      <main className="flex-1 ml-64 p-8">
+        <Header 
+          title={title} user={user} onLogout={onLogout} 
+          isImpersonating={isImpersonating} onExitImpersonation={onExitImpersonation}
+        />
+        <div className="mt-8">{children}</div>
+      </main>
+    </div>
+);
+
 const App = () => {
   // --- ESTADO ---
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true); 
   const [isImpersonating, setIsImpersonating] = useState(false);
-  
-  // Mantenemos este estado para pasarlo al Dashboard, pero ya no bloqueará la App entera
   const [dataLoading, setDataLoading] = useState(false);
 
   const userRef = useRef<User | null>(null);
@@ -73,7 +90,6 @@ const App = () => {
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [initialEditPropId, setInitialEditPropId] = useState<number | null>(null);
-  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -93,7 +109,6 @@ const App = () => {
             if (mounted) {
                 if (data) {
                     const userRole = data.role || 'asesor';
-                    
                     const defaultPerms = ROLE_DEFAULT_PERMISSIONS[userRole] || ROLE_DEFAULT_PERMISSIONS['asesor'];
                     const dbPerms = data.permissions || {};
 
@@ -107,7 +122,6 @@ const App = () => {
                         equipo: dbPerms.equipo ?? defaultPerms.equipo,
                     };
 
-                    // Iniciamos la carga de datos
                     setDataLoading(true);
 
                     setUser({
@@ -188,11 +202,8 @@ const App = () => {
               setCompanySettings(adapter.getTenantSettings(user.tenantId));
           } catch (error) {
               console.error("Error cargando datos negocio:", error);
-              // CORRECCIÓN: ELIMINAMOS LA LÍNEA DE ADAPTER (LOCALSTORAGE)
-              // setPropiedades(adapter.listProperties(user.tenantId)); <-- ESTO SE VA
               setPropiedades([]); 
           } finally {
-              // Finalizamos la carga de datos
               setDataLoading(false);
           }
       } else {
@@ -241,34 +252,23 @@ const App = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // === INICIO MODIFICACIÓN 2.2: Lógica de Persistencia REAL ===
   const handleUpdatePropiedad = async (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
     if (!user) return;
     
     showToast('Guardando cambios...', 'success');
     
     try {
-        // 1. Actualizar Propietario (Contacto)
-        // El ID del propietario es el ID del contacto en la tabla 'contactos'
         await updateContact(updatedPropietario.id, updatedPropietario);
-        
-        // 2. Actualizar Propiedad
-        // El ID del propietario es el ID del contacto (debe ser string para la API)
         await updateProperty(updatedPropiedad, updatedPropietario.id.toString());
-        
         showToast('Propiedad y Propietario actualizados con éxito.', 'success');
-        refreshAppData(); // Re-obtiene los datos actualizados para refrescar toda la UI
-        
+        refreshAppData();
     } catch (error) {
         console.error("Error al actualizar propiedad:", error);
         showToast('Error al guardar cambios.', 'error');
     }
   };
 
-  // Mantenemos esta función de placeholder si se requiere en otros puntos
   const handleDeletePropiedad = () => showToast('Eliminando...');
-  // === FIN MODIFICACIÓN 2.2 ===
-  
   const handleAddVisita = () => showToast('Visita registrada');
   const handleUpdateUser = () => showToast('Perfil actualizado');
   const handleImpersonate = () => {}; 
@@ -286,7 +286,6 @@ const App = () => {
     return routes[path] || 'IANGE';
   };
 
-  // --- CARGA INICIAL DE SESIÓN (SOLO AUTH) ---
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -320,28 +319,22 @@ const App = () => {
     );
   }
 
-  const MainLayout = ({ children }: { children: React.ReactNode }) => (
-    <div className="flex bg-gray-50 min-h-screen font-sans">
-      <Sidebar user={user} />
-      <main className="flex-1 ml-64 p-8">
-        <Header 
-          title={getTitleForPath(location.pathname)} user={user} onLogout={handleLogout} 
-          isImpersonating={isImpersonating} onExitImpersonation={handleExitImpersonation}
-        />
-        <div className="mt-8">{children}</div>
-      </main>
-    </div>
-  );
-
   return (
     <>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      <MainLayout>
+      
+      {/* SOLUCIÓN: Usamos el componente MainLayout definido FUERA */}
+      <MainLayout 
+        user={user} 
+        title={getTitleForPath(location.pathname)} 
+        onLogout={handleLogout}
+        isImpersonating={isImpersonating}
+        onExitImpersonation={handleExitImpersonation}
+      >
         <Routes>
           <Route path="/" element={<Navigate to={getInitialRoute(user)} replace />} />
           <Route path="/login" element={<Navigate to="/" />} />
           
-          {/* El Dashboard recibe 'isLoading' y ahora también 'currentUser' */}
           <Route path="/oportunidades" element={
             <ProtectedRoute user={user} permissionKey="dashboard">
                 <OportunidadesDashboard 

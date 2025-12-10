@@ -297,7 +297,8 @@ export const createProperty = async (propertyData: any, tenantId: string, ownerI
 };
 
 // =========================================================================
-// FUNCIÓN DE LECTURA (ya corregida)
+// FUNCIÓN CORREGIDA: getPropertiesByTenant
+// (Normalizamos mayúsculas y minúsculas para detectar el estado correctamente)
 // =========================================================================
 export const getPropertiesByTenant = async (tenantId: string) => {
   const { data, error } = await supabase
@@ -308,36 +309,42 @@ export const getPropertiesByTenant = async (tenantId: string) => {
 
   if (error) throw error;
 
-  return data.map((p: any) => ({
-    id: p.id,
-    propietarioId: p.contacto_id,
+  return data.map((p: any) => {
+    // 1. Normalización del estatus para evitar errores de lectura
+    const dbStatus = p.estatus ? p.estatus.toLowerCase() : 'disponible';
     
-    valor_operacion: p.precio?.toString() || '',
-    tipo_inmueble: p.tipo,
-    
-    status: p.estatus === 'Vendida' ? 'Vendida' : 
-            p.estatus === 'Separada' ? 'Separada' :
-            p.estatus === 'En Promoción' ? 'En Promoción' :
-            p.estatus === 'disponible' ? 'En Promoción' : 
-            'Validación Pendiente',
+    let uiStatus = 'En Promoción'; // Default seguro
+    if (dbStatus === 'vendida') uiStatus = 'Vendida';
+    else if (dbStatus === 'separada') uiStatus = 'Separada';
+    else if (dbStatus === 'en promoción' || dbStatus === 'disponible') uiStatus = 'En Promoción';
+    else uiStatus = 'Validación Pendiente';
 
-    ...p.features,
-    
-    fecha_venta: p.fecha_venta || null,
-    fotos: [], 
-    imageUrls: p.images || [], 
-    fecha_captacion: p.created_at,
-    
-    progreso: p.features?.progreso || 0,
-    checklist: p.features?.checklist || {},
-    visitas: p.features?.visitas || [],
-    
-  }));
+    return {
+        id: p.id,
+        propietarioId: p.contacto_id,
+        compradorId: p.comprador_id,
+        
+        valor_operacion: p.precio?.toString() || '',
+        tipo_inmueble: p.tipo,
+        
+        status: uiStatus, // <--- Aquí se asigna el estado corregido
+
+        ...p.features,
+        
+        fecha_venta: p.features?.fecha_venta || p.fecha_venta || null,
+        fotos: [], 
+        imageUrls: p.images || [], 
+        fecha_captacion: p.created_at,
+        
+        progreso: p.features?.progreso || 0,
+        checklist: p.features?.checklist || {},
+        visitas: p.features?.visitas || [],
+    };
+  });
 };
 
-// --- FUNCIÓN DE ESCRITURA: Actualizar Propiedad (FIX PARA ERROR DE COLUMNA) ---
+// --- FUNCIÓN DE ESCRITURA: Actualizar Propiedad ---
 export const updateProperty = async (propertyData: any, ownerId: string) => {
-    // 1. Desestructura el objeto plano (como lo recibe de la UI)
     const { 
         id, 
         valor_operacion, 
@@ -347,7 +354,7 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
         fecha_captacion, 
         compradorId,
         imageUrls, 
-        fecha_venta, // MANTENEMOS ESTA VARIABLE FUERA DEL PAYLOAD DIRECTO
+        fecha_venta, 
         fotos, 
         ...restDetails 
     } = propertyData;
@@ -359,9 +366,16 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
     else if (status === 'Separada') dbStatus = 'separada';
     else if (status === 'En Promoción' || status === 'Validación Pendiente') dbStatus = 'disponible';
 
-    // Para features, usamos restDetails que contiene todos los campos de texto del formulario.
-    // Esto es seguro porque los campos que causaban conflicto (como fecha_venta) se enviarán dentro del JSON features.
-    const featuresPayload = restDetails; 
+    const featuresPayload = {
+        ...restDetails,
+        fecha_venta: fecha_venta || null,
+    };
+    
+    delete featuresPayload.fecha_venta;
+    
+    if (fecha_venta) {
+        (featuresPayload as any).fecha_venta = fecha_venta;
+    }
 
     const dbPayload = {
         titulo: `${restDetails.calle} ${restDetails.numero_exterior}`, 
@@ -369,16 +383,14 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
         precio: precioNumerico,
         tipo: tipo_inmueble,
         estatus: dbStatus,
-        // ** CRÍTICO: El objeto features limpio **
         features: featuresPayload, 
         images: imageUrls || [],
-        // NO incluimos fecha_venta aquí para evitar el error de columna.
     };
 
     const { data, error } = await supabase
         .from('propiedades')
         .update(dbPayload)
-        .eq('id', id.toString()) // <--- CORRECCIÓN: Asegurar ID de la propiedad a string
+        .eq('id', id.toString()) 
         .select()
         .single();
 
@@ -386,34 +398,155 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
     return data;
 };
 
+// =========================================================================
+// NUEVA LÓGICA DE VINCULACIÓN (PROPUESTA VS SEPARACIÓN VS VENTA)
+// =========================================================================
 
+export const assignBuyerToProperty = async (buyerId: number, propertyId: number, tipoRelacion: 'Propuesta de compra' | 'Propiedad Separada' | 'Venta finalizada') => {
+    const pIdString = propertyId.toString();
+    const bIdString = buyerId.toString();
+    
+    // 1. Siempre guardamos el rastro en el CONTACTO
+    const { data: currentContact } = await supabase
+        .from('contactos')
+        .select('datos_kyc')
+        .eq('id', bIdString)
+        .single();
+
+    if (currentContact) {
+        await supabase.from('contactos')
+        .update({
+            datos_kyc: {
+                ...currentContact.datos_kyc,
+                propiedadRelacionadaId: propertyId,
+                tipoRelacion: tipoRelacion
+            }
+        })
+        .eq('id', bIdString);
+    }
+
+    // 2. Solo bloqueamos la propiedad si es Venta o Separación
+    if (tipoRelacion === 'Venta finalizada' || tipoRelacion === 'Propiedad Separada') {
+        const estatusDb = tipoRelacion === 'Venta finalizada' ? 'vendida' : 'separada'; // Minúsculas para DB
+        const fechaVenta = tipoRelacion === 'Venta finalizada' ? new Date().toISOString() : null;
+
+        const { data: currentProp } = await supabase
+            .from('propiedades')
+            .select('features')
+            .eq('id', pIdString)
+            .single();
+
+        const newFeatures = { ...currentProp?.features, fecha_venta: fechaVenta };
+        if (!fechaVenta) delete newFeatures.fecha_venta;
+
+        await supabase.from('propiedades')
+        .update({
+            comprador_id: bIdString,
+            estatus: estatusDb,
+            features: newFeatures
+        })
+        .eq('id', pIdString);
+        
+    } else {
+        // Si es solo Propuesta, liberamos la propiedad si antes estaba asignada a este mismo comprador
+        const { data: currentProp } = await supabase
+            .from('propiedades')
+            .select('comprador_id')
+            .eq('id', pIdString)
+            .single();
+
+        // Convertimos a string para comparar seguramente
+        if (String(currentProp?.comprador_id) === bIdString) {
+             await supabase.from('propiedades')
+             .update({
+                comprador_id: null,
+                estatus: 'disponible'
+            })
+            .eq('id', pIdString);
+        }
+    }
+};
+
+export const unassignBuyerFromProperty = async (buyerId: number, propertyId: number) => {
+    // 1. Limpiar Contacto
+    const { data: currentContact } = await supabase
+        .from('contactos')
+        .select('datos_kyc')
+        .eq('id', buyerId.toString())
+        .single();
+
+    if (currentContact) {
+        const newKyc = { ...currentContact.datos_kyc };
+        delete newKyc.propiedadRelacionadaId;
+        delete newKyc.tipoRelacion;
+        
+        await supabase.from('contactos')
+        .update({ datos_kyc: newKyc })
+        .eq('id', buyerId.toString());
+    }
+
+    // 2. Limpiar Propiedad
+    const { data: currentProp } = await supabase
+        .from('propiedades')
+        .select('comprador_id, features')
+        .eq('id', propertyId.toString())
+        .single();
+
+    if (currentProp && String(currentProp.comprador_id) === String(buyerId)) {
+        const newFeatures = { ...currentProp.features };
+        delete newFeatures.fecha_venta;
+        
+        await supabase.from('propiedades')
+        .update({
+            comprador_id: null,
+            estatus: 'disponible',
+            features: newFeatures
+        })
+        .eq('id', propertyId.toString());
+    }
+};
+
+// =========================================================================
+// FUNCIÓN CORREGIDA: getContactsByTenant (LEE RELACIONES)
+// =========================================================================
 export const getContactsByTenant = async (tenantId: string) => {
-  const { data, error } = await supabase
+  const { data: contacts, error } = await supabase
     .from('contactos')
     .select('*')
     .eq('tenant_id', tenantId);
 
   if (error) throw error;
-  
-  const mapContact = (c: any) => ({
-      ...c.datos_kyc, 
-      id: c.id, 
-      nombreCompleto: c.nombre,
-      email: c.email,
-      telefono: c.telefono
-  });
 
-  const propietarios = data.filter((c: any) => c.tipo === 'propietario').map(mapContact);
-  const compradores = data.filter((c: any) => c.tipo === 'comprador').map(mapContact);
+  const { data: properties } = await supabase
+    .from('propiedades')
+    .select('id, comprador_id')
+    .eq('tenant_id', tenantId)
+    .not('comprador_id', 'is', null);
+  
+  const mapContact = (c: any) => {
+      let propId = c.datos_kyc?.propiedadRelacionadaId;
+      let tipoRel = c.datos_kyc?.tipoRelacion;
+
+      return {
+          ...c.datos_kyc, 
+          id: c.id, 
+          nombreCompleto: c.nombre,
+          email: c.email,
+          telefono: c.telefono,
+          propiedadId: propId || null,
+          tipoRelacion: tipoRel || null 
+      };
+  };
+
+  const propietarios = contacts.filter((c: any) => c.tipo === 'propietario').map(mapContact);
+  const compradores = contacts.filter((c: any) => c.tipo === 'comprador').map(mapContact);
   
   return { propietarios, compradores };
 };
 
-// --- FUNCIÓN DE ESCRITURA: Actualizar Contacto (Fix de ID) ---
+// --- FUNCIÓN DE ESCRITURA: Actualizar Contacto ---
 export const updateContact = async (contactId: number, updatedKycData: any) => {
-    // 1. Convertir el ID a string. Esto previene el error 400 de tipo de UUID.
     const contactIdString = contactId.toString();
-
     const { nombreCompleto, email, telefono } = updatedKycData;
 
     const { data, error } = await supabase
@@ -424,7 +557,7 @@ export const updateContact = async (contactId: number, updatedKycData: any) => {
             telefono: telefono,
             datos_kyc: updatedKycData, 
         })
-        .eq('id', contactIdString) // <--- CORRECCIÓN: Asegurar que el ID del contacto sea string
+        .eq('id', contactIdString)
         .select()
         .single();
 
@@ -432,12 +565,11 @@ export const updateContact = async (contactId: number, updatedKycData: any) => {
     return data;
 };
 
-// --- NUEVA FUNCIÓN PARA BORRAR (AQUÍ ESTÁ LA SOLUCIÓN AL ERROR) ---
 export const deleteContact = async (contactId: number) => {
     const { error } = await supabase
         .from('contactos')
         .delete()
-        .eq('id', contactId);
+        .eq('id', contactId.toString());
     
     if (error) throw error;
 };
@@ -492,7 +624,7 @@ export const getSuperAdminStats = async () => {
 };
 
 // ==========================================
-// 5. FUNCIONES PARA PERSONAL EMMPRESA
+// 5. FUNCIONES PARA PERSONAL EMPRESA
 // ==========================================
 
 export const getUsersByTenant = async (tenantId: string) => {
