@@ -323,7 +323,6 @@ const App = () => {
     <>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       
-      {/* SOLUCIÓN: Usamos el componente MainLayout definido FUERA */}
       <MainLayout 
         user={user} 
         title={getTitleForPath(location.pathname)} 
@@ -365,7 +364,16 @@ const App = () => {
           
           <Route path="/catalogo" element={
             <ProtectedRoute user={user} permissionKey="propiedades">
-                <Catalogo propiedades={propiedades} propietarios={propietarios} asesores={asesores} onAddVisita={handleAddVisita} handleUpdatePropiedad={handleUpdatePropiedad} showToast={showToast} />
+                <Catalogo 
+                  propiedades={propiedades} 
+                  propietarios={propietarios} 
+                  asesores={asesores} 
+                  onAddVisita={handleAddVisita} 
+                  handleUpdatePropiedad={handleUpdatePropiedad} 
+                  showToast={showToast} 
+                  currentUser={user}          // <--- CRUCIAL PARA LA OFERTA
+                  compradores={compradores}   // <--- CRUCIAL PARA LA OFERTA
+                />
             </ProtectedRoute>
           } />
           
@@ -382,7 +390,11 @@ const App = () => {
           } />
           <Route path="/reportes/:reportId" element={
             <ProtectedRoute user={user} permissionKey="reportes">
-                <ReporteDetalle propiedades={propiedades} asesores={asesores} />
+                <ReporteDetalle 
+                  propiedades={propiedades} 
+                  asesores={asesores} 
+                  compradores={compradores} // <--- CRUCIAL PARA LOS CÁLCULOS
+                />
             </ProtectedRoute>
           } />
           

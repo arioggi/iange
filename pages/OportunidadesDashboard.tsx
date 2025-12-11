@@ -79,9 +79,12 @@ const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+// CORRECCIÓN CRÍTICA: Parsing robusto para limpiar comas, signos de pesos y espacios
 const parseCurrencyString = (value: string | undefined): number => {
     if (!value) return 0;
-    return parseFloat(value.replace(/,/g, ''));
+    // Eliminamos todo lo que NO sea número, punto o guión
+    const sanitized = value.toString().replace(/[^0-9.-]+/g, '');
+    return parseFloat(sanitized) || 0;
 };
 
 const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({ 
@@ -112,7 +115,6 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
       });
   }, [currentUser]);
 
-  // CORRECCIÓN: MOVER ESTE useMemo ANTES DEL IF (isLoading)
   const hasRealActivity = useMemo(() => {
       const hasProperties = propiedades.length > 0;
       const hasTeam = asesores.length > 1; 
@@ -120,7 +122,6 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
       return hasProperties || hasTeam || isOnboardedFlag;
   }, [propiedades, asesores, companySettings]);
 
-  // AHORA SÍ PODEMOS HACER EL RETURN CONDICIONAL
   if (isLoading) {
       return (
           <div className="flex items-center justify-center min-h-[60vh]">
@@ -135,9 +136,11 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
 
   const propiedadesActivas = propiedades.filter(p => p.status !== 'Vendida');
   const totalActivas = propiedadesActivas.length;
+  // Usamos el nuevo parser robusto
   const valorCarteraActiva = propiedadesActivas.reduce((sum, p) => sum + parseCurrencyString(p.valor_operacion), 0);
   
   const propiedadesVendidas = propiedades.filter(p => p.status === 'Vendida');
+  // Usamos el nuevo parser robusto
   const valorVentasTotales = propiedadesVendidas.reduce((sum, p) => sum + parseCurrencyString(p.valor_operacion), 0);
 
   const ingresosTotales = propiedadesVendidas.reduce((sum, p) => {

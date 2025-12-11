@@ -24,6 +24,16 @@ const initialPropiedadState: Omit<Propiedad, 'id' | 'propietarioId' | 'fecha_cap
     fuente_captacion: 'Portal Web',
     asesorId: 0,
     visitas: [],
+    
+    // --- CAMPOS NUEVOS DE COMISIÓN ---
+    comisionCaptacionOficina: 0,
+    comisionCaptacionAsesor: 0,
+    compartirComisionCaptacion: false,
+    comisionVentaOficina: 0,
+    comisionVentaAsesor: 0,
+    compartirComisionVenta: false,
+    
+    // Legacy (se mantienen para compatibilidad interna si se usan)
     comisionOficina: 0,
     comisionAsesor: 0,
     comisionCompartida: 0,
@@ -182,15 +192,19 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
     const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 
     const handlePropiedadChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
+        const { name, value, type } = e.target;
+        const checked = (e.target as HTMLInputElement).checked;
         
-        // El campo 'asesorId' no debe estar en numericFields
         const numericFields = [
             'recamaras', 'banos_completos', 'medios_banos', 'cochera_autos',
-            'comisionOficina', 'comisionAsesor', 'comisionCompartida'
+            // Nuevos campos
+            'comisionCaptacionOficina', 'comisionCaptacionAsesor', 
+            'comisionVentaOficina', 'comisionVentaAsesor'
         ];
 
-        if (numericFields.includes(name)) {
+        if (type === 'checkbox') {
+             setPropiedadData(prev => ({ ...prev, [name]: checked }));
+        } else if (numericFields.includes(name)) {
             const numericValue = parseFloat(value);
             setPropiedadData(prev => ({ ...prev, [name]: isNaN(numericValue) ? 0 : numericValue }));
         } else {
@@ -218,12 +232,13 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
         setPhotos(prev => prev.filter((_, index) => index !== indexToRemove));
     };
 
-    const comisionTotal = useMemo(() => {
-        const oficina = Number(propiedadData.comisionOficina) || 0;
-        const asesor = Number(propiedadData.comisionAsesor) || 0;
-        const compartida = Number(propiedadData.comisionCompartida) || 0;
-        return oficina + asesor + compartida;
-    }, [propiedadData.comisionOficina, propiedadData.comisionAsesor, propiedadData.comisionCompartida]);
+    // Cálculo Total Operación (Suma todo lo que hay en los inputs, sin restar lo compartido aun, solo muestra el potencial)
+    const comisionTotalOperacion = useMemo(() => {
+        return (propiedadData.comisionCaptacionOficina || 0) + 
+               (propiedadData.comisionCaptacionAsesor || 0) +
+               (propiedadData.comisionVentaOficina || 0) + 
+               (propiedadData.comisionVentaAsesor || 0);
+    }, [propiedadData]);
 
     const handleSavePropietario = () => {
         setActiveTab(TABS[0]);
@@ -359,27 +374,93 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                             </div>
                         </section>
                         
-                        {/* Sección de Comisión */}
+                        {/* Sección de Comisión (NUEVO DISEÑO) */}
                         <section>
-                            <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Comisión</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
-                                <div>
-                                    <label htmlFor="comisionOficina" className="block text-sm font-medium text-gray-700 mb-1">Comisión Oficina</label>
-                                    <input id="comisionOficina" name="comisionOficina" type="number" min="0" value={propiedadData.comisionOficina} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                            <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">Desglose de Comisiones</h3>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                
+                                {/* COLUMNA 1: CAPTACIÓN */}
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                                    <h4 className="font-bold text-blue-800 mb-3 uppercase text-sm flex items-center">
+                                        <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">1</span>
+                                        Captación (Listing)
+                                    </h4>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700">Comisión Oficina</label>
+                                            <input name="comisionCaptacionOficina" type="number" min="0" value={propiedadData.comisionCaptacionOficina} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-blue-200 rounded focus:ring-blue-500 focus:border-blue-500" placeholder="0.00" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700">Comisión Asesor</label>
+                                            <input name="comisionCaptacionAsesor" type="number" min="0" value={propiedadData.comisionCaptacionAsesor} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-blue-200 rounded focus:ring-blue-500 focus:border-blue-500" placeholder="0.00" />
+                                        </div>
+                                        <div className="flex items-center pt-2">
+                                            <input 
+                                                type="checkbox" 
+                                                id="checkCaptacion" 
+                                                name="compartirComisionCaptacion" 
+                                                checked={!!propiedadData.compartirComisionCaptacion} 
+                                                onChange={handlePropiedadChange} 
+                                                className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" 
+                                            />
+                                            <label htmlFor="checkCaptacion" className="ml-2 text-sm text-gray-700 select-none cursor-pointer">¿Comisión Compartida?</label>
+                                        </div>
+                                        <div className="pt-2 border-t border-blue-200 mt-2 flex justify-between items-center">
+                                            <p className="text-xs text-gray-500">Subtotal Captación</p>
+                                            <p className="font-bold text-blue-900">
+                                                {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format((propiedadData.comisionCaptacionOficina || 0) + (propiedadData.comisionCaptacionAsesor || 0))}
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label htmlFor="comisionAsesor" className="block text-sm font-medium text-gray-700 mb-1">Comisión Asesor/a</label>
-                                    <input id="comisionAsesor" name="comisionAsesor" type="number" min="0" value={propiedadData.comisionAsesor} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+
+                                {/* COLUMNA 2: VENTA */}
+                                <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+                                    <h4 className="font-bold text-green-800 mb-3 uppercase text-sm flex items-center">
+                                        <span className="bg-green-200 text-green-800 rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">2</span>
+                                        Venta (Selling)
+                                    </h4>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700">Comisión Oficina</label>
+                                            <input name="comisionVentaOficina" type="number" min="0" value={propiedadData.comisionVentaOficina} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-green-200 rounded focus:ring-green-500 focus:border-green-500" placeholder="0.00" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700">Comisión Asesor</label>
+                                            <input name="comisionVentaAsesor" type="number" min="0" value={propiedadData.comisionVentaAsesor} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-green-200 rounded focus:ring-green-500 focus:border-green-500" placeholder="0.00" />
+                                        </div>
+                                        <div className="flex items-center pt-2">
+                                            <input 
+                                                type="checkbox" 
+                                                id="checkVenta" 
+                                                name="compartirComisionVenta" 
+                                                checked={!!propiedadData.compartirComisionVenta} 
+                                                onChange={handlePropiedadChange} 
+                                                className="h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500" 
+                                            />
+                                            <label htmlFor="checkVenta" className="ml-2 text-sm text-gray-700 select-none cursor-pointer">¿Comisión Compartida?</label>
+                                        </div>
+                                        <div className="pt-2 border-t border-green-200 mt-2 flex justify-between items-center">
+                                            <p className="text-xs text-gray-500">Subtotal Venta</p>
+                                            <p className="font-bold text-green-900">
+                                                {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format((propiedadData.comisionVentaOficina || 0) + (propiedadData.comisionVentaAsesor || 0))}
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label htmlFor="comisionCompartida" className="block text-sm font-medium text-gray-700 mb-1">Comisión Compartida</label>
-                                    <input id="comisionCompartida" name="comisionCompartida" type="number" min="0" value={propiedadData.comisionCompartida} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+                            </div>
+
+                            {/* TOTAL OPERACIÓN */}
+                            <div className="mt-4 p-4 bg-gray-100 rounded-lg flex justify-between items-center border border-gray-200">
+                                <div className="text-xs text-gray-500">
+                                    * La comisión compartida se restará del ingreso final en reportes.
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Comisión Total</label>
-                                    <p className="w-full px-3 py-2 bg-gray-100 border rounded-md text-gray-800 font-bold">
-                                        {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(comisionTotal)}
-                                    </p>
+                                <div className="text-right">
+                                    <span className="text-sm font-medium text-gray-600 mr-2">COMISIÓN TOTAL OPERACIÓN:</span>
+                                    <span className="text-xl font-extrabold text-gray-900">
+                                        {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(comisionTotalOperacion)}
+                                    </span>
                                 </div>
                             </div>
                         </section>
@@ -448,21 +529,21 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                                     <p className="text-xs text-gray-500">Imágenes hasta 5MB</p>
                                 </div>
                             </div>
-                        {photos.length > 0 && (
-                            <div className="mt-4">
-                                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4 mt-2">
-                                    {photos.map((file, index) => (
-                                        <div key={URL.createObjectURL(file)} className={`relative group ${index === 0 ? 'border-2 border-iange-orange rounded-md p-1' : ''}`}>
-                                            <img src={URL.createObjectURL(file)} alt={`preview ${index}`} className="h-24 w-full object-cover rounded-md" />
-                                            {index === 0 && <div className="absolute top-0 left-0 bg-iange-orange text-white text-xs font-bold px-1 rounded-br-md">Portada</div>}
-                                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center transition-opacity">
-                                                <button onClick={() => removePhoto(index)} className="text-white text-3xl opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
+                            {photos.length > 0 && (
+                                <div className="mt-4">
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4 mt-2">
+                                        {photos.map((file, index) => (
+                                            <div key={URL.createObjectURL(file)} className={`relative group ${index === 0 ? 'border-2 border-iange-orange rounded-md p-1' : ''}`}>
+                                                <img src={URL.createObjectURL(file)} alt={`preview ${index}`} className="h-24 w-full object-cover rounded-md" />
+                                                {index === 0 && <div className="absolute top-0 left-0 bg-iange-orange text-white text-xs font-bold px-1 rounded-br-md">Portada</div>}
+                                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center transition-opacity">
+                                                    <button onClick={() => removePhoto(index)} className="text-white text-3xl opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
                         </section>
                     </div>
                 )}

@@ -81,7 +81,6 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
     const [editingCompradorData, setEditingCompradorData] = useState<KycData>(initialKycState);
     
     const [searchTerm, setSearchTerm] = useState('');
-    // Estado separado para búsqueda de clientes para no mezclar
     const [clientSearchTerm, setClientSearchTerm] = useState(''); 
     const [isProcessing, setIsProcessing] = useState(false);
 
@@ -96,7 +95,6 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
         });
     }, [searchTerm, propiedades, propietarios]);
 
-    // Filtrado de clientes
     const filteredCompradores = useMemo(() => {
         if (!clientSearchTerm) return compradores;
         return compradores.filter(c => 
@@ -184,16 +182,13 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
 
     // --- COMPRADORES LOGIC (CLIENTES) ---
 
-    // AGREGADO: Recibe propiedadId Y tipoRelacion
     const handleAddComprador = async (propiedadId?: number, tipoRelacion?: string) => {
         if (!currentUser.tenantId) return;
         
         setIsProcessing(true);
         try {
-            // 1. Crear el Contacto
             const newBuyer = await createContact(nuevoCompradorData, currentUser.tenantId, 'comprador');
             
-            // 2. Si se seleccionó propiedad, vincularla con el tipo de relación
             if (propiedadId && tipoRelacion) {
                  await assignBuyerToProperty(newBuyer.id, propiedadId, tipoRelacion as any);
             }
@@ -219,21 +214,15 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
         setEditCompradorModalOpen(true);
     };
 
-    // AGREGADO: Lógica de actualización con tipoRelacion
     const handleUpdateComprador = async (propiedadId?: number, tipoRelacion?: string) => {
         if (!selectedComprador) return;
         setIsProcessing(true);
         try {
-            // 1. Actualizar Datos del Contacto
             await updateContact(selectedComprador.id, editingCompradorData);
             
-            // 2. Gestionar Vinculación
             if (propiedadId) {
-                // Siempre actualizamos si hay propiedad seleccionada para guardar el nuevo estatus o relación
-                // (incluso si es la misma propiedad, el tipo de relación pudo cambiar)
                 await assignBuyerToProperty(selectedComprador.id, propiedadId, tipoRelacion as any);
             } else {
-                 // Si seleccionó "No vincular" (undefined/null) pero ANTES tenía una, la liberamos
                  if (selectedComprador.propiedadId) {
                      await unassignBuyerFromProperty(selectedComprador.id, selectedComprador.propiedadId);
                  }
@@ -258,7 +247,6 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
     const handleConfirmDeleteComprador = async () => {
         if (compradorToDelete) {
             try {
-                // Primero desvinculamos la propiedad si tiene una para liberarla
                 if (compradorToDelete.propiedadId) {
                     await unassignBuyerFromProperty(compradorToDelete.id, compradorToDelete.propiedadId);
                 }
@@ -310,7 +298,6 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
             case 'Clientes':
                  return (
                     <div>
-                        {/* DISEÑO IDÉNTICO AL TAB ANTERIOR (Barra de búsqueda + Botón) */}
                         <div className="flex justify-between items-center mb-4">
                              <div className="relative flex-grow mr-4">
                                 <input
@@ -330,6 +317,7 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                             onEdit={handleEditCompradorClick} 
                             onDelete={handleDeleteCompradorClick} 
                             propiedades={propiedades}
+                            asesores={asesores} // <--- 1. PASAR ASESORES
                         />
                     </div>
                 );
@@ -337,8 +325,6 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                 return null;
         }
     };
-
-    const selectedPropietario = selectedPropiedad ? propietarios.find(p => p.id === selectedPropiedad.propietarioId) : null;
 
     return (
         <div className="bg-white p-8 rounded-lg shadow-sm">
@@ -397,6 +383,7 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                         onCancel={() => setAddCompradorModalOpen(false)} 
                         userType="Comprador"
                         propiedades={propiedades}
+                        asesores={asesores} // <--- 2. PASAR ASESORES
                     />
                 )}
             </Modal>
@@ -416,20 +403,23 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                         onCancel={() => setEditCompradorModalOpen(false)} 
                         userType="Comprador"
                         propiedades={propiedades} 
+                        asesores={asesores} // <--- 3. PASAR ASESORES
                     />
                 </Modal>
             )}
 
             {/* Modal Editar Propiedad */}
-            {selectedPropiedad && selectedPropietario && (
+            {selectedPropiedad && (
                 <Modal title="Editar Propiedad y Propietario" isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)}>
-                    <EditPropiedadForm
-                        propiedad={selectedPropiedad}
-                        propietario={selectedPropietario}
-                        onSave={localHandleUpdate}
-                        onCancel={() => setEditModalOpen(false)}
-                        asesores={asesores}
-                    />
+                    {propiedades.find(p => p.id === selectedPropiedad.id) && propietarios.find(p => p.id === selectedPropiedad.propietarioId) && (
+                        <EditPropiedadForm
+                            propiedad={selectedPropiedad}
+                            propietario={propietarios.find(p => p.id === selectedPropiedad.propietarioId)!}
+                            onSave={localHandleUpdate}
+                            onCancel={() => setEditModalOpen(false)}
+                            asesores={asesores}
+                        />
+                    )}
                 </Modal>
             )}
             

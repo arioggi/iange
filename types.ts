@@ -132,6 +132,19 @@ export interface Propiedad {
   fuente_captacion: string;
   status: 'Validación Pendiente' | 'En Promoción' | 'Separada' | 'Vendida';
   visitas: Visita[];
+
+  // --- NUEVOS CAMPOS DE COMISIÓN (Captación vs Venta) ---
+  // Captación
+  comisionCaptacionOficina?: number;
+  comisionCaptacionAsesor?: number;
+  compartirComisionCaptacion?: boolean; // Checkbox
+
+  // Venta
+  comisionVentaOficina?: number;
+  comisionVentaAsesor?: number;
+  compartirComisionVenta?: boolean; // Checkbox
+
+  // Campos Legacy (se mantienen para compatibilidad temporal)
   comisionOficina?: number;
   comisionAsesor?: number;
   comisionCompartida?: number;
@@ -173,6 +186,9 @@ export interface KycData {
   fechaCita?: string; // YYYY-MM-DD
   horaCita?: string;  // HH:MM
   notasCita?: string;
+
+  // --- NUEVO CAMPO ASESOR ---
+  asesorId?: number | string; 
 }
 
 export interface Propietario extends KycData {
@@ -243,4 +259,17 @@ export interface Log {
   rol: string;
   accion: string;
   resultado: 'Éxito' | 'Error';
+}
+
+// --- NUEVA INTERFAZ PARA OFERTAS DE COMPRA ---
+export interface OfferData {
+  compradorId: string;
+  precioOfrecido: string;
+  formaPago: 'Contado' | 'Crédito Bancario' | 'Infonavit' | 'Cofinavit' | 'Otro';
+  institucionFinanciera?: string;
+  montoApartado: string;
+  montoEnganche: string;
+  saldoAFirma: string;
+  vigenciaOferta: string;
+  observaciones?: string;
 }

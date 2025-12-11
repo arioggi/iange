@@ -310,7 +310,7 @@ export const getPropertiesByTenant = async (tenantId: string) => {
   if (error) throw error;
 
   return data.map((p: any) => {
-    // 1. Normalización del estatus para evitar errores de lectura
+    // 1. Normalización del estatus
     const dbStatus = p.estatus ? p.estatus.toLowerCase() : 'disponible';
     
     let uiStatus = 'En Promoción'; // Default seguro
@@ -320,17 +320,21 @@ export const getPropertiesByTenant = async (tenantId: string) => {
     else uiStatus = 'Validación Pendiente';
 
     return {
+        // CORRECCIÓN VITAL: 
+        // 1. Expandimos features PRIMERO (datos sucios/crudos del formulario)
+        ...p.features, 
+
+        // 2. Sobrescribimos con los datos LIMPIOS y REALES de la base de datos
+        // Esto asegura que el precio sea numérico y el status sea el calculado
         id: p.id,
         propietarioId: p.contacto_id,
         compradorId: p.comprador_id,
         
-        valor_operacion: p.precio?.toString() || '',
+        valor_operacion: p.precio?.toString() || '', // Usamos el precio numérico de la BD
         tipo_inmueble: p.tipo,
+        status: uiStatus, // Usamos el status normalizado
         
-        status: uiStatus, // <--- Aquí se asigna el estado corregido
-
-        ...p.features,
-        
+        // Mapeo de fechas e imágenes
         fecha_venta: p.features?.fecha_venta || p.fecha_venta || null,
         fotos: [], 
         imageUrls: p.images || [], 
@@ -377,12 +381,16 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
         (featuresPayload as any).fecha_venta = fecha_venta;
     }
 
+    // CANDADO DE SEGURIDAD: Liberar comprador si se pone disponible
+    const compradorIdToSave = dbStatus === 'disponible' ? null : (compradorId || undefined);
+
     const dbPayload = {
         titulo: `${restDetails.calle} ${restDetails.numero_exterior}`, 
         direccion: `${restDetails.colonia}, ${restDetails.municipio}, ${restDetails.estado}`,
         precio: precioNumerico,
         tipo: tipo_inmueble,
         estatus: dbStatus,
+        comprador_id: compradorIdToSave,
         features: featuresPayload, 
         images: imageUrls || [],
     };
@@ -399,14 +407,13 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
 };
 
 // =========================================================================
-// NUEVA LÓGICA DE VINCULACIÓN (PROPUESTA VS SEPARACIÓN VS VENTA)
+// OTRAS FUNCIONES (SIN CAMBIOS)
 // =========================================================================
 
 export const assignBuyerToProperty = async (buyerId: number, propertyId: number, tipoRelacion: 'Propuesta de compra' | 'Propiedad Separada' | 'Venta finalizada') => {
     const pIdString = propertyId.toString();
     const bIdString = buyerId.toString();
     
-    // 1. Siempre guardamos el rastro en el CONTACTO
     const { data: currentContact } = await supabase
         .from('contactos')
         .select('datos_kyc')
@@ -425,9 +432,8 @@ export const assignBuyerToProperty = async (buyerId: number, propertyId: number,
         .eq('id', bIdString);
     }
 
-    // 2. Solo bloqueamos la propiedad si es Venta o Separación
     if (tipoRelacion === 'Venta finalizada' || tipoRelacion === 'Propiedad Separada') {
-        const estatusDb = tipoRelacion === 'Venta finalizada' ? 'vendida' : 'separada'; // Minúsculas para DB
+        const estatusDb = tipoRelacion === 'Venta finalizada' ? 'vendida' : 'separada';
         const fechaVenta = tipoRelacion === 'Venta finalizada' ? new Date().toISOString() : null;
 
         const { data: currentProp } = await supabase
@@ -448,14 +454,12 @@ export const assignBuyerToProperty = async (buyerId: number, propertyId: number,
         .eq('id', pIdString);
         
     } else {
-        // Si es solo Propuesta, liberamos la propiedad si antes estaba asignada a este mismo comprador
         const { data: currentProp } = await supabase
             .from('propiedades')
             .select('comprador_id')
             .eq('id', pIdString)
             .single();
 
-        // Convertimos a string para comparar seguramente
         if (String(currentProp?.comprador_id) === bIdString) {
              await supabase.from('propiedades')
              .update({
@@ -468,7 +472,6 @@ export const assignBuyerToProperty = async (buyerId: number, propertyId: number,
 };
 
 export const unassignBuyerFromProperty = async (buyerId: number, propertyId: number) => {
-    // 1. Limpiar Contacto
     const { data: currentContact } = await supabase
         .from('contactos')
         .select('datos_kyc')
@@ -485,7 +488,6 @@ export const unassignBuyerFromProperty = async (buyerId: number, propertyId: num
         .eq('id', buyerId.toString());
     }
 
-    // 2. Limpiar Propiedad
     const { data: currentProp } = await supabase
         .from('propiedades')
         .select('comprador_id, features')
@@ -506,9 +508,6 @@ export const unassignBuyerFromProperty = async (buyerId: number, propertyId: num
     }
 };
 
-// =========================================================================
-// FUNCIÓN CORREGIDA: getContactsByTenant (LEE RELACIONES)
-// =========================================================================
 export const getContactsByTenant = async (tenantId: string) => {
   const { data: contacts, error } = await supabase
     .from('contactos')
@@ -544,7 +543,6 @@ export const getContactsByTenant = async (tenantId: string) => {
   return { propietarios, compradores };
 };
 
-// --- FUNCIÓN DE ESCRITURA: Actualizar Contacto ---
 export const updateContact = async (contactId: number, updatedKycData: any) => {
     const contactIdString = contactId.toString();
     const { nombreCompleto, email, telefono } = updatedKycData;
@@ -573,10 +571,6 @@ export const deleteContact = async (contactId: number) => {
     
     if (error) throw error;
 };
-
-// ==========================================
-// 4. ESTADÍSTICAS Y DASHBOARD
-// ==========================================
 
 export const getSuperAdminStats = async () => {
     const { count: totalCompanies, error: errorCompanies } = await supabase
@@ -622,10 +616,6 @@ export const getSuperAdminStats = async () => {
         rolesDistribution
     };
 };
-
-// ==========================================
-// 5. FUNCIONES PARA PERSONAL EMPRESA
-// ==========================================
 
 export const getUsersByTenant = async (tenantId: string) => {
   const { data, error } = await supabase

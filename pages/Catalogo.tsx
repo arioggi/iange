@@ -1,14 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Propiedad, Propietario, Visita, User, KycData } from '../types';
+import { Propiedad, Propietario, Visita, User, KycData, OfferData, Comprador } from '../types'; // <--- Comprador agregado
 import PropertyCard from '../components/catalogo/PropertyCard';
 import PropertyDetailModal from '../components/catalogo/PropertyDetailModal';
 import EditPropiedadForm from '../components/clientes/EditPropiedadForm';
-import KycPldForm from '../components/clientes/KycPldForm'; // <--- NUEVO IMPORT
+import KycPldForm from '../components/clientes/KycPldForm';
+import OfferForm from '../components/clientes/OfferForm';
 import Modal from '../components/ui/Modal';
 import { SparklesIcon, PencilIcon } from '../components/Icons';
-import { initialKycState } from '../constants'; // <--- NUEVO IMPORT
-import { createContact, assignBuyerToProperty } from '../Services/api'; // <--- NUEVOS IMPORTS
+import { initialKycState, initialOfferState } from '../constants';
+import { createContact, assignBuyerToProperty } from '../Services/api';
 
 // ==========================================
 // COMPONENTE: MODAL FULL SCREEN (LIMPIO)
@@ -66,14 +67,20 @@ interface CatalogoProps {
     onAddVisita: (propiedadId: number, visitaData: Omit<Visita, 'id' | 'fecha'>) => void;
     handleUpdatePropiedad: (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => void;
     showToast: (message: string, type?: 'success' | 'error') => void;
-    currentUser: User; // <--- AGREGADO: Necesario para saber el tenantId al crear contacto
+    currentUser: User;
+    compradores: Comprador[]; // <--- NUEVA PROP REQUERIDA
 }
 
-const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores, onAddVisita, handleUpdatePropiedad, showToast, currentUser }) => {
+const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores, onAddVisita, handleUpdatePropiedad, showToast, currentUser, compradores }) => {
     const [selectedPropiedad, setSelectedPropiedad] = useState<Propiedad | null>(null);
     const [isDetailModalOpen, setDetailModalOpen] = useState(false);
     const [isVisitaModalOpen, setVisitaModalOpen] = useState(false);
     const [isEditModalOpen, setEditModalOpen] = useState(false);
+    
+    // --- ESTADOS PARA OFERTA ---
+    const [isOfferModalOpen, setOfferModalOpen] = useState(false);
+    const [currentOfferData, setCurrentOfferData] = useState<OfferData>(initialOfferState);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
@@ -81,7 +88,6 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
     const [nuevoInteresadoData, setNuevoInteresadoData] = useState<KycData>(initialKycState);
 
     const filteredAndSortedPropiedades = useMemo(() => {
-        // Corrección del Paso 1 ya aplicada: No filtramos por status !== 'Vendida'
         const filtered = propiedades.filter(prop => {
             const propietario = propietarios.find(p => p.id === prop.propietarioId);
             const searchString = `${prop.calle} ${prop.colonia} ${prop.municipio} ${propietario?.nombreCompleto || ''}`.toLowerCase();
@@ -106,7 +112,6 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
 
     const handleAddVisitaClick = (propiedad: Propiedad) => {
         setSelectedPropiedad(propiedad);
-        // Reseteamos el formulario al abrir
         setNuevoInteresadoData(initialKycState);
         setVisitaModalOpen(true);
     };
@@ -116,13 +121,20 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
         setEditModalOpen(true);
     };
 
+    // --- HANDLER PARA ABRIR MODAL DE OFERTA ---
+    const handleOfferClick = (propiedad: Propiedad) => {
+        setSelectedPropiedad(propiedad);
+        setCurrentOfferData(initialOfferState); 
+        setOfferModalOpen(true);
+    };
+
     const handleSaveEdit = (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
         handleUpdatePropiedad(updatedPropiedad, updatedPropietario);
         setEditModalOpen(false);
         showToast('Propiedad actualizada con éxito.');
     };
 
-    // --- NUEVA LÓGICA DE GUARDADO DE INTERÉS ---
+    // --- LÓGICA DE GUARDADO DE INTERÉS (KYC) ---
     const handleSaveInteresado = async (propiedadId?: number, tipoRelacion?: string) => {
         if (!selectedPropiedad || !propiedadId || !currentUser.tenantId) {
              if(!currentUser.tenantId) showToast('Error: No se identificó la empresa del usuario.', 'error');
@@ -130,11 +142,7 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
         }
 
         try {
-            // 1. Crear el Contacto (Comprador) en la base de datos
             const newBuyer = await createContact(nuevoInteresadoData, currentUser.tenantId, 'comprador');
-            
-            // 2. Vincularlo a la propiedad como "Propuesta" (o lo que haya seleccionado)
-            // Nota: El form nos devuelve el tipoRelacion
             await assignBuyerToProperty(newBuyer.id, propiedadId, (tipoRelacion || 'Propuesta de compra') as any);
             
             showToast('¡Interés registrado! Cliente creado y cita agendada.', 'success');
@@ -145,6 +153,19 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
             console.error(error);
             showToast('Error al registrar: ' + error.message, 'error');
         }
+    };
+
+    // --- HANDLER PARA GUARDAR OFERTA (SIMULADO) ---
+    const handleSaveOffer = async () => {
+        if (!selectedPropiedad) return;
+
+        console.log("Guardando Oferta Formal:", {
+            propiedadId: selectedPropiedad.id,
+            offerData: currentOfferData
+        });
+        
+        showToast('✅ Propuesta de compra registrada correctamente.', 'success');
+        setOfferModalOpen(false);
     };
 
     const selectedPropietario = selectedPropiedad ? propietarios.find(p => p.id === selectedPropiedad.propietarioId) : undefined;
@@ -181,23 +202,10 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
                                 <PropertyCard
                                     propiedad={propiedad}
                                     propietario={propietarios.find(p => p.id === propiedad.propietarioId)}
+                                    onVisitaClick={() => handleAddVisitaClick(propiedad)}
+                                    onEditClick={() => handleEditClick(propiedad)}
+                                    onOfferClick={() => handleOfferClick(propiedad)} 
                                 />
-                            </div>
-                            <div className="absolute top-3 right-3 flex flex-col gap-2">
-                                <button 
-                                    onClick={() => handleAddVisitaClick(propiedad)}
-                                    className="bg-white/80 backdrop-blur-sm p-2 rounded-full text-iange-orange shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:bg-iange-orange hover:text-white"
-                                    title="Registrar visita/interés"
-                                >
-                                    <SparklesIcon className="h-5 w-5" />
-                                </button>
-                                <button 
-                                    onClick={() => handleEditClick(propiedad)}
-                                    className="bg-white/80 backdrop-blur-sm p-2 rounded-full text-indigo-600 shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:bg-indigo-600 hover:text-white"
-                                    title="Editar Propiedad"
-                                >
-                                    <PencilIcon className="h-5 w-5" />
-                                </button>
                             </div>
                         </div>
                     ))}
@@ -234,28 +242,47 @@ const Catalogo: React.FC<CatalogoProps> = ({ propiedades, propietarios, asesores
                 </Modal>
             )}
 
-            {/* MODAL DE INTERÉS ACTUALIZADO */}
+            {/* MODAL DE INTERÉS (KYC) */}
             {selectedPropiedad && (
                 <Modal 
                     title={`Registrar Interés en ${selectedPropiedad.calle}`} 
                     isOpen={isVisitaModalOpen} 
                     onClose={() => setVisitaModalOpen(false)}
-                    maxWidth="max-w-4xl" // Modal más ancho para el formulario completo
+                    maxWidth="max-w-4xl"
                 >
                     <div className="p-1">
                         <KycPldForm 
                             formData={{
                                 ...nuevoInteresadoData,
-                                propiedadId: selectedPropiedad.id, // Pre-asignamos la propiedad
-                                tipoRelacion: 'Propuesta de compra' // Default
+                                propiedadId: selectedPropiedad.id, 
+                                tipoRelacion: 'Propuesta de compra' 
                             }}
                             onFormChange={setNuevoInteresadoData}
-                            onSave={handleSaveInteresado} // Conectamos a la nueva función
+                            onSave={handleSaveInteresado} 
                             onCancel={() => setVisitaModalOpen(false)}
                             userType="Comprador"
-                            propiedades={propiedades} // Pasamos la lista para que funcione el select
+                            propiedades={propiedades}
                         />
                     </div>
+                </Modal>
+            )}
+
+            {/* --- NUEVO MODAL PARA REGISTRAR OFERTA --- */}
+            {selectedPropiedad && (
+                <Modal 
+                    title={`Registrar Propuesta de Compra`} 
+                    isOpen={isOfferModalOpen} 
+                    onClose={() => setOfferModalOpen(false)}
+                    maxWidth="max-w-4xl"
+                >
+                    <OfferForm
+                        propiedad={selectedPropiedad}
+                        formData={currentOfferData}
+                        onFormChange={setCurrentOfferData}
+                        onSave={handleSaveOffer}
+                        onCancel={() => setOfferModalOpen(false)}
+                        compradores={compradores} // <--- AQUÍ PASAMOS LA LISTA PARA EL DROPDOWN
+                    />
                 </Modal>
             )}
         </div>

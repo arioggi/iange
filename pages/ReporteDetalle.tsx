@@ -1,24 +1,32 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { REPORTS_LIST } from '../constants';
-import { Propiedad, User } from '../types';
+import { Propiedad, User, Comprador } from '../types'; // <--- Importamos Comprador
 
 interface ReporteDetalleProps {
     propiedades: Propiedad[];
     asesores: User[];
+    compradores: Comprador[]; // <--- Nueva prop requerida
 }
+
+// --- HELPER DE PARSEO ROBUSTO ---
+const parseCurrencyString = (value: string | undefined): number => {
+    if (!value) return 0;
+    const sanitized = value.toString().replace(/[^0-9.-]+/g, '');
+    return parseFloat(sanitized) || 0;
+};
 
 // --- HELPERS ---
 const formatCurrency = (value: string | number) => {
-    const number = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]+/g,"")) : value;
-    if (isNaN(number)) return 'N/A';
+    const number = typeof value === 'number' ? value : parseCurrencyString(value);
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(number);
 };
+
 const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
 };
-const getAsesorName = (id: number, asesores: User[]) => asesores.find(a => a.id === id)?.name || 'Desconocido';
+const getAsesorName = (id: number | string, asesores: User[]) => asesores.find(a => String(a.id) === String(id))?.name || 'Desconocido';
 
 
 // --- MAIN COMPONENTS ---
@@ -85,7 +93,7 @@ const SimpleBarChart: React.FC<{ data: { label: string, value: number }[], title
                 {data.map(item => (
                     <div key={item.label} className="flex flex-col items-center w-1/12">
                         <div className="text-sm font-bold">{item.value}</div>
-                        <div className="w-full bg-iange-orange hover:bg-orange-600 rounded-t-md mt-1" style={{ height: `${(item.value / maxValue) * 100}%` }}></div>
+                        <div className="w-full bg-iange-orange hover:bg-orange-600 rounded-t-md mt-1" style={{ height: maxValue > 0 ? `${(item.value / maxValue) * 100}%` : '0%' }}></div>
                         <span className="text-xs font-semibold mt-2">{item.label}</span>
                     </div>
                 ))}
@@ -96,7 +104,7 @@ const SimpleBarChart: React.FC<{ data: { label: string, value: number }[], title
 
 // --- REPORT-SPECIFIC CONTENT COMPONENTS ---
 
-const ReporteVentasContent: React.FC<{ propiedades: Propiedad[], asesores: User[] }> = ({ propiedades, asesores }) => {
+const ReporteVentasContent: React.FC<{ propiedades: Propiedad[], asesores: User[], compradores: Comprador[] }> = ({ propiedades, asesores, compradores }) => {
     const [searchTerm, setSearchTerm] = useState('');
 
     const propiedadesVendidas = propiedades.filter(p => p.status === 'Vendida' && p.fecha_venta);
@@ -112,7 +120,7 @@ const ReporteVentasContent: React.FC<{ propiedades: Propiedad[], asesores: User[
         });
     }, [propiedadesVendidas, asesores, searchTerm]);
     
-    const ingresoTotal = propiedadesVendidas.reduce((sum, p) => sum + parseFloat(p.valor_operacion || '0'), 0);
+    const ingresoTotal = propiedadesVendidas.reduce((sum, p) => sum + parseCurrencyString(p.valor_operacion), 0);
     const valorPromedio = propiedadesVendidas.length > 0 ? ingresoTotal / propiedadesVendidas.length : 0;
     
     const totalDiasVenta = propiedadesVendidas.reduce((sum, p) => {
@@ -130,6 +138,16 @@ const ReporteVentasContent: React.FC<{ propiedades: Propiedad[], asesores: User[
         return acc;
     }, {} as Record<string, number>);
     const chartData = Object.entries(monthlySalesData).map(([label, value]) => ({ label, value }));
+
+    // Helper para saber quién vendió (Cerrador)
+    const getCerradorName = (propiedad: Propiedad) => {
+        const comprador = compradores.find(c => String(c.id) === String(propiedad.compradorId));
+        if (comprador && comprador.asesorId) {
+            return getAsesorName(comprador.asesorId, asesores);
+        }
+        // Si no hay asesor de comprador, asumimos el captador por defecto
+        return getAsesorName(propiedad.asesorId, asesores);
+    };
 
     return (
         <div className="space-y-8">
@@ -158,7 +176,8 @@ const ReporteVentasContent: React.FC<{ propiedades: Propiedad[], asesores: User[
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Propiedad</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Asesor</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Captador</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cerrador (Vendedor)</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Valor de Venta</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha de Cierre</th>
                             </tr>
@@ -168,12 +187,14 @@ const ReporteVentasContent: React.FC<{ propiedades: Propiedad[], asesores: User[
                                 <tr key={p.id}>
                                     <td className="px-6 py-4">{`${p.calle} ${p.numero_exterior}`}</td>
                                     <td className="px-6 py-4">{getAsesorName(p.asesorId, asesores)}</td>
+                                    {/* Muestra al verdadero vendedor (quien trajo al cliente) */}
+                                    <td className="px-6 py-4 font-medium text-blue-800">{getCerradorName(p)}</td>
                                     <td className="px-6 py-4 font-semibold">{formatCurrency(p.valor_operacion)}</td>
                                     <td className="px-6 py-4">{formatDate(p.fecha_venta)}</td>
                                 </tr>
                             ))}
                             {filteredVendidas.length === 0 && (
-                                <tr><td colSpan={4} className="text-center py-8 text-gray-500">No hay resultados que coincidan con su búsqueda.</td></tr>
+                                <tr><td colSpan={5} className="text-center py-8 text-gray-500">No hay resultados que coincidan con su búsqueda.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -184,6 +205,7 @@ const ReporteVentasContent: React.FC<{ propiedades: Propiedad[], asesores: User[
 };
 
 const ReporteCaptacionContent: React.FC<{ propiedades: Propiedad[], asesores: User[] }> = ({ propiedades, asesores }) => {
+    // ... (El contenido de Captación se queda igual, ya que solo importa el Captador)
     const [searchTerm, setSearchTerm] = useState('');
     
     const filteredPropiedades = useMemo(() => {
@@ -258,19 +280,34 @@ const ReporteCaptacionContent: React.FC<{ propiedades: Propiedad[], asesores: Us
     );
 }
 
-const ReporteAsesorContent: React.FC<{ propiedades: Propiedad[], asesores: User[] }> = ({ propiedades, asesores }) => {
+const ReporteAsesorContent: React.FC<{ propiedades: Propiedad[], asesores: User[], compradores: Comprador[] }> = ({ propiedades, asesores, compradores }) => {
     const [searchTerm, setSearchTerm] = useState('');
 
     const dataAsesores = asesores.map(asesor => {
-        const propsAsesor = propiedades.filter(p => p.asesorId === asesor.id);
-        const propsVendidas = propsAsesor.filter(p => p.status === 'Vendida');
-        const totalVendido = propsVendidas.reduce((sum, p) => sum + parseFloat(p.valor_operacion || '0'), 0);
+        // 1. CAPTADAS: Propiedades listadas por este asesor
+        const propsCaptadas = propiedades.filter(p => String(p.asesorId) === String(asesor.id));
+        
+        // 2. VENDIDAS (CIERRES): Propiedades vendidas donde el COMPRADOR pertenece a este asesor
+        const cierres = propiedades.filter(p => {
+            if (p.status !== 'Vendida') return false;
+            
+            // Buscamos quién compró esta casa
+            const comprador = compradores.find(c => String(c.id) === String(p.compradorId));
+            
+            // Si el comprador es de este asesor, cuenta como venta para él
+            return comprador && String(comprador.asesorId) === String(asesor.id);
+        });
+
+        const totalVendido = cierres.reduce((sum, p) => sum + parseCurrencyString(p.valor_operacion), 0);
+        
         return {
             ...asesor,
-            captadas: propsAsesor.length,
-            vendidas: propsVendidas.length,
+            captadas: propsCaptadas.length,
+            vendidas: cierres.length,
             totalVendido: totalVendido,
-            tasaCierre: propsAsesor.length > 0 ? (propsVendidas.length / propsAsesor.length) * 100 : 0
+            // Nota: Tasa de cierre puede ser confusa si captas 0 y vendes 1 (infinito). 
+            // Mostramos 0 si no hay captaciones para evitar división por cero.
+            tasaCierre: propsCaptadas.length > 0 ? (cierres.length / propsCaptadas.length) * 100 : 0
         };
     });
     
@@ -299,9 +336,9 @@ const ReporteAsesorContent: React.FC<{ propiedades: Propiedad[], asesores: User[
                         <tr>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Asesor</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prop. Captadas</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prop. Vendidas</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tasa de Cierre</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Valor Total Vendido</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cierres (Ventas)</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tasa de Conversión</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Volumen Vendido</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -333,7 +370,7 @@ const PlaceholderContent: React.FC = () => (
     </div>
 );
 
-const ReporteDetalle: React.FC<ReporteDetalleProps> = ({ propiedades, asesores }) => {
+const ReporteDetalle: React.FC<ReporteDetalleProps> = ({ propiedades, asesores, compradores }) => {
     const { reportId } = useParams<{ reportId: string }>();
     const navigate = useNavigate();
     const reportInfo = REPORTS_LIST.find(r => r.id === reportId);
@@ -353,8 +390,10 @@ const ReporteDetalle: React.FC<ReporteDetalleProps> = ({ propiedades, asesores }
             });
         }
         
+        // CORRECCIÓN: El filtro del header filtra las PROPIEDADES CAPTADAS por ese asesor.
+        // Si queremos filtrar por ventas, sería más complejo, así que mantenemos este filtro "global" por propiedad.
         if (asesorId !== 'todos') {
-            tempProps = tempProps.filter(p => p.asesorId === Number(asesorId));
+            tempProps = tempProps.filter(p => String(p.asesorId) === String(asesorId));
         }
         
         setFilteredProps(tempProps);
@@ -363,12 +402,11 @@ const ReporteDetalle: React.FC<ReporteDetalleProps> = ({ propiedades, asesores }
     const renderContent = () => {
         switch(reportId) {
             case 'ventas':
-                return <ReporteVentasContent propiedades={filteredProps} asesores={asesores} />;
+                return <ReporteVentasContent propiedades={filteredProps} asesores={asesores} compradores={compradores} />;
             case 'captacion':
                 return <ReporteCaptacionContent propiedades={filteredProps} asesores={asesores}/>;
             case 'asesor':
-                return <ReporteAsesorContent propiedades={filteredProps} asesores={asesores}/>;
-            // Add other cases here as they are implemented
+                return <ReporteAsesorContent propiedades={filteredProps} asesores={asesores} compradores={compradores}/>;
             default:
                 return <PlaceholderContent />;
         }

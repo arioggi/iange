@@ -10,7 +10,8 @@ import {
   Plan,
   Log,
   KycData,
-  User 
+  User,
+  OfferData 
 } from './types';
 import {
   BuildingOfficeIcon,
@@ -27,6 +28,7 @@ import {
   ClipboardDocumentCheckIcon
 } from './components/Icons';
 
+// =================== ROLES ===================
 export const ROLES = {
   SUPER_ADMIN: 'superadmin',
   IANGE_ADMIN: 'iangeadmin',
@@ -264,10 +266,10 @@ export const initialKycState: KycData = {
     actuaPorCuentaPropia: true,
     origenRecursos: 'Salario', destinoRecursos: 'Uso personal',
     esPep: false,
-    // --- CAMPOS NUEVOS ---
     fechaCita: '',
     horaCita: '',
     notasCita: '',
+    asesorId: '', // <--- CAMPO AGREGADO
 };
 
 export const DEMO_SEED = {
@@ -279,3 +281,16 @@ export const DEMO_SEED = {
 
 export const MOCK_EMPRESAS = DEMO_SEED.empresas;
 export const USERS = DEMO_SEED.users;
+
+// --- 2. NUEVO ESTADO INICIAL PARA OFERTA ---
+export const initialOfferState: OfferData = {
+  compradorId: '', 
+  precioOfrecido: '',
+  formaPago: 'Contado',
+  institucionFinanciera: '',
+  montoApartado: '',
+  montoEnganche: '',
+  saldoAFirma: '',
+  vigenciaOferta: '',
+  observaciones: ''
+};

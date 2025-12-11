@@ -3,7 +3,7 @@ import { Propiedad, Propietario, User, ChecklistStatus, KycData } from '../../ty
 import { FLUJO_PROGRESO } from '../../constants';
 import KycPldForm from './KycPldForm';
 
-// === COMPONENTES REUSABLES AÑADIDOS/MEJORADOS ===
+// === COMPONENTES REUSABLES ===
 
 const LabeledInput: React.FC<{ label: string; name: string; value: string | number; onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void; type?: string; placeholder?: string; }> = ({ label, name, value, onChange, type = 'text', placeholder }) => (
     <div>
@@ -35,7 +35,7 @@ const LabeledSelect: React.FC<{ label: string; name: string; value: string | num
     </div>
 );
 
-// Helper: Calculate progress percentage from checklist status
+// Helper: Calculate progress percentage
 const totalChecklistItems = FLUJO_PROGRESO.reduce((acc, etapa) => acc + etapa.items.length, 0);
 const calculateProgress = (checklist: ChecklistStatus): number => {
     if (totalChecklistItems === 0) return 0;
@@ -43,7 +43,7 @@ const calculateProgress = (checklist: ChecklistStatus): number => {
     return Math.round((checkedCount / totalChecklistItems) * 100);
 };
 
-// Helper: Determine property status from checklist and buyer info
+// Helper: Determine property status
 const getStatusFromChecklist = (checklist: ChecklistStatus, compradorId: number | null | undefined): Propiedad['status'] => {
     if (checklist.ventaConcluida) return 'Vendida';
     if (checklist.propiedadSeparada || compradorId) return 'Separada';
@@ -51,7 +51,6 @@ const getStatusFromChecklist = (checklist: ChecklistStatus, compradorId: number 
     return 'Validación Pendiente';
 };
 
-// Photo Icon for upload area
 const PhotoIcon = () => (
     <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
         <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -84,7 +83,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
     const [editedPropiedad, setEditedPropiedad] = useState<Propiedad>(propiedad);
     const [editedPropietario, setEditedPropietario] = useState<Propietario>(propietario);
     
-    // Inicializar fotos con la combinación de URLs existentes y fotos locales
     const [photos, setPhotos] = useState<Array<File | string>>([
         ...(propiedad.imageUrls || []), 
         ...(propiedad.fotos || []),
@@ -93,15 +91,12 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
     useEffect(() => {
         setEditedPropiedad(propiedad);
         setEditedPropietario(propietario);
-        
-        // Sincronizar el estado 'photos' con las URLs y objetos File al cargar
         setPhotos([
             ...(propiedad.imageUrls || []), 
             ...(propiedad.fotos || []), 
         ]);
     }, [propiedad, propietario]);
     
-    // --- Photo Management ---
     const MAX_SIZE_MB = 5;
     const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 
@@ -117,26 +112,28 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                     validFiles.push(file);
                 }
             }
-            
-            // Añadimos solo los nuevos objetos File al estado existente
             setPhotos(prev => [...prev, ...validFiles]); 
         }
     };
     
-    // Función para eliminar fotos
     const removePhoto = (indexToRemove: number) => {
         setPhotos(prev => prev.filter((_, index) => index !== indexToRemove));
     };
 
-    // --- State Handlers ---
     const handlePropiedadChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
+        const { name, value, type } = e.target;
+        const checked = (e.target as HTMLInputElement).checked;
+
         const numericFields = [
             'asesorId', 'recamaras', 'banos_completos', 'medios_banos', 'cochera_autos',
-            'comisionOficina', 'comisionAsesor', 'comisionCompartida'
+            // Nuevos campos
+            'comisionCaptacionOficina', 'comisionCaptacionAsesor', 
+            'comisionVentaOficina', 'comisionVentaAsesor'
         ];
 
-        if (numericFields.includes(name)) {
+        if (type === 'checkbox') {
+             setEditedPropiedad(prev => ({ ...prev, [name]: checked }));
+        } else if (numericFields.includes(name)) {
             const numericValue = parseFloat(value);
             if (name === 'asesorId') {
                  setEditedPropiedad(prev => ({ ...prev, [name]: value === '0' ? 0 : value }));
@@ -154,14 +151,23 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
 
     const handleChecklistChange = (key: keyof ChecklistStatus, checked: boolean) => {
         setEditedPropiedad(prev => {
+            let newCompradorId = prev.compradorId;
+
+            // Romper vínculo si se desmarca "Separada" o "Venta"
+            if ((key === 'propiedadSeparada' || key === 'ventaConcluida') && !checked) {
+                newCompradorId = null; 
+            }
+
             const newChecklist = { ...prev.checklist, [key]: checked };
             const newProgress = calculateProgress(newChecklist);
-            const newStatus = getStatusFromChecklist(newChecklist, prev.compradorId);
+            const newStatus = getStatusFromChecklist(newChecklist, newCompradorId);
+            
             return {
                 ...prev,
                 checklist: newChecklist,
                 progreso: newProgress,
                 status: newStatus,
+                compradorId: newCompradorId, 
             };
         });
     };
@@ -178,12 +184,13 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
         onSave(finalPropiedad, editedPropietario);
     };
     
-    const comisionTotal = useMemo(() => {
-        const oficina = Number(editedPropiedad.comisionOficina) || 0;
-        const asesor = Number(editedPropiedad.comisionAsesor) || 0;
-        const compartida = Number(editedPropiedad.comisionCompartida) || 0;
-        return oficina + asesor + compartida;
-    }, [editedPropiedad.comisionOficina, editedPropiedad.comisionAsesor, editedPropiedad.comisionCompartida]);
+    // Cálculo Total Operación (Potencial)
+    const comisionTotalOperacion = useMemo(() => {
+        return (editedPropiedad.comisionCaptacionOficina || 0) + 
+               (editedPropiedad.comisionCaptacionAsesor || 0) +
+               (editedPropiedad.comisionVentaOficina || 0) + 
+               (editedPropiedad.comisionVentaAsesor || 0);
+    }, [editedPropiedad]);
 
     const renderProgressView = () => (
         <div className="space-y-6">
@@ -221,7 +228,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
     
     const renderPropiedadDetailsForm = () => (
         <div className="space-y-6">
-            {/* Address */}
             <section>
                 <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dirección del Inmueble</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -233,7 +239,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                     <LabeledInput label="Código Postal" name="codigo_postal" value={editedPropiedad.codigo_postal} onChange={handlePropiedadChange} placeholder="Ej. 64010" />
                 </div>
             </section>
-            {/* Dimensions & Distribution */}
              <section>
                 <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dimensiones y Distribución</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -245,22 +250,98 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                     <LabeledInput label="Cochera (autos)" name="cochera_autos" type="number" value={editedPropiedad.cochera_autos || ''} onChange={handlePropiedadChange} placeholder="2" />
                 </div>
             </section>
-            {/* Commission */}
+            
+            {/* Sección de Comisión (NUEVO DISEÑO) */}
             <section>
-                <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Comisión</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
-                    <LabeledInput label="Comisión Oficina" name="comisionOficina" type="number" value={editedPropiedad.comisionOficina || ''} onChange={handlePropiedadChange} placeholder="25000" />
-                    <LabeledInput label="Comisión Asesor/a" name="comisionAsesor" type="number" value={editedPropiedad.comisionAsesor || ''} onChange={handlePropiedadChange} placeholder="25000" />
-                    <LabeledInput label="Comisión Compartida" name="comisionCompartida" type="number" value={editedPropiedad.comisionCompartida || ''} onChange={handlePropiedadChange} placeholder="50000" />
-                    <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Total</label>
-                        <p className="w-full px-3 py-2 bg-gray-100 border rounded-md text-gray-800 font-bold">
-                            {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(comisionTotal)}
-                        </p>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">Desglose de Comisiones</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    
+                    {/* COLUMNA 1: CAPTACIÓN */}
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                        <h4 className="font-bold text-blue-800 mb-3 uppercase text-sm flex items-center">
+                            <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">1</span>
+                            Captación (Listing)
+                        </h4>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700">Comisión Oficina</label>
+                                <input name="comisionCaptacionOficina" type="number" min="0" value={editedPropiedad.comisionCaptacionOficina} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-blue-200 rounded focus:ring-blue-500 focus:border-blue-500" placeholder="0.00" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700">Comisión Asesor</label>
+                                <input name="comisionCaptacionAsesor" type="number" min="0" value={editedPropiedad.comisionCaptacionAsesor} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-blue-200 rounded focus:ring-blue-500 focus:border-blue-500" placeholder="0.00" />
+                            </div>
+                            <div className="flex items-center pt-2">
+                                <input 
+                                    type="checkbox" 
+                                    id="checkCaptacion" 
+                                    name="compartirComisionCaptacion" 
+                                    checked={!!editedPropiedad.compartirComisionCaptacion} 
+                                    onChange={handlePropiedadChange} 
+                                    className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" 
+                                />
+                                <label htmlFor="checkCaptacion" className="ml-2 text-sm text-gray-700 select-none cursor-pointer">¿Comisión Compartida?</label>
+                            </div>
+                            <div className="pt-2 border-t border-blue-200 mt-2 flex justify-between items-center">
+                                <p className="text-xs text-gray-500">Subtotal Captación</p>
+                                <p className="font-bold text-blue-900">
+                                    {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format((editedPropiedad.comisionCaptacionOficina || 0) + (editedPropiedad.comisionCaptacionAsesor || 0))}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* COLUMNA 2: VENTA */}
+                    <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+                        <h4 className="font-bold text-green-800 mb-3 uppercase text-sm flex items-center">
+                            <span className="bg-green-200 text-green-800 rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">2</span>
+                            Venta (Selling)
+                        </h4>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700">Comisión Oficina</label>
+                                <input name="comisionVentaOficina" type="number" min="0" value={editedPropiedad.comisionVentaOficina} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-green-200 rounded focus:ring-green-500 focus:border-green-500" placeholder="0.00" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700">Comisión Asesor</label>
+                                <input name="comisionVentaAsesor" type="number" min="0" value={editedPropiedad.comisionVentaAsesor} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-green-200 rounded focus:ring-green-500 focus:border-green-500" placeholder="0.00" />
+                            </div>
+                            <div className="flex items-center pt-2">
+                                <input 
+                                    type="checkbox" 
+                                    id="checkVenta" 
+                                    name="compartirComisionVenta" 
+                                    checked={!!editedPropiedad.compartirComisionVenta} 
+                                    onChange={handlePropiedadChange} 
+                                    className="h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500" 
+                                />
+                                <label htmlFor="checkVenta" className="ml-2 text-sm text-gray-700 select-none cursor-pointer">¿Comisión Compartida?</label>
+                            </div>
+                            <div className="pt-2 border-t border-green-200 mt-2 flex justify-between items-center">
+                                <p className="text-xs text-gray-500">Subtotal Venta</p>
+                                <p className="font-bold text-green-900">
+                                    {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format((editedPropiedad.comisionVentaOficina || 0) + (editedPropiedad.comisionVentaAsesor || 0))}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* TOTAL OPERACIÓN */}
+                <div className="mt-4 p-4 bg-gray-100 rounded-lg flex justify-between items-center border border-gray-200">
+                    <div className="text-xs text-gray-500">
+                        * La comisión compartida se restará del ingreso final en reportes.
+                    </div>
+                    <div className="text-right">
+                        <span className="text-sm font-medium text-gray-600 mr-2">COMISIÓN TOTAL OPERACIÓN:</span>
+                        <span className="text-xl font-extrabold text-gray-900">
+                            {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(comisionTotalOperacion)}
+                        </span>
                     </div>
                 </div>
             </section>
-            {/* Details */}
+
              <section>
                  <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Detalles Adicionales</h3>
                 <div className="space-y-4">
@@ -295,12 +376,10 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                 </div>
             </section>
             
-            {/* Photos (Galería Interactiva con Eliminación Mejorada) */}
              <section>
                 <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Fotografías ({photos.length})</h3>
-                <p className="text-sm text-gray-600 my-2">La primera foto será la portada. Haz clic en '×' para eliminar una foto (el cambio se guardará al presionar "Guardar Cambios").</p>
+                <p className="text-sm text-gray-600 my-2">La primera foto será la portada. Haz clic en '×' para eliminar una foto.</p>
                 
-                {/* Visualización de Galería Horizontal */}
                 {photos.length > 0 && (
                     <div className="flex space-x-3 overflow-x-auto pb-4 custom-scrollbar">
                         {photos.map((file, index) => {
@@ -313,7 +392,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                                     <img src={imageUrl} alt={`preview ${index}`} className="w-full h-full object-cover" />
                                     {index === 0 && <div className="absolute top-0 left-0 bg-iange-orange text-white text-xs font-bold px-1 rounded-br-md">Portada</div>}
                                     
-                                    {/* Botón de Eliminar CORREGIDO: Gris, más grande y centrado */}
                                     <button 
                                         type="button"
                                         onClick={() => removePhoto(index)} 
@@ -328,7 +406,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                     </div>
                 )}
                 
-                {/* Zona de Arrastrar y Soltar para Añadir */}
                  <div className="mt-4 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
                     <div className="space-y-1 text-center">
                         <PhotoIcon />

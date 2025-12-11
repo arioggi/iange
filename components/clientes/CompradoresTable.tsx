@@ -1,18 +1,27 @@
 import React from 'react';
-import { Comprador, Propiedad } from '../../types';
+import { Comprador, Propiedad, User } from '../../types'; // <--- Importamos User
 
 interface CompradoresTableProps {
     compradores: Comprador[];
     onEdit: (comprador: Comprador) => void;
     onDelete: (comprador: Comprador) => void;
     propiedades: Propiedad[];
+    asesores: User[]; // <--- NUEVA PROP: Lista de asesores para buscar el nombre
 }
 
-const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit, onDelete, propiedades }) => {
+const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit, onDelete, propiedades, asesores }) => {
     
     const getPropertyDetails = (propiedadId: number | null | undefined) => {
         if (!propiedadId) return null;
         return propiedades.find(p => p.id === propiedadId);
+    };
+
+    // Helper para obtener el nombre del asesor
+    const getAsesorName = (id?: number | string) => {
+        if (!id) return null;
+        // Convertimos a string para asegurar la comparación (ya que id puede ser number o string)
+        const asesor = asesores.find(a => String(a.id) === String(id));
+        return asesor ? asesor.name : null;
     };
 
     const getStatusBadge = (tipo: string) => {
@@ -34,11 +43,8 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
     };
 
     return (
-        // CAMBIO CRÍTICO 1: overflow-visible para permitir que el tooltip "salga" de la tabla
-        // NOTA: Si necesitas scroll horizontal en móviles, esto podría conflictuar, pero en desktop arregla el corte.
-        // Si necesitas scroll, la solución perfecta requiere usar Portals para el tooltip, pero probemos esto primero que es más simple.
-        <div className="overflow-visible"> 
-            <table className="min-w-full bg-white border-collapse">
+        <div className="overflow-x-auto border rounded-lg shadow-sm"> 
+            <table className="min-w-full bg-white">
                 <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-medium border-b">
                     <tr>
                         <th className="px-6 py-3 text-left tracking-wider">Cliente</th>
@@ -49,23 +55,23 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                    {compradores.map((comprador, index) => {
+                    {compradores.map((comprador) => {
                         const prop = getPropertyDetails(comprador.propiedadId);
                         const tipoRelacion = (comprador as any).tipoRelacion || 'Propuesta de compra';
+                        const asesorNombre = getAsesorName(comprador.asesorId); // <--- Buscamos el nombre aquí
 
                         return (
-                            // CAMBIO CRÍTICO 2: z-index dinámico decreciente.
-                            // Esto asegura que la fila 1 esté "encima" de la fila 2.
-                            // Así, si el tooltip baja, tapa la fila de abajo en lugar de ser tapado por ella.
-                            <tr 
-                                key={comprador.id} 
-                                className="hover:bg-gray-50 transition-colors relative"
-                                style={{ zIndex: 100 - index }} 
-                            >
-                                <td className="px-6 py-4 relative">
+                            <tr key={comprador.id} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-6 py-4">
                                     <div className="text-sm font-bold text-gray-900">{comprador.nombreCompleto}</div>
+                                    {/* --- MOSTRAR ASESOR --- */}
+                                    {asesorNombre && (
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            <span className="font-semibold text-gray-400">Asesor:</span> {asesorNombre}
+                                        </div>
+                                    )}
                                 </td>
-                                <td className="px-6 py-4 relative">
+                                <td className="px-6 py-4">
                                     {prop ? (
                                         <div className="flex flex-col items-start">
                                             <span className="text-sm font-medium text-gray-800">{prop.calle} {prop.numero_exterior}</span>
@@ -77,7 +83,7 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                                     )}
                                 </td>
                                 
-                                <td className="px-6 py-4 align-top relative">
+                                <td className="px-6 py-4 align-top">
                                     {comprador.fechaCita ? (
                                         <div className="grid grid-cols-[20px_1fr] gap-x-2 gap-y-1 items-center">
                                             <span className="text-sm text-center">📅</span>
@@ -91,18 +97,14 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                                             </span>
 
                                             {comprador.notasCita && (
-                                                // CAMBIO 3: Tooltip ajustado
-                                                <div className="col-span-2 mt-1 pl-7 relative group">
-                                                    <p className="text-[11px] text-gray-500 italic truncate max-w-[150px] cursor-help">
-                                                        <span className="mr-1">📝</span>
+                                                <div 
+                                                    className="col-span-2 mt-1 pl-7 cursor-help group"
+                                                    title={comprador.notasCita}
+                                                >
+                                                    <p className="text-[11px] text-gray-500 italic truncate max-w-[150px] border-b border-dotted border-gray-300 hover:text-gray-800 hover:border-gray-500 transition-colors">
+                                                        <span className="mr-1 not-italic">📝</span>
                                                         "{comprador.notasCita}"
                                                     </p>
-                                                    
-                                                    {/* El Globo Flotante */}
-                                                    <div className="absolute left-0 top-6 hidden group-hover:block w-64 p-3 bg-gray-800 text-white text-xs rounded-md shadow-2xl border border-gray-700 whitespace-normal z-[9999]">
-                                                        <div className="font-semibold mb-1 text-gray-300 border-b border-gray-600 pb-1">Notas de la visita:</div>
-                                                        "{comprador.notasCita}"
-                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -111,11 +113,11 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                                     )}
                                 </td>
 
-                                <td className="px-6 py-4 relative">
+                                <td className="px-6 py-4">
                                     <div className="text-sm text-gray-600">{comprador.email}</div>
                                     <div className="text-sm text-gray-600">{comprador.telefono}</div>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium relative">
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                     <button onClick={() => onEdit(comprador)} className="text-indigo-600 hover:text-indigo-900 mr-4 font-semibold">Editar</button>
                                     <button onClick={() => onDelete(comprador)} className="text-red-600 hover:text-red-900 font-semibold">Eliminar</button>
                                 </td>

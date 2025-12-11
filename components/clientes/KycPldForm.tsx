@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { KycData, Propiedad } from '../../types';
+import { KycData, Propiedad, User } from '../../types'; // <--- Importamos User
 
 // --- COMPONENTES INTERNOS ---
 const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -79,9 +79,19 @@ interface KycPldFormProps {
     userType: 'Propietario' | 'Comprador';
     isEmbedded?: boolean;
     propiedades?: Propiedad[];
+    asesores?: User[]; // <--- NUEVA PROP PARA RECIBIR LA LISTA DE ASESORES
 }
 
-const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onFormChange, userType, isEmbedded = false, propiedades }) => {
+const KycPldForm: React.FC<KycPldFormProps> = ({ 
+    onSave, 
+    onCancel, 
+    formData, 
+    onFormChange, 
+    userType, 
+    isEmbedded = false, 
+    propiedades,
+    asesores = [] // <--- DEFAULT VACÍO
+}) => {
     // Obtenemos el ID actual si estamos editando
     const currentPropId = String((formData as any).propiedadId || '');
     
@@ -247,8 +257,29 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                     </div>
                 )}
                 
-                {/* ... RESTO DEL FORMULARIO SIN CAMBIOS ... */}
                 <FormSection title={`Datos de Identificación del ${userType} (Persona Física)`}>
+                    
+                    {/* --- NUEVO SELECTOR DE ASESOR --- */}
+                    {asesores.length > 0 && (
+                        <div className="md:col-span-2 bg-yellow-50 p-3 rounded border border-yellow-200 mb-2">
+                            <label htmlFor="asesorId" className="block text-sm font-bold text-yellow-800 mb-1">
+                                Asesor Responsable (Quién atiende/vendió)
+                            </label>
+                            <select 
+                                name="asesorId" 
+                                id="asesorId" 
+                                value={formData.asesorId || ''} 
+                                onChange={handleChange as any} 
+                                className="w-full px-3 py-2 bg-white border border-yellow-300 rounded-md focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm text-gray-900"
+                            >
+                                <option value="">-- Seleccionar Asesor --</option>
+                                {asesores.map(asesor => (
+                                    <option key={asesor.id} value={String(asesor.id)}>{asesor.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
                     <Input label="Nombre(s) y apellidos" name="nombreCompleto" value={formData.nombreCompleto} onChange={handleChange} fullWidth/>
                     <Input label="CURP" name="curp" value={formData.curp} onChange={handleChange} />
                     <Input label="RFC" name="rfc" value={formData.rfc} onChange={handleChange} />
