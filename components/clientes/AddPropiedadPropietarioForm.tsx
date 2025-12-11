@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Propiedad, Propietario, ChecklistStatus, User } from '../../types';
 import KycPldForm from './KycPldForm';
 import { initialKycState as initialKycPropietarioState } from '../../constants';
+import PhotoSorter from '../ui/PhotoSorter'; // <--- IMPORTAMOS EL SORTER
 
 declare const jspdf: any;
 
@@ -33,7 +34,7 @@ const initialPropiedadState: Omit<Propiedad, 'id' | 'propietarioId' | 'fecha_cap
     comisionVentaAsesor: 0,
     compartirComisionVenta: false,
     
-    // Legacy (se mantienen para compatibilidad interna si se usan)
+    // Legacy
     comisionOficina: 0,
     comisionAsesor: 0,
     comisionCompartida: 0,
@@ -232,7 +233,13 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
         setPhotos(prev => prev.filter((_, index) => index !== indexToRemove));
     };
 
-    // Cálculo Total Operación (Suma todo lo que hay en los inputs, sin restar lo compartido aun, solo muestra el potencial)
+    // --- MANEJADOR DE REORDENAMIENTO ---
+    const handleReorderPhotos = (newPhotos: Array<File | string>) => {
+        // En Add, todas son Files, así que casteamos sin problema
+        setPhotos(newPhotos as File[]);
+    };
+
+    // Cálculo Total Operación
     const comisionTotalOperacion = useMemo(() => {
         return (propiedadData.comisionCaptacionOficina || 0) + 
                (propiedadData.comisionCaptacionAsesor || 0) +
@@ -282,7 +289,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
 
     return (
         <div>
-            {/* Sección de pestañas sin padding */}
             <div className="border-b border-gray-200 mb-6">
                 <nav className="-mb-px flex space-x-8" aria-label="Tabs">
                     {TABS.map((tab) => (
@@ -301,8 +307,7 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                 </nav>
             </div>
 
-            {/* Contenedor principal del contenido con scrollbar y padding horizontal uniforme (px-4) */}
-            <div className="max-h-[70vh] overflow-y-auto px-4 custom-scrollbar">
+            <div className="max-h-[70vh] overflow-y-auto p-6 custom-scrollbar">
 
                 {activeTab === 'Datos de la Propiedad' && (
                     <div className="space-y-6">
@@ -336,7 +341,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                             </div>
                         </section>
 
-                        {/* Sección de Dimensiones */}
                         <section>
                             <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dimensiones</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -351,7 +355,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                             </div>
                         </section>
                         
-                        {/* Sección de Distribución */}
                         <section>
                             <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Distribución</h3>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -465,7 +468,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                             </div>
                         </section>
 
-                        {/* Sección de Detalles Adicionales */}
                         <section>
                             <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Detalles Adicionales</h3>
                             <div className="space-y-4">
@@ -512,14 +514,18 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                             </div>
                         </section>
 
-                        {/* Sección de Fotos (Galería/Grid) */}
+                        {/* Sección de Fotos con Drag & Drop */}
                         <section>
                             <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Fotografías del Inmueble</h3>
-                            <p className="text-sm text-gray-600 my-2">La primera foto será la portada. Sube un mínimo de 1. Sugerimos 12 para una mejor presentación.</p>
-                            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+                            <p className="text-sm text-gray-600 my-2">
+                                <strong>Arrastra y suelta</strong> las fotos para cambiar el orden. La foto en la posición #1 será la <strong>PORTADA</strong>.
+                            </p>
+                            
+                            {/* Input de Carga */}
+                            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md mb-4 hover:bg-gray-50 transition-colors">
                                 <div className="space-y-1 text-center">
                                     <PhotoIcon />
-                                    <div className="flex text-sm text-gray-600">
+                                    <div className="flex text-sm text-gray-600 justify-center">
                                         <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-iange-orange hover:text-orange-500 focus-within:outline-none">
                                             <span>Selecciona tus archivos</span>
                                             <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/*" onChange={handlePhotoChange} />
@@ -529,21 +535,13 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                                     <p className="text-xs text-gray-500">Imágenes hasta 5MB</p>
                                 </div>
                             </div>
-                            {photos.length > 0 && (
-                                <div className="mt-4">
-                                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4 mt-2">
-                                        {photos.map((file, index) => (
-                                            <div key={URL.createObjectURL(file)} className={`relative group ${index === 0 ? 'border-2 border-iange-orange rounded-md p-1' : ''}`}>
-                                                <img src={URL.createObjectURL(file)} alt={`preview ${index}`} className="h-24 w-full object-cover rounded-md" />
-                                                {index === 0 && <div className="absolute top-0 left-0 bg-iange-orange text-white text-xs font-bold px-1 rounded-br-md">Portada</div>}
-                                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center transition-opacity">
-                                                    <button onClick={() => removePhoto(index)} className="text-white text-3xl opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+
+                            {/* COMPONENTE DRAG & DROP */}
+                            <PhotoSorter 
+                                photos={photos} 
+                                onChange={handleReorderPhotos} 
+                                onRemove={removePhoto} 
+                            />
                         </section>
                     </div>
                 )}
@@ -559,7 +557,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                     />
                 )}
             </div>
-            {/* Fin Contenedor principal del contenido */}
 
             <div className="flex justify-end mt-8 space-x-4 pt-4 border-t px-4">
                  <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-800 py-2 px-6 rounded-md hover:bg-gray-300">

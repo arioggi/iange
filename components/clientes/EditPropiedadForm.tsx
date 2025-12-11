@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Propiedad, Propietario, User, ChecklistStatus, KycData } from '../../types';
 import { FLUJO_PROGRESO } from '../../constants';
 import KycPldForm from './KycPldForm';
+import PhotoSorter from '../ui/PhotoSorter';
 
 // === COMPONENTES REUSABLES ===
 
@@ -120,13 +121,16 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
         setPhotos(prev => prev.filter((_, index) => index !== indexToRemove));
     };
 
+    const handleReorderPhotos = (newPhotos: Array<File | string>) => {
+        setPhotos(newPhotos);
+    };
+
     const handlePropiedadChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
         const checked = (e.target as HTMLInputElement).checked;
 
         const numericFields = [
             'asesorId', 'recamaras', 'banos_completos', 'medios_banos', 'cochera_autos',
-            // Nuevos campos
             'comisionCaptacionOficina', 'comisionCaptacionAsesor', 
             'comisionVentaOficina', 'comisionVentaAsesor'
         ];
@@ -152,12 +156,9 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
     const handleChecklistChange = (key: keyof ChecklistStatus, checked: boolean) => {
         setEditedPropiedad(prev => {
             let newCompradorId = prev.compradorId;
-
-            // Romper vínculo si se desmarca "Separada" o "Venta"
             if ((key === 'propiedadSeparada' || key === 'ventaConcluida') && !checked) {
                 newCompradorId = null; 
             }
-
             const newChecklist = { ...prev.checklist, [key]: checked };
             const newProgress = calculateProgress(newChecklist);
             const newStatus = getStatusFromChecklist(newChecklist, newCompradorId);
@@ -184,7 +185,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
         onSave(finalPropiedad, editedPropietario);
     };
     
-    // Cálculo Total Operación (Potencial)
     const comisionTotalOperacion = useMemo(() => {
         return (editedPropiedad.comisionCaptacionOficina || 0) + 
                (editedPropiedad.comisionCaptacionAsesor || 0) +
@@ -251,12 +251,10 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                 </div>
             </section>
             
-            {/* Sección de Comisión (NUEVO DISEÑO) */}
             <section>
                 <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">Desglose de Comisiones</h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    
                     {/* COLUMNA 1: CAPTACIÓN */}
                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
                         <h4 className="font-bold text-blue-800 mb-3 uppercase text-sm flex items-center">
@@ -328,7 +326,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                     </div>
                 </div>
 
-                {/* TOTAL OPERACIÓN */}
                 <div className="mt-4 p-4 bg-gray-100 rounded-lg flex justify-between items-center border border-gray-200">
                     <div className="text-xs text-gray-500">
                         * La comisión compartida se restará del ingreso final en reportes.
@@ -378,43 +375,29 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
             
              <section>
                 <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Fotografías ({photos.length})</h3>
-                <p className="text-sm text-gray-600 my-2">La primera foto será la portada. Haz clic en '×' para eliminar una foto.</p>
+                <p className="text-sm text-gray-600 my-2">
+                    <strong>Arrastra y suelta</strong> para ordenar. La primera foto es la <strong>PORTADA</strong>. Haz clic en '×' para eliminar.
+                </p>
                 
-                {photos.length > 0 && (
-                    <div className="flex space-x-3 overflow-x-auto pb-4 custom-scrollbar">
-                        {photos.map((file, index) => {
-                             const imageUrl = file instanceof File ? URL.createObjectURL(file) : file;
-                             return (
-                                 <div 
-                                     key={index} 
-                                     className={`relative flex-shrink-0 w-32 h-24 rounded-md overflow-hidden group border ${index === 0 ? 'border-2 border-iange-orange' : 'border-gray-200'}`}
-                                 >
-                                    <img src={imageUrl} alt={`preview ${index}`} className="w-full h-full object-cover" />
-                                    {index === 0 && <div className="absolute top-0 left-0 bg-iange-orange text-white text-xs font-bold px-1 rounded-br-md">Portada</div>}
-                                    
-                                    <button 
-                                        type="button"
-                                        onClick={() => removePhoto(index)} 
-                                        className="absolute top-1 right-1 bg-gray-500 text-white rounded-full h-7 w-7 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-700 z-10"
-                                        title="Eliminar foto"
-                                    >
-                                        <span className="text-xl font-bold leading-none pb-1">&times;</span>
-                                    </button>
-                                 </div>
-                             );
-                        })}
-                    </div>
-                )}
+                {/* COMPONENTE DRAG & DROP */}
+                <div className="mb-4">
+                    <PhotoSorter 
+                        photos={photos} 
+                        onChange={handleReorderPhotos} 
+                        onRemove={removePhoto} 
+                    />
+                </div>
                 
-                 <div className="mt-4 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+                {/* Input de Carga */}
+                 <div className="flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:bg-gray-50 transition-colors">
                     <div className="space-y-1 text-center">
                         <PhotoIcon />
-                        <div className="flex text-sm text-gray-600">
+                        <div className="flex text-sm text-gray-600 justify-center">
                             <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-iange-orange hover:text-orange-500 focus-within:outline-none">
-                                <span>Añadir fotos</span>
+                                <span>Añadir más fotos</span>
                                 <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple accept="image/*" onChange={handlePhotoChange} />
                             </label>
-                             <p className="pl-1">o arrástralos aquí</p>
+                             <p className="pl-1">o arrástralas aquí</p>
                         </div>
                          <p className="text-xs text-gray-500">Imágenes hasta 5MB</p>
                     </div>
@@ -453,7 +436,8 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
 
     return (
         <div>
-            <div className="max-h-[calc(90vh-15rem)] overflow-y-auto pr-4 custom-scrollbar">
+            {/* CORRECCIÓN FINAL: Usamos px-4 para mantener el ancho, pero py-4 para dar aire vertical */}
+            <div className="max-h-[calc(90vh-15rem)] overflow-y-auto px-4 py-4 custom-scrollbar">
                 {viewMode === 'progressOnly' ? renderProgressView() : renderFullEditView()}
             </div>
             <div className="flex-shrink-0 flex justify-end mt-6 pt-4 border-t space-x-4">
