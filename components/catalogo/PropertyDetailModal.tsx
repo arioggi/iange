@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Propiedad, Propietario, Comprador, OfferData } from '../../types';
-import Modal from '../ui/Modal'; // <--- IMPORTAMOS EL MODAL GENÉRICO
+import { pdf } from '@react-pdf/renderer'; // <--- CAMBIO: Usamos 'pdf' para generación manual
+import FichaTecnicaPDF from '../../components/PDF/FichaTecnicaPDF'; // <--- Tu componente PDF
+import Modal from '../ui/Modal'; 
 
 interface PropertyDetailModalProps {
     propiedad: Propiedad;
@@ -40,13 +42,13 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
     const [imageLoading, setImageLoading] = useState(true);
     const [currentOfferIndex, setCurrentOfferIndex] = useState(0);
     
-    // --- NUEVO ESTADO PARA EL MODAL DE CONFIRMACIÓN ---
+    // --- ESTADOS ---
     const [isDeleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [offerToDeleteId, setOfferToDeleteId] = useState<number | null>(null);
+    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false); // <--- NUEVO ESTADO PARA EL PDF
 
-    // --- 1. OBTENER Y MAPEAR OFERTAS (BÚSQUEDA PROFUNDA) ---
+    // --- 1. OBTENER Y MAPEAR OFERTAS ---
     const ofertasDisponibles = compradores.flatMap(c => {
-        // A. Buscamos en la nueva lista de intereses
         if (c.intereses && Array.isArray(c.intereses)) {
             const interesEnEsta = c.intereses.find((i: any) => String(i.propiedadId) === String(propiedad.id));
             if (interesEnEsta && interesEnEsta.ofertaFormal) {
@@ -58,7 +60,6 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
             }
         }
         
-        // B. Fallback Legacy (Si el dato es antiguo y está en la raíz)
         if (String(c.propiedadId) === String(propiedad.id) && c.ofertaFormal) {
              return [{
                 id: c.id,
@@ -70,23 +71,18 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
         return [];
     });
 
-    // --- 2. DETECTAR SI HAY UN GANADOR (PROPIEDAD VENDIDA) ---
+    // --- 2. LOGICA DE GANADOR ---
     const isSold = propiedad.status === 'Vendida';
-    
-    // Buscamos si alguno de los ofertantes es el dueño actual (ganador)
     const winnerIndex = isSold 
         ? ofertasDisponibles.findIndex(o => String(o.id) === String(propiedad.compradorId)) 
         : -1;
 
     const hasOffers = ofertasDisponibles.length > 0;
     const currentOfferObj = hasOffers ? ofertasDisponibles[currentOfferIndex] : null;
-    
-    // Bandera para saber si la oferta que estamos viendo ES la ganadora
     const isWinningOffer = isSold && currentOfferObj && String(currentOfferObj.id) === String(propiedad.compradorId);
 
-    // --- 3. ESTILOS DINÁMICOS (VERDE vs DORADO) ---
+    // --- 3. ESTILOS ---
     const badgeText = isWinningOffer ? '⭐ OFERTA GANADORA' : 'Oferta Vigente';
-
     const bgLight = isWinningOffer ? 'bg-amber-50' : 'bg-green-50';
     const bgMedium = isWinningOffer ? 'bg-amber-100' : 'bg-green-100';
     const bgDark = isWinningOffer ? 'bg-amber-200' : 'bg-green-200';
@@ -95,6 +91,7 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
     const textDark = isWinningOffer ? 'text-amber-900' : 'text-green-900';
     const textMedium = isWinningOffer ? 'text-amber-800' : 'text-green-800';
 
+    // --- IMÁGENES ---
     const images = (propiedad.imageUrls && propiedad.imageUrls.length > 0) 
         ? propiedad.imageUrls 
         : (propiedad.fotos && propiedad.fotos.length > 0) 
@@ -106,7 +103,6 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
     useEffect(() => {
         setCurrentImageIndex(0);
         setImageLoading(true);
-        // Si hay un ganador, mostramos su oferta primero. Si no, la primera de la lista.
         if (winnerIndex !== -1) {
             setCurrentOfferIndex(winnerIndex);
         } else {
@@ -120,7 +116,6 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
     const nextOffer = () => { setCurrentOfferIndex((prev) => (prev === ofertasDisponibles.length - 1 ? 0 : prev + 1)); };
     const prevOffer = () => { setCurrentOfferIndex((prev) => (prev === 0 ? ofertasDisponibles.length - 1 : prev - 1)); };
 
-    // --- NUEVO HANDLER PARA ELIMINAR ---
     const handleDeleteClick = (buyerId: number) => {
         setOfferToDeleteId(buyerId);
         setDeleteConfirmOpen(true);
@@ -131,6 +126,38 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
             onDeleteOffer(offerToDeleteId);
             setDeleteConfirmOpen(false);
             setOfferToDeleteId(null);
+        }
+    };
+
+    // --- NUEVA FUNCIÓN: GENERAR Y DESCARGAR PDF ---
+    const handleDownloadPDF = async () => {
+        setIsGeneratingPdf(true);
+        try {
+            // 1. Generamos el documento en memoria (Blob)
+            const blob = await pdf(
+                <FichaTecnicaPDF propiedad={propiedad} images={images} />
+            ).toBlob();
+            
+            // 2. Creamos un link temporal para forzar la descarga
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            
+            // Limpieza del nombre de archivo
+            const safeName = (propiedad.calle + '_' + propiedad.numero_exterior).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            link.download = `Ficha_${safeName}.pdf`;
+            
+            // 3. Simular clic y limpiar
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url); 
+
+        } catch (error) {
+            console.error("Error generando PDF:", error);
+            alert("Hubo un error al generar la ficha técnica. Por favor intenta de nuevo.");
+        } finally {
+            setIsGeneratingPdf(false);
         }
     };
 
@@ -185,10 +212,9 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
                     </div>
                 </div>
 
-                {/* --- SECCIÓN DE OFERTAS (SLIDER INTELIGENTE) --- */}
+                {/* --- SECCIÓN DE OFERTAS --- */}
                 {hasOffers && currentOfferObj && (
                     <div className={`mb-8 ${bgLight} border ${borderCol} rounded-xl p-5 shadow-sm relative overflow-hidden transition-all duration-300 group/offer`}>
-                        {/* Badge */}
                         <div className={`absolute top-0 right-0 ${bgDark} ${textMedium} text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider`}>
                             {badgeText}
                         </div>
@@ -197,12 +223,10 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
                             <div className="flex items-center gap-3">
                                 <div className={`p-2 ${bgMedium} rounded-full ${textLight}`}>
                                     {isWinningOffer ? (
-                                        // Icono de Trofeo
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                         </svg>
                                     ) : (
-                                        // Icono normal de dinero
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                         </svg>
@@ -216,7 +240,6 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
                                 </div>
                             </div>
                             
-                            {/* CONTROLES */}
                             <div className="flex items-center gap-2">
                                 <span className={`text-[10px] font-bold ${textMedium} uppercase mr-1`}>
                                     {currentOfferIndex + 1} de {ofertasDisponibles.length}
@@ -264,8 +287,7 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
                                 <p className={`text-sm ${textMedium} italic`}>"{currentOfferObj.datos.observaciones}"</p>
                             </div>
                         )}
-                        
-                        {/* --- BOTONES DE ACCIÓN (SIEMPRE VISIBLES) --- */}
+
                         {!isSold && (
                             <div className={`mt-4 pt-3 border-t ${borderCol} flex justify-end gap-2`}>
                                 <button 
@@ -274,18 +296,15 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
                                         onEditOffer && onEditOffer(currentOfferObj.datos, currentOfferObj.id);
                                     }}
                                     className="px-3 py-1.5 bg-white border border-green-300 text-green-700 text-xs font-bold rounded shadow-sm hover:bg-green-50 flex items-center gap-1 transition-all active:scale-95"
-                                    title="Modificar esta propuesta"
                                 >
                                     <span>✎</span> Editar
                                 </button>
                                 <button 
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        // CAMBIO: Ahora llamamos a nuestro handler del modal
                                         handleDeleteClick(currentOfferObj.id);
                                     }}
                                     className="px-3 py-1.5 bg-white border border-red-300 text-red-600 text-xs font-bold rounded shadow-sm hover:bg-red-50 flex items-center gap-1 transition-all active:scale-95"
-                                    title="Eliminar esta propuesta permanentemente"
                                 >
                                     <span>🗑️</span> Borrar
                                 </button>
@@ -310,11 +329,43 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
                     <DetailItem label="Cochera" value={propiedad.cochera_autos} />
                     <DetailItem label="Propietario" value={propietario?.nombreCompleto} />
                 </div>
-                {propiedad.fichaTecnicaPdf && (
-                    <div className="mt-8 pt-6 border-t border-gray-100 text-center">
-                        <a href={propiedad.fichaTecnicaPdf} download className="text-iange-orange font-bold hover:underline">Descargar Ficha Técnica PDF</a>
-                    </div>
-                )}
+                
+                {/* --- SECCIÓN DE DESCARGA PDF (NUEVA) --- */}
+                <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col items-center gap-2">
+                    
+                    {/* Botón Mágico Generador de PDF */}
+                    <button 
+                        onClick={handleDownloadPDF} 
+                        disabled={isGeneratingPdf}
+                        className={`flex items-center justify-center gap-2 px-6 py-3 rounded-lg shadow-md transition-all font-bold text-white ${
+                            isGeneratingPdf 
+                            ? 'bg-gray-400 cursor-wait' 
+                            : 'bg-gray-900 hover:bg-black hover:-translate-y-0.5'
+                        }`}
+                    >
+                        {isGeneratingPdf ? (
+                            <>
+                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Generando PDF...
+                            </>
+                        ) : (
+                            <>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                Descargar Ficha Técnica PDF
+                            </>
+                        )}
+                    </button>
+
+                    {/* (Opcional) Link al PDF original si existe */}
+                    {propiedad.fichaTecnicaPdf && (
+                         <a href={propiedad.fichaTecnicaPdf} download className="text-xs text-gray-400 hover:text-gray-600 underline">
+                             Descargar archivo original subido
+                         </a>
+                    )}
+                </div>
             </div>
 
             {/* --- MODAL DE CONFIRMACIÓN DE ELIMINACIÓN --- */}
