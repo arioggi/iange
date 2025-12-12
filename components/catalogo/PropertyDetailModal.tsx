@@ -153,11 +153,20 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
         }
     };
 
-    // --- NUEVA FUNCIÓN: COMPARTIR LINK PÚBLICO (Redes Sociales) ---
+    // --- NUEVA FUNCIÓN: COMPARTIR LINK PÚBLICO ---
     const handleShareUrl = () => {
-        // Construimos el link público. Usamos window.location.origin para que funcione en cualquier dominio.
-        // Asumimos que la ruta pública será /p/:id (Landing Page)
-        const publicUrl = `${window.location.origin}/p/${propiedad.id}`;
+        // 1. Determinar el identificador (Token UUID preferido, ID numérico como fallback)
+        const identifier = propiedad.token_publico || propiedad.id; 
+        
+        // 2. Determinar la ruta correcta. Si hay token usamos '/preview/', si no '/p/' (o lo que hayas configurado de fallback)
+        // Como en App.tsx configuramos /preview/:token, idealmente siempre deberíamos tener token.
+        const path = propiedad.token_publico ? 'preview' : 'p';
+        
+        // 3. Determinar el dominio (Producción o Localhost)
+        const domain = import.meta.env.VITE_APP_URL || window.location.origin;
+        
+        // 4. Construir URL Final
+        const publicUrl = `${domain}/${path}/${identifier}`;
         
         const shareData = {
             title: `Venta: ${propiedad.calle}`,

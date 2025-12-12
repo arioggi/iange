@@ -19,7 +19,8 @@ import ReporteDetalle from "./pages/ReporteDetalle";
 import MiPerfil from "./pages/MiPerfil";
 import Configuraciones from "./pages/Configuraciones";
 import PlaceholderPage from "./pages/PlaceholderPage";
-import ChangePassword from "./pages/ChangePassword";
+// import ChangePassword from "./pages/ChangePassword"; 
+import PublicPropertyPage from "./pages/PublicPropertyPage"; // <--- IMPORTACIÓN DE LA PÁGINA PÚBLICA
 
 // Configuración
 import PerfilEmpresa from "./components/settings/PerfilEmpresa";
@@ -50,7 +51,7 @@ const ProtectedRoute = ({ user, permissionKey, children }: { user: User, permiss
     return <>{children}</>;
 };
 
-// --- 2. LAYOUT PRINCIPAL (DEFINIDO FUERA DE APP PARA EVITAR EL BUG DE HOOKS) ---
+// --- 2. LAYOUT PRINCIPAL ---
 const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitImpersonation }: { 
     children: React.ReactNode, 
     user: User, 
@@ -161,7 +162,7 @@ const App = () => {
 
         if (event === 'SIGNED_OUT') {
             setUser(null);
-            navigate('/login');
+            // No forzamos navegación aquí para permitir ver rutas públicas
         } else if (event === 'SIGNED_IN' && session?.user) {
             if (userRef.current?.id === session.user.id) return;
             loadProfile(session.user); 
@@ -215,36 +216,27 @@ const App = () => {
     refreshAppData();
   }, [user]); 
 
-  // --- REALTIME: ACTUALIZACIÓN EN VIVO (EL OÍDO GLOBAL) ---
+  // --- REALTIME ---
   useEffect(() => {
       if (!user?.tenantId) return;
 
-      console.log("🔌 Conectando a Supabase Realtime...");
-
-      // Nos suscribimos a cambios en las tablas de este tenant
       const channel = supabase.channel('realtime:app-updates')
           .on(
               'postgres_changes',
               { event: '*', schema: 'public', table: 'propiedades', filter: `tenant_id=eq.${user.tenantId}` },
-              (payload) => {
-                  console.log('🔔 Cambio en PROPIEDADES detectado. Actualizando...');
-                  refreshAppData();
-              }
+              () => refreshAppData()
           )
           .on(
               'postgres_changes',
               { event: '*', schema: 'public', table: 'contactos', filter: `tenant_id=eq.${user.tenantId}` },
-              (payload) => {
-                  console.log('🔔 Cambio en CLIENTES/OFERTAS detectado. Actualizando...');
-                  refreshAppData();
-              }
+              () => refreshAppData()
           )
           .subscribe();
 
       return () => {
           supabase.removeChannel(channel);
       };
-  }, [user?.tenantId]); // Se reconecta solo si cambia el usuario/empresa
+  }, [user?.tenantId]); 
 
 
   const asesores = useMemo(() => allUsers.filter(u => 
@@ -342,139 +334,159 @@ const App = () => {
     );
   }
 
-  if (!user) {
-    return (
-        <Routes>
-            <Route path="/login" element={<Login onLogin={handleLogin} />} />
-            <Route path="*" element={<Navigate to="/login" />} />
-        </Routes>
-    );
-  }
-
+  // --- ESTRUCTURA DE RUTAS MODIFICADA PARA LANDING PÚBLICA ---
   return (
     <>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       
-      <MainLayout 
-        user={user} 
-        title={getTitleForPath(location.pathname)} 
-        onLogout={handleLogout}
-        isImpersonating={isImpersonating}
-        onExitImpersonation={handleExitImpersonation}
-      >
-        <Routes>
-          <Route path="/" element={<Navigate to={getInitialRoute(user)} replace />} />
-          <Route path="/login" element={<Navigate to="/" />} />
-          
-          <Route path="/oportunidades" element={
-            <ProtectedRoute user={user} permissionKey="dashboard">
-                <OportunidadesDashboard 
-                    propiedades={propiedades} 
-                    asesores={asesores} 
-                    propietarios={propietarios} 
-                    compradores={compradores} 
-                    companySettings={companySettings} 
-                    isLoading={dataLoading} 
-                    currentUser={user} 
-                />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/clientes" element={
-            <ProtectedRoute user={user} permissionKey="contactos">
-                <AltaClientes 
-                  showToast={showToast} 
-                  propiedades={propiedades} setPropiedades={setPropiedades} 
-                  propietarios={propietarios} setPropietarios={setPropietarios} 
-                  compradores={compradores} setCompradores={setCompradores} 
-                  handleUpdatePropiedad={handleUpdatePropiedad} handleDeletePropiedad={handleDeletePropiedad} 
-                  initialEditPropId={initialEditPropId} setInitialEditPropId={setInitialEditPropId} 
-                  asesores={asesores} currentUser={user} onDataChange={refreshAppData} 
-                />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/catalogo" element={
-            <ProtectedRoute user={user} permissionKey="propiedades">
-                <Catalogo 
-                  propiedades={propiedades} 
-                  propietarios={propietarios} 
-                  asesores={asesores} 
-                  onAddVisita={handleAddVisita} 
-                  handleUpdatePropiedad={handleUpdatePropiedad} 
-                  showToast={showToast} 
-                  currentUser={user}          // <--- CRUCIAL PARA LA OFERTA
-                  compradores={compradores}   // <--- CRUCIAL PARA LA OFERTA
-                  onDataChange={refreshAppData}
-                />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/progreso" element={
-            <ProtectedRoute user={user} permissionKey="progreso">
-                <Progreso propiedades={propiedades} propietarios={propietarios} onUpdatePropiedad={handleUpdatePropiedad} onNavigateAndEdit={onNavigateAndEdit} asesores={asesores} />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/reportes" element={
-            <ProtectedRoute user={user} permissionKey="reportes">
-                <Reportes />
-            </ProtectedRoute>
-          } />
-          <Route path="/reportes/:reportId" element={
-            <ProtectedRoute user={user} permissionKey="reportes">
-                <ReporteDetalle 
-                  propiedades={propiedades} 
-                  asesores={asesores} 
-                  compradores={compradores} // <--- CRUCIAL PARA LOS CÁLCULOS
-                />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/crm" element={
-            <ProtectedRoute user={user} permissionKey="crm">
-                <PlaceholderPage title="CRM" />
-            </ProtectedRoute>
-          } />
+      <Routes>
+        {/* ======================================================== */}
+        {/* 1. RUTA PÚBLICA: ACCESIBLE PARA TODOS (Sin Login)        */}
+        {/* AHORA USA :token PARA ENLACES PERSONALIZADOS          */}
+        {/* ======================================================== */}
+        <Route path="/preview/:token" element={<PublicPropertyPage />} />
 
-          <Route path="/configuraciones" element={<Configuraciones />}>
-             <Route index element={<Navigate to="mi-perfil" replace />} />
-             <Route path="mi-perfil" element={<MiPerfil user={user} onUserUpdated={handleUpdateUser} />} />
-             
-             <Route path="perfil" element={
-                (user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ?
-                <PerfilEmpresa user={user} /> : <Navigate to="/configuraciones/mi-perfil" />
-             } />
-             
-             <Route path="facturacion" element={
-                (user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ?
-                <Facturacion /> : <Navigate to="/configuraciones/mi-perfil" />
-             } />
+        {/* ======================================================== */}
+        {/* 2. LOGIN: ACCESIBLE SOLO SI NO ESTÁS LOGUEADO            */}
+        {/* ======================================================== */}
+        <Route path="/login" element={
+            !user ? <Login onLogin={handleLogin} /> : <Navigate to="/" replace />
+        } />
 
-             <Route path="personal" element={
-                <ProtectedRoute user={user} permissionKey="equipo">
-                    <PersonalEmpresa showToast={showToast} currentUser={user} onDataChange={refreshAppData} />
-                </ProtectedRoute>
-             } />
-          </Route>
+        {/* ======================================================== */}
+        {/* 3. RUTAS PRIVADAS: REQUIEREN USUARIO AUTENTICADO         */}
+        {/* ======================================================== */}
+        {/* Cualquier otra ruta (/*) se procesa aquí.                */}
+        {/* Si no hay usuario, redirige a Login.                     */}
+        {/* Si hay usuario, renderiza MainLayout con las rutas App   */}
+        <Route path="/*" element={
+            !user ? (
+                <Navigate to="/login" replace />
+            ) : (
+                <MainLayout 
+                    user={user} 
+                    title={getTitleForPath(location.pathname)} 
+                    onLogout={handleLogout}
+                    isImpersonating={isImpersonating}
+                    onExitImpersonation={handleExitImpersonation}
+                >
+                    <Routes>
+                        {/* Redirección Inicial Inteligente */}
+                        <Route path="/" element={<Navigate to={getInitialRoute(user)} replace />} />
+                        
+                        <Route path="/oportunidades" element={
+                            <ProtectedRoute user={user} permissionKey="dashboard">
+                                <OportunidadesDashboard 
+                                    propiedades={propiedades} 
+                                    asesores={asesores} 
+                                    propietarios={propietarios} 
+                                    compradores={compradores} 
+                                    companySettings={companySettings} 
+                                    isLoading={dataLoading} 
+                                    currentUser={user} 
+                                />
+                            </ProtectedRoute>
+                        } />
+                        
+                        <Route path="/clientes" element={
+                            <ProtectedRoute user={user} permissionKey="contactos">
+                                <AltaClientes 
+                                  showToast={showToast} 
+                                  propiedades={propiedades} setPropiedades={setPropiedades} 
+                                  propietarios={propietarios} setPropietarios={setPropietarios} 
+                                  compradores={compradores} setCompradores={setCompradores} 
+                                  handleUpdatePropiedad={handleUpdatePropiedad} handleDeletePropiedad={handleDeletePropiedad} 
+                                  initialEditPropId={initialEditPropId} setInitialEditPropId={setInitialEditPropId} 
+                                  asesores={asesores} currentUser={user} onDataChange={refreshAppData} 
+                                />
+                            </ProtectedRoute>
+                        } />
+                        
+                        <Route path="/catalogo" element={
+                            <ProtectedRoute user={user} permissionKey="propiedades">
+                                <Catalogo 
+                                  propiedades={propiedades} 
+                                  propietarios={propietarios} 
+                                  asesores={asesores} 
+                                  onAddVisita={handleAddVisita} 
+                                  handleUpdatePropiedad={handleUpdatePropiedad} 
+                                  showToast={showToast} 
+                                  currentUser={user} 
+                                  compradores={compradores} 
+                                  onDataChange={refreshAppData}
+                                />
+                            </ProtectedRoute>
+                        } />
+                        
+                        <Route path="/progreso" element={
+                            <ProtectedRoute user={user} permissionKey="progreso">
+                                <Progreso propiedades={propiedades} propietarios={propietarios} onUpdatePropiedad={handleUpdatePropiedad} onNavigateAndEdit={onNavigateAndEdit} asesores={asesores} />
+                            </ProtectedRoute>
+                        } />
+                        
+                        <Route path="/reportes" element={
+                            <ProtectedRoute user={user} permissionKey="reportes">
+                                <Reportes />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/reportes/:reportId" element={
+                            <ProtectedRoute user={user} permissionKey="reportes">
+                                <ReporteDetalle 
+                                  propiedades={propiedades} 
+                                  asesores={asesores} 
+                                  compradores={compradores} 
+                                />
+                            </ProtectedRoute>
+                        } />
+                        
+                        <Route path="/crm" element={
+                            <ProtectedRoute user={user} permissionKey="crm">
+                                <PlaceholderPage title="CRM" />
+                            </ProtectedRoute>
+                        } />
 
-          <Route path="/superadmin/*" element={
-             user.role === ROLES.SUPER_ADMIN ? (
-               <Routes>
-                 <Route path="/" element={<SuperAdminDashboard />} />
-                 <Route path="empresas" element={<SuperAdminEmpresas showToast={showToast} onImpersonate={handleImpersonate} />} />
-                 <Route path="usuarios-globales" element={<SuperAdminUsuarios showToast={showToast} />} />
-                 <Route path="planes" element={<SuperAdminPlanes />} />
-                 <Route path="configuracion" element={<SuperAdminConfiguracion showToast={showToast} />} />
-                 <Route path="reportes-globales" element={<SuperAdminReportes />} />
-                 <Route path="logs" element={<SuperAdminLogs />} />
-               </Routes>
-             ) : <Navigate to="/" />
-          } />
+                        <Route path="/configuraciones" element={<Configuraciones />}>
+                             <Route index element={<Navigate to="mi-perfil" replace />} />
+                             <Route path="mi-perfil" element={<MiPerfil user={user} onUserUpdated={handleUpdateUser} />} />
+                             
+                             <Route path="perfil" element={
+                                (user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ?
+                                <PerfilEmpresa user={user} /> : <Navigate to="/configuraciones/mi-perfil" />
+                             } />
+                             
+                             <Route path="facturacion" element={
+                                (user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ?
+                                <Facturacion /> : <Navigate to="/configuraciones/mi-perfil" />
+                             } />
 
-          <Route path="*" element={<PlaceholderPage title="Página no encontrada" />} />
-        </Routes>
-      </MainLayout>
+                             <Route path="personal" element={
+                                <ProtectedRoute user={user} permissionKey="equipo">
+                                    <PersonalEmpresa showToast={showToast} currentUser={user} onDataChange={refreshAppData} />
+                                </ProtectedRoute>
+                             } />
+                        </Route>
+
+                        <Route path="/superadmin/*" element={
+                             user.role === ROLES.SUPER_ADMIN ? (
+                               <Routes>
+                                 <Route path="/" element={<SuperAdminDashboard />} />
+                                 <Route path="empresas" element={<SuperAdminEmpresas showToast={showToast} onImpersonate={handleImpersonate} />} />
+                                 <Route path="usuarios-globales" element={<SuperAdminUsuarios showToast={showToast} />} />
+                                 <Route path="planes" element={<SuperAdminPlanes />} />
+                                 <Route path="configuracion" element={<SuperAdminConfiguracion showToast={showToast} />} />
+                                 <Route path="reportes-globales" element={<SuperAdminReportes />} />
+                                 <Route path="logs" element={<SuperAdminLogs />} />
+                               </Routes>
+                             ) : <Navigate to="/" />
+                        } />
+
+                        {/* Catch-all para rutas no encontradas DENTRO del panel */}
+                        <Route path="*" element={<PlaceholderPage title="Página no encontrada" />} />
+                    </Routes>
+                </MainLayout>
+            )
+        } />
+      </Routes>
     </>
   );
 };

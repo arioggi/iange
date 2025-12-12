@@ -95,6 +95,7 @@ export interface Visita {
 
 export interface Propiedad {
   id: number;
+  token_publico?: string; // <--- NUEVO CAMPO PARA LINKS PÚBLICOS (GoHighLevel Style)
   propietarioId: number;
   compradorId?: number | null;
   asesorId: number | string;
@@ -133,24 +134,27 @@ export interface Propiedad {
   status: 'Validación Pendiente' | 'En Promoción' | 'Separada' | 'Vendida';
   visitas: Visita[];
 
-  // --- NUEVOS CAMPOS DE COMISIÓN (Captación vs Venta) ---
+  // --- CAMPOS DE COMISIÓN (Captación vs Venta) ---
   // Captación
   comisionCaptacionOficina?: number;
   comisionCaptacionAsesor?: number;
-  compartirComisionCaptacion?: boolean; // Checkbox
+  compartirComisionCaptacion?: boolean; 
 
   // Venta
   comisionVentaOficina?: number;
   comisionVentaAsesor?: number;
-  compartirComisionVenta?: boolean; // Checkbox
+  compartirComisionVenta?: boolean; 
 
-  // Campos Legacy (se mantienen para compatibilidad temporal)
+  // Campos Legacy
   comisionOficina?: number;
   comisionAsesor?: number;
   comisionCompartida?: number;
+  
+  // Datos del Tenant (opcional, para renderizar branding en vista pública)
+  tenant_id?: string;
 }
 
-// --- NUEVA INTERFAZ PARA OFERTAS DE COMPRA ---
+// --- INTERFAZ PARA OFERTAS DE COMPRA ---
 export interface OfferData {
   compradorId: string;
   precioOfrecido: string;
@@ -163,11 +167,11 @@ export interface OfferData {
   observaciones?: string;
 }
 
-// --- NUEVA INTERFAZ PARA EL HISTORIAL DE INTERESES (MULTI-PROPIEDAD) ---
+// --- INTERFAZ PARA EL HISTORIAL DE INTERESES ---
 export interface Interes {
     propiedadId: number;
     tipoRelacion: 'Propuesta de compra' | 'Propiedad Separada' | 'Venta finalizada';
-    ofertaFormal?: OfferData; // La oferta específica para ESTA propiedad
+    ofertaFormal?: OfferData; 
     fechaInteres: string;
 }
 
@@ -203,20 +207,17 @@ export interface KycData {
   pepNombre?: string;
   pepCargo?: string;
   
-  // --- NUEVOS CAMPOS PARA CITAS ---
-  fechaCita?: string; // YYYY-MM-DD
-  horaCita?: string;  // HH:MM
+  // --- CAMPOS PARA CITAS ---
+  fechaCita?: string; 
+  horaCita?: string;  
   notasCita?: string;
 
-  // --- NUEVO CAMPO ASESOR ---
+  // --- CAMPO ASESOR ---
   asesorId?: number | string; 
 
   // --- CAMPOS DE VINCULACIÓN ---
-  // Legacy (Soporte temporal)
   ofertaFormal?: OfferData; 
-  
-  // Nuevo sistema multi-propiedad
-  intereses?: Interes[]; // <--- AQUÍ SE GUARDARÁN MÚLTIPLES CASAS
+  intereses?: Interes[]; 
 }
 
 export interface Propietario extends KycData {
@@ -242,6 +243,7 @@ export interface Tenant {
   nombre: string;
   ownerEmail: string;
   telefono?: string;
+  logo_url?: string; // <--- Agregado para el branding
   fechaRegistro: string;
   estado: 'Activo' | 'Suspendido';
 }
@@ -255,6 +257,7 @@ export interface Empresa {
   estado: 'Activo' | 'Suspendido';
   propiedadesRegistradas: number;
   dominio: string;
+  logo_url?: string; // <--- Agregado para el branding
   onboarded?: boolean;
   requiereAprobacionPublicar?: boolean;
   requiereAprobacionCerrar?: boolean;
