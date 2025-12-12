@@ -44,11 +44,14 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
     const [imageLoading, setImageLoading] = useState(true);
     const [currentOfferIndex, setCurrentOfferIndex] = useState(0);
     
-    // --- ESTADOS ---
+    // --- ESTADOS DE INTERACCIÓN ---
     const [isDeleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [offerToDeleteId, setOfferToDeleteId] = useState<number | null>(null);
-    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false); 
-    const [isSharing, setIsSharing] = useState(false); 
+    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    
+    // Estados para feedback visual (Tooltips temporales)
+    const [linkCopied, setLinkCopied] = useState(false);
+    const [captionCopied, setCaptionCopied] = useState(false);
 
     // --- LOGICA DE OFERTAS ---
     const ofertasDisponibles = compradores.flatMap(c => {
@@ -121,62 +124,27 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
             URL.revokeObjectURL(url); 
         } catch (error) {
             console.error("Error PDF:", error);
-            alert("Error al generar PDF.");
+            // Fallback silencioso o pequeño log, pero evitamos alert si no es crítico
         } finally {
             setIsGeneratingPdf(false);
         }
     };
 
-    // --- FUNCIÓN: COMPARTIR ARCHIVO PDF (WhatsApp/Mobile) ---
-    const handleSharePdf = async () => {
-        setIsSharing(true);
-        try {
-            const blob = await generatePdfBlob();
-            const safeName = (propiedad.calle + '_' + propiedad.numero_exterior).replace(/[^a-z0-9]/gi, '_').toLowerCase();
-            const file = new File([blob], `Ficha_${safeName}.pdf`, { type: 'application/pdf' });
-
-            const shareData = {
-                title: `Propiedad: ${propiedad.calle}`,
-                text: `Te comparto la ficha técnica de esta propiedad en ${propiedad.colonia}. Valor: ${formatCurrency(propiedad.valor_operacion)}`,
-                files: [file]
-            };
-
-            if (navigator.canShare && navigator.canShare(shareData)) {
-                await navigator.share(shareData);
-            } else {
-                alert("Tu dispositivo no soporta enviar archivos directamente. Usa el botón de descargar.");
-            }
-        } catch (error) {
-            console.log("Cancelado o Error:", error);
-        } finally {
-            setIsSharing(false);
-        }
-    };
-
-    // --- NUEVA FUNCIÓN: SIEMPRE COPIAR LINK (Sin menú nativo) ---
-    const handleShareUrl = () => {
-        // 1. Construir la URL (Igual que antes)
+    // --- FUNCIÓN: COPIAR LINK PÚBLICO (Sin Alertas) ---
+    const handleCopyUrl = () => {
         const identifier = propiedad.token_publico || propiedad.id; 
         const path = propiedad.token_publico ? 'preview' : 'p';
         const domain = import.meta.env.VITE_APP_URL || window.location.origin;
         
         const publicUrl = `${domain}/${path}/${identifier}`;
         
-        // 2. FORZAR COPIADO AL PORTAPAPELES
-        // Eliminamos el 'if (navigator.share)' para que no abra el menú de Apple
-        navigator.clipboard.writeText(publicUrl)
-            .then(() => {
-                // Éxito
-                alert(`✅ ¡Link copiado!\n\n${publicUrl}\n\nYa puedes pegarlo donde quieras.`);
-            })
-            .catch((err) => {
-                // Error (por si el navegador bloquea el portapapeles)
-                console.error('Error al copiar:', err);
-                prompt('Copia este link manualmente:', publicUrl);
-            });
+        navigator.clipboard.writeText(publicUrl).then(() => {
+            setLinkCopied(true);
+            setTimeout(() => setLinkCopied(false), 2000); // Reset después de 2s
+        }).catch(err => console.error("Error copiando", err));
     };
 
-    // --- FUNCIÓN: COPIAR CAPTION (Texto de Venta) ---
+    // --- FUNCIÓN: COPIAR CAPTION (Sin Alertas) ---
     const handleCopyCaption = () => {
         const features = [];
         if(propiedad.recamaras) features.push(`🛏️ ${propiedad.recamaras} Recámaras`);
@@ -199,8 +167,10 @@ ${features.join('\n')}
 #BienesRaices #Venta #${propiedad.municipio.replace(/\s/g, '')} #${propiedad.colonia.replace(/\s/g, '')} #RealEstate
 `.trim();
 
-        navigator.clipboard.writeText(caption);
-        alert("✅ Texto de venta copiado.\n\nListo para pegar en tu post de Instagram o Facebook.");
+        navigator.clipboard.writeText(caption).then(() => {
+            setCaptionCopied(true);
+            setTimeout(() => setCaptionCopied(false), 2000); // Reset después de 2s
+        });
     };
 
     return (
@@ -289,56 +259,71 @@ ${features.join('\n')}
                     <DetailItem label="Baños" value={`${propiedad.banos_completos || 0}`} />
                 </div>
                 
-                {/* --- BOTONERA DE ACCIONES (COMPARTIR) --- */}
+                {/* --- BOTONERA DE ACCIONES (NUEVO DISEÑO 3 BOTONES) --- */}
                 <div className="mt-4 pt-6 border-t border-gray-100">
                     <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 text-center">Herramientas de Venta</h4>
                     <div className="flex flex-wrap justify-center gap-3">
                         
-                        {/* 1. COMPARTIR LINK PÚBLICO (NUEVO) */}
+                        {/* 1. COPIAR LINK */}
                         <button 
-                            onClick={handleShareUrl} 
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition-all shadow-sm active:scale-95"
-                            title="Compartir enlace para redes sociales"
+                            onClick={handleCopyUrl} 
+                            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold text-sm shadow-sm transition-all active:scale-95 ${
+                                linkCopied ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
+                            title="Copiar enlace para redes sociales"
                         >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                            Link
-                        </button>
-
-                        {/* 2. COMPARTIR ARCHIVO PDF */}
-                        <button 
-                            onClick={handleSharePdf} 
-                            disabled={isSharing}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-green-600 text-white font-bold text-sm hover:bg-green-700 transition-all shadow-sm active:scale-95 disabled:bg-gray-300"
-                            title="Enviar Archivo PDF por WhatsApp"
-                        >
-                            {isSharing ? '...' : (
+                            {linkCopied ? (
                                 <>
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                                    PDF
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                    ¡Link Copiado!
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                    Copiar Link
                                 </>
                             )}
                         </button>
 
-                        {/* 3. COPIAR TEXTO (Caption) */}
+                        {/* 2. COPIAR CAPTION */}
                         <button 
                             onClick={handleCopyCaption}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-pink-600 text-white font-bold text-sm hover:bg-pink-700 transition-all shadow-sm active:scale-95"
+                            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold text-sm shadow-sm transition-all active:scale-95 ${
+                                captionCopied ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-pink-600 text-white hover:bg-pink-700'
+                            }`}
                             title="Copiar texto con emojis"
                         >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                            Caption
+                            {captionCopied ? (
+                                <>
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                    ¡Texto Copiado!
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                    Copiar Caption
+                                </>
+                            )}
                         </button>
 
-                        {/* 4. DESCARGAR (Escritorio) */}
+                        {/* 3. DESCARGAR PDF */}
                         <button 
                             onClick={handleDownloadPDF} 
                             disabled={isGeneratingPdf}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gray-800 text-white font-bold text-sm hover:bg-gray-900 transition-all shadow-sm active:scale-95 disabled:bg-gray-300"
+                            className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-gray-800 text-white font-bold text-sm hover:bg-gray-900 transition-all shadow-sm active:scale-95 disabled:bg-gray-300"
                         >
-                            {isGeneratingPdf ? '...' : (
+                            {isGeneratingPdf ? (
+                                <>
+                                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Generando...
+                                </>
+                            ) : (
                                 <>
                                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                    Descargar
+                                    Descargar PDF
                                 </>
                             )}
                         </button>
