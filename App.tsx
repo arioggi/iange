@@ -215,6 +215,38 @@ const App = () => {
     refreshAppData();
   }, [user]); 
 
+  // --- REALTIME: ACTUALIZACIÓN EN VIVO (EL OÍDO GLOBAL) ---
+  useEffect(() => {
+      if (!user?.tenantId) return;
+
+      console.log("🔌 Conectando a Supabase Realtime...");
+
+      // Nos suscribimos a cambios en las tablas de este tenant
+      const channel = supabase.channel('realtime:app-updates')
+          .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'propiedades', filter: `tenant_id=eq.${user.tenantId}` },
+              (payload) => {
+                  console.log('🔔 Cambio en PROPIEDADES detectado. Actualizando...');
+                  refreshAppData();
+              }
+          )
+          .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'contactos', filter: `tenant_id=eq.${user.tenantId}` },
+              (payload) => {
+                  console.log('🔔 Cambio en CLIENTES/OFERTAS detectado. Actualizando...');
+                  refreshAppData();
+              }
+          )
+          .subscribe();
+
+      return () => {
+          supabase.removeChannel(channel);
+      };
+  }, [user?.tenantId]); // Se reconecta solo si cambia el usuario/empresa
+
+
   const asesores = useMemo(() => allUsers.filter(u => 
     u.role === ROLES.ASESOR || u.role === ROLES.ADMIN_EMPRESA || u.role === ROLES.EMPRESA
   ), [allUsers]);
@@ -373,6 +405,7 @@ const App = () => {
                   showToast={showToast} 
                   currentUser={user}          // <--- CRUCIAL PARA LA OFERTA
                   compradores={compradores}   // <--- CRUCIAL PARA LA OFERTA
+                  onDataChange={refreshAppData}
                 />
             </ProtectedRoute>
           } />

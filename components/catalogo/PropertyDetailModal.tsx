@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Propiedad, Propietario } from '../../types';
+import { Propiedad, Propietario, Comprador, OfferData } from '../../types';
+import Modal from '../ui/Modal'; // <--- IMPORTAMOS EL MODAL GENÉRICO
 
 interface PropertyDetailModalProps {
     propiedad: Propiedad;
     propietario?: Propietario;
     onClose?: () => void;
+    compradores?: Comprador[];
+    onEditOffer?: (offer: OfferData, buyerId: number) => void;
+    onDeleteOffer?: (buyerId: number) => void;
 }
 
-const formatCurrency = (value?: string) => {
+const formatCurrency = (value?: string | number) => {
     if (!value) return 'N/A';
-    const number = parseFloat(value.replace(/[^0-9.-]+/g,""));
+    const number = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]+/g,"")) : value;
     if (isNaN(number)) return 'N/A';
     return new Intl.NumberFormat('es-MX', {
         style: 'currency',
@@ -24,9 +28,72 @@ const DetailItem: React.FC<{ label: string, value?: string | number }> = ({ labe
     </div>
 );
 
-const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ propiedad, propietario, onClose }) => {
+const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ 
+    propiedad, 
+    propietario, 
+    onClose, 
+    compradores = [],
+    onEditOffer,
+    onDeleteOffer
+}) => {
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [imageLoading, setImageLoading] = useState(true);
+    const [currentOfferIndex, setCurrentOfferIndex] = useState(0);
+    
+    // --- NUEVO ESTADO PARA EL MODAL DE CONFIRMACIÓN ---
+    const [isDeleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [offerToDeleteId, setOfferToDeleteId] = useState<number | null>(null);
+
+    // --- 1. OBTENER Y MAPEAR OFERTAS (BÚSQUEDA PROFUNDA) ---
+    const ofertasDisponibles = compradores.flatMap(c => {
+        // A. Buscamos en la nueva lista de intereses
+        if (c.intereses && Array.isArray(c.intereses)) {
+            const interesEnEsta = c.intereses.find((i: any) => String(i.propiedadId) === String(propiedad.id));
+            if (interesEnEsta && interesEnEsta.ofertaFormal) {
+                return [{
+                    id: c.id,
+                    cliente: c.nombreCompleto,
+                    datos: interesEnEsta.ofertaFormal
+                }];
+            }
+        }
+        
+        // B. Fallback Legacy (Si el dato es antiguo y está en la raíz)
+        if (String(c.propiedadId) === String(propiedad.id) && c.ofertaFormal) {
+             return [{
+                id: c.id,
+                cliente: c.nombreCompleto,
+                datos: c.ofertaFormal
+            }];
+        }
+
+        return [];
+    });
+
+    // --- 2. DETECTAR SI HAY UN GANADOR (PROPIEDAD VENDIDA) ---
+    const isSold = propiedad.status === 'Vendida';
+    
+    // Buscamos si alguno de los ofertantes es el dueño actual (ganador)
+    const winnerIndex = isSold 
+        ? ofertasDisponibles.findIndex(o => String(o.id) === String(propiedad.compradorId)) 
+        : -1;
+
+    const hasOffers = ofertasDisponibles.length > 0;
+    const currentOfferObj = hasOffers ? ofertasDisponibles[currentOfferIndex] : null;
+    
+    // Bandera para saber si la oferta que estamos viendo ES la ganadora
+    const isWinningOffer = isSold && currentOfferObj && String(currentOfferObj.id) === String(propiedad.compradorId);
+
+    // --- 3. ESTILOS DINÁMICOS (VERDE vs DORADO) ---
+    const badgeText = isWinningOffer ? '⭐ OFERTA GANADORA' : 'Oferta Vigente';
+
+    const bgLight = isWinningOffer ? 'bg-amber-50' : 'bg-green-50';
+    const bgMedium = isWinningOffer ? 'bg-amber-100' : 'bg-green-100';
+    const bgDark = isWinningOffer ? 'bg-amber-200' : 'bg-green-200';
+    const borderCol = isWinningOffer ? 'border-amber-200' : 'border-green-200';
+    const textLight = isWinningOffer ? 'text-amber-600' : 'text-green-600';
+    const textDark = isWinningOffer ? 'text-amber-900' : 'text-green-900';
+    const textMedium = isWinningOffer ? 'text-amber-800' : 'text-green-800';
 
     const images = (propiedad.imageUrls && propiedad.imageUrls.length > 0) 
         ? propiedad.imageUrls 
@@ -39,63 +106,55 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ propiedad, pr
     useEffect(() => {
         setCurrentImageIndex(0);
         setImageLoading(true);
-    }, [propiedad.id]);
+        // Si hay un ganador, mostramos su oferta primero. Si no, la primera de la lista.
+        if (winnerIndex !== -1) {
+            setCurrentOfferIndex(winnerIndex);
+        } else {
+            setCurrentOfferIndex(0);
+        }
+    }, [propiedad.id, winnerIndex]);
 
-    const nextImage = () => {
-        setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
-        setImageLoading(true);
+    const nextImage = () => { setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1)); setImageLoading(true); };
+    const prevImage = () => { setCurrentImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1)); setImageLoading(true); };
+
+    const nextOffer = () => { setCurrentOfferIndex((prev) => (prev === ofertasDisponibles.length - 1 ? 0 : prev + 1)); };
+    const prevOffer = () => { setCurrentOfferIndex((prev) => (prev === 0 ? ofertasDisponibles.length - 1 : prev - 1)); };
+
+    // --- NUEVO HANDLER PARA ELIMINAR ---
+    const handleDeleteClick = (buyerId: number) => {
+        setOfferToDeleteId(buyerId);
+        setDeleteConfirmOpen(true);
     };
 
-    const prevImage = () => {
-        setCurrentImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
-        setImageLoading(true);
+    const confirmDelete = () => {
+        if (offerToDeleteId && onDeleteOffer) {
+            onDeleteOffer(offerToDeleteId);
+            setDeleteConfirmOpen(false);
+            setOfferToDeleteId(null);
+        }
     };
 
     return (
-        <div className="flex flex-col h-full bg-white">
+        <div className="flex flex-col h-full bg-white relative">
             
-            {/* --- SECCIÓN GALERÍA (Sin cambios) --- */}
+            {/* --- SECCIÓN GALERÍA --- */}
             <div className="relative w-full h-[50vh] bg-gray-900 group shrink-0">
                 {onClose && (
-                    <button 
-                        onClick={onClose}
-                        className="absolute top-4 right-4 z-50 bg-black/50 text-white rounded-full p-2 hover:bg-black/80 transition-colors"
-                        title="Cerrar"
-                    >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    <button onClick={onClose} className="absolute top-4 right-4 z-50 bg-black/50 text-white rounded-full p-2 hover:bg-black/80 transition-colors" title="Cerrar">
+                        <span className="text-2xl leading-none">&times;</span>
                     </button>
                 )}
-
                 {!hasImages ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                        <svg className="w-16 h-16 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                        <span>Sin imágenes</span>
-                    </div>
+                    <div className="flex flex-col items-center justify-center h-full text-gray-500"><span>Sin imágenes</span></div>
                 ) : (
                     <>
-                        {imageLoading && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-                            </div>
-                        )}
-                        <img 
-                            src={images[currentImageIndex]} 
-                            alt={`Imagen ${currentImageIndex + 1}`}
-                            className={`w-full h-full object-contain transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
-                            onLoad={() => setImageLoading(false)}
-                        />
-                        
+                        {imageLoading && <div className="absolute inset-0 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div></div>}
+                        <img src={images[currentImageIndex]} alt={`Imagen ${currentImageIndex + 1}`} className={`w-full h-full object-contain transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`} onLoad={() => setImageLoading(false)}/>
                         {images.length > 1 && (
                             <>
-                                <button onClick={(e) => { e.stopPropagation(); prevImage(); }} className="absolute left-0 top-0 bottom-0 px-4 hover:bg-black/20 text-white transition-colors flex items-center">
-                                    <svg className="w-8 h-8 drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                                </button>
-                                <button onClick={(e) => { e.stopPropagation(); nextImage(); }} className="absolute right-0 top-0 bottom-0 px-4 hover:bg-black/20 text-white transition-colors flex items-center">
-                                    <svg className="w-8 h-8 drop-shadow-md" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                                </button>
-                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 px-3 py-1 rounded-full text-white text-xs">
-                                    {currentImageIndex + 1} / {images.length}
-                                </div>
+                                <button onClick={(e) => { e.stopPropagation(); prevImage(); }} className="absolute left-0 top-0 bottom-0 px-4 hover:bg-black/20 text-white font-bold text-2xl">‹</button>
+                                <button onClick={(e) => { e.stopPropagation(); nextImage(); }} className="absolute right-0 top-0 bottom-0 px-4 hover:bg-black/20 text-white font-bold text-2xl">›</button>
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 px-3 py-1 rounded-full text-white text-xs">{currentImageIndex + 1} / {images.length}</div>
                             </>
                         )}
                     </>
@@ -104,24 +163,12 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ propiedad, pr
 
             {/* --- SECCIÓN INFO --- */}
             <div className="p-6 md:p-8 overflow-y-auto">
-                <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+                <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
                     <div>
                         <h2 className="text-2xl font-bold text-gray-900">{propiedad.calle} {propiedad.numero_exterior}</h2>
                         <p className="text-gray-500">{propiedad.colonia}, {propiedad.municipio}</p>
-                    </div>
-                    <div className="text-right flex flex-col items-end">
-                        <p className="text-3xl font-extrabold text-iange-orange leading-tight">{formatCurrency(propiedad.valor_operacion)}</p>
-                        
-                        {/* --- AQUÍ ESTÁ EL "DISEÑO TOTALMENTE NUEVO" DEL ESTADO --- */}
                         <div className="mt-2 flex items-center gap-2">
                              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{propiedad.tipo_inmueble}</span>
-                             
-                             {/* DISEÑO DE "SELLO PREMIUM" */}
-                             {/* - text-[10px]: Letra muy pequeña.
-                                 - font-extrabold uppercase tracking-widest: Letra gruesa, mayúscula y separada.
-                                 - py-[2px] leading-none: Altura mínima, súper delgada.
-                                 - flex items-center: Centrado perfecto.
-                             */}
                              <span className={`inline-flex items-center px-3 py-[3px] rounded-full text-[10px] font-extrabold uppercase tracking-widest leading-none shadow-sm ${
                                     propiedad.status === 'Vendida' ? 'bg-green-50 text-green-700 border border-green-200' : 
                                     propiedad.status === 'Separada' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
@@ -132,19 +179,129 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ propiedad, pr
                             </span>
                         </div>
                     </div>
+                    <div className="text-right">
+                        <p className="text-xs text-gray-400 uppercase mb-1">Valor Lista</p>
+                        <p className="text-3xl font-extrabold text-gray-900 leading-tight">{formatCurrency(propiedad.valor_operacion)}</p>
+                    </div>
                 </div>
 
-                {/* DESCRIPCIÓN (Sin cambios) */}
-                {propiedad.descripcion_breve && (
-                    <div className="mb-8">
-                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Descripción</h4>
-                        <p className="text-gray-700 text-sm leading-relaxed">
-                            {propiedad.descripcion_breve}
-                        </p>
+                {/* --- SECCIÓN DE OFERTAS (SLIDER INTELIGENTE) --- */}
+                {hasOffers && currentOfferObj && (
+                    <div className={`mb-8 ${bgLight} border ${borderCol} rounded-xl p-5 shadow-sm relative overflow-hidden transition-all duration-300 group/offer`}>
+                        {/* Badge */}
+                        <div className={`absolute top-0 right-0 ${bgDark} ${textMedium} text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider`}>
+                            {badgeText}
+                        </div>
+                        
+                        <div className={`flex justify-between items-start mb-4 border-b ${isWinningOffer ? 'border-amber-200' : 'border-green-200'} pb-3`}>
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2 ${bgMedium} rounded-full ${textLight}`}>
+                                    {isWinningOffer ? (
+                                        // Icono de Trofeo
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                    ) : (
+                                        // Icono normal de dinero
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                    )}
+                                </div>
+                                <div>
+                                    <h3 className={`text-lg font-bold ${textDark}`}>
+                                        {isWinningOffer ? 'Venta Cerrada con' : 'Propuesta Recibida'}
+                                    </h3>
+                                    <p className={`text-xs ${textMedium}`}>De: <strong>{currentOfferObj.cliente}</strong></p>
+                                </div>
+                            </div>
+                            
+                            {/* CONTROLES */}
+                            <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-bold ${textMedium} uppercase mr-1`}>
+                                    {currentOfferIndex + 1} de {ofertasDisponibles.length}
+                                </span>
+                                <button 
+                                    onClick={prevOffer}
+                                    disabled={ofertasDisponibles.length <= 1}
+                                    className={`w-7 h-7 flex items-center justify-center rounded-full bg-white border ${borderCol} ${textLight} hover:${bgMedium} disabled:opacity-50 transition-colors shadow-sm`}
+                                >
+                                    ‹
+                                </button>
+                                <button 
+                                    onClick={nextOffer}
+                                    disabled={ofertasDisponibles.length <= 1}
+                                    className={`w-7 h-7 flex items-center justify-center rounded-full bg-white border ${borderCol} ${textLight} hover:${bgMedium} disabled:opacity-50 transition-colors shadow-sm`}
+                                >
+                                    ›
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm animate-fade-in">
+                            <div>
+                                <p className={`text-xs ${textLight} uppercase font-semibold`}>Precio Ofrecido</p>
+                                <p className={`font-bold ${textDark} text-lg`}>{formatCurrency(currentOfferObj.datos.precioOfrecido)}</p>
+                            </div>
+                            <div>
+                                <p className={`text-xs ${textLight} uppercase font-semibold`}>Forma de Pago</p>
+                                <p className={`font-semibold ${textMedium}`}>{currentOfferObj.datos.formaPago}</p>
+                                {currentOfferObj.datos.institucionFinanciera && <p className={`text-xs ${textMedium} opacity-75`}>({currentOfferObj.datos.institucionFinanciera})</p>}
+                            </div>
+                            <div>
+                                <p className={`text-xs ${textLight} uppercase font-semibold`}>Apartado</p>
+                                <p className={`font-semibold ${textMedium}`}>{formatCurrency(currentOfferObj.datos.montoApartado)}</p>
+                            </div>
+                            <div>
+                                <p className={`text-xs ${textLight} uppercase font-semibold`}>Vigencia</p>
+                                <p className={`font-semibold ${textMedium}`}>{currentOfferObj.datos.vigenciaOferta || 'N/A'}</p>
+                            </div>
+                        </div>
+                        
+                        {currentOfferObj.datos.observaciones && (
+                            <div className={`mt-4 pt-3 border-t ${borderCol} animate-fade-in`}>
+                                <p className={`text-xs ${textLight} uppercase mb-1 font-semibold`}>Condiciones / Observaciones</p>
+                                <p className={`text-sm ${textMedium} italic`}>"{currentOfferObj.datos.observaciones}"</p>
+                            </div>
+                        )}
+                        
+                        {/* --- BOTONES DE ACCIÓN (SIEMPRE VISIBLES) --- */}
+                        {!isSold && (
+                            <div className={`mt-4 pt-3 border-t ${borderCol} flex justify-end gap-2`}>
+                                <button 
+                                    onClick={(e) => {
+                                        e.stopPropagation(); 
+                                        onEditOffer && onEditOffer(currentOfferObj.datos, currentOfferObj.id);
+                                    }}
+                                    className="px-3 py-1.5 bg-white border border-green-300 text-green-700 text-xs font-bold rounded shadow-sm hover:bg-green-50 flex items-center gap-1 transition-all active:scale-95"
+                                    title="Modificar esta propuesta"
+                                >
+                                    <span>✎</span> Editar
+                                </button>
+                                <button 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        // CAMBIO: Ahora llamamos a nuestro handler del modal
+                                        handleDeleteClick(currentOfferObj.id);
+                                    }}
+                                    className="px-3 py-1.5 bg-white border border-red-300 text-red-600 text-xs font-bold rounded shadow-sm hover:bg-red-50 flex items-center gap-1 transition-all active:scale-95"
+                                    title="Eliminar esta propuesta permanentemente"
+                                >
+                                    <span>🗑️</span> Borrar
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
 
-                <h3 className="font-bold text-gray-900 mb-4 text-sm uppercase tracking-wider border-b pb-2">Detalles de la Propiedad</h3>
+                {/* DESCRIPCIÓN Y DETALLES */}
+                {propiedad.descripcion_breve && (
+                    <div className="mb-8">
+                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Descripción</h4>
+                        <p className="text-gray-700 text-sm leading-relaxed">{propiedad.descripcion_breve}</p>
+                    </div>
+                )}
+                <h3 className="font-bold text-gray-900 mb-4 text-sm uppercase tracking-wider border-b pb-2">Detalles Técnicos</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-4">
                     <DetailItem label="Terreno" value={propiedad.terreno_m2 ? `${propiedad.terreno_m2} m²` : undefined} />
                     <DetailItem label="Construcción" value={propiedad.construccion_m2 ? `${propiedad.construccion_m2} m²` : undefined} />
@@ -153,15 +310,45 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ propiedad, pr
                     <DetailItem label="Cochera" value={propiedad.cochera_autos} />
                     <DetailItem label="Propietario" value={propietario?.nombreCompleto} />
                 </div>
-                
                 {propiedad.fichaTecnicaPdf && (
                     <div className="mt-8 pt-6 border-t border-gray-100 text-center">
-                        <a href={propiedad.fichaTecnicaPdf} download className="text-iange-orange font-bold hover:underline">
-                            Descargar Ficha Técnica PDF
-                        </a>
+                        <a href={propiedad.fichaTecnicaPdf} download className="text-iange-orange font-bold hover:underline">Descargar Ficha Técnica PDF</a>
                     </div>
                 )}
             </div>
+
+            {/* --- MODAL DE CONFIRMACIÓN DE ELIMINACIÓN --- */}
+            {isDeleteConfirmOpen && (
+                <div className="fixed inset-0 z-[100001] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6 transform transition-all scale-100 opacity-100 animate-fade-in-down">
+                        <div className="text-center">
+                            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                                <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 mb-2">Confirmar Eliminación</h3>
+                            <p className="text-sm text-gray-500 mb-6">
+                                ¿Estás seguro de que quieres borrar esta propuesta? Esta acción no se puede deshacer.
+                            </p>
+                            <div className="flex justify-center gap-3">
+                                <button
+                                    onClick={() => setDeleteConfirmOpen(false)}
+                                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 font-medium text-sm transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={confirmDelete}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm shadow-sm transition-colors"
+                                >
+                                    Borrar Propuesta
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

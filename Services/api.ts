@@ -310,7 +310,7 @@ export const getPropertiesByTenant = async (tenantId: string) => {
   if (error) throw error;
 
   return data.map((p: any) => {
-    // 1. Normalización del estatus
+    // 1. Normalización del estatus para evitar errores de lectura
     const dbStatus = p.estatus ? p.estatus.toLowerCase() : 'disponible';
     
     let uiStatus = 'En Promoción'; // Default seguro
@@ -407,13 +407,19 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
 };
 
 // =========================================================================
-// OTRAS FUNCIONES (SIN CAMBIOS)
+// NUEVA LÓGICA MULTI-OFERTA (1 COMPRADOR -> N PROPIEDADES)
 // =========================================================================
 
-export const assignBuyerToProperty = async (buyerId: number, propertyId: number, tipoRelacion: 'Propuesta de compra' | 'Propiedad Separada' | 'Venta finalizada') => {
+export const assignBuyerToProperty = async (
+    buyerId: number, 
+    propertyId: number, 
+    tipoRelacion: 'Propuesta de compra' | 'Propiedad Separada' | 'Venta finalizada',
+    offerData?: any
+) => {
     const pIdString = propertyId.toString();
     const bIdString = buyerId.toString();
     
+    // 1. Obtener el contacto actual
     const { data: currentContact } = await supabase
         .from('contactos')
         .select('datos_kyc')
@@ -421,10 +427,37 @@ export const assignBuyerToProperty = async (buyerId: number, propertyId: number,
         .single();
 
     if (currentContact) {
+        const kyc = currentContact.datos_kyc || {};
+        // Inicializamos la lista si no existe
+        let intereses = Array.isArray(kyc.intereses) ? [...kyc.intereses] : [];
+
+        // Buscamos si ya tiene interés en ESTA propiedad específica
+        const existingIndex = intereses.findIndex((i: any) => String(i.propiedadId) === pIdString);
+
+        // Creamos el objeto del nuevo interés
+        const nuevoInteres = {
+            propiedadId: propertyId,
+            tipoRelacion: tipoRelacion,
+            fechaInteres: new Date().toISOString(),
+            // Si nos mandan oferta nueva, la usamos. Si no, mantenemos la anterior.
+            ofertaFormal: offerData !== undefined ? offerData : (existingIndex >= 0 ? intereses[existingIndex].ofertaFormal : undefined)
+        };
+
+        if (existingIndex >= 0) {
+            // Actualizamos el existente (sin borrar los otros)
+            intereses[existingIndex] = { ...intereses[existingIndex], ...nuevoInteres };
+        } else {
+            // Agregamos uno nuevo a la lista (sin borrar los otros)
+            intereses.push(nuevoInteres);
+        }
+
+        // Guardamos la lista completa actualizada
         await supabase.from('contactos')
         .update({
             datos_kyc: {
-                ...currentContact.datos_kyc,
+                ...kyc,
+                intereses: intereses,
+                // Mantenemos esto solo para compatibilidad (indica la "última" propiedad tocada)
                 propiedadRelacionadaId: propertyId,
                 tipoRelacion: tipoRelacion
             }
@@ -432,6 +465,7 @@ export const assignBuyerToProperty = async (buyerId: number, propertyId: number,
         .eq('id', bIdString);
     }
 
+    // 2. Actualizar la Propiedad (Solo si es Venta o Separación REAL)
     if (tipoRelacion === 'Venta finalizada' || tipoRelacion === 'Propiedad Separada') {
         const estatusDb = tipoRelacion === 'Venta finalizada' ? 'vendida' : 'separada';
         const fechaVenta = tipoRelacion === 'Venta finalizada' ? new Date().toISOString() : null;
@@ -447,13 +481,14 @@ export const assignBuyerToProperty = async (buyerId: number, propertyId: number,
 
         await supabase.from('propiedades')
         .update({
-            comprador_id: bIdString,
+            comprador_id: bIdString, // Aquí sí es único: la casa se aparta para ÉL
             estatus: estatusDb,
             features: newFeatures
         })
         .eq('id', pIdString);
         
     } else {
+        // Si es solo Propuesta, liberamos la propiedad si antes estaba asignada
         const { data: currentProp } = await supabase
             .from('propiedades')
             .select('comprador_id')
@@ -471,7 +506,8 @@ export const assignBuyerToProperty = async (buyerId: number, propertyId: number,
     }
 };
 
-export const unassignBuyerFromProperty = async (buyerId: number, propertyId: number) => {
+// --- NUEVA FUNCIÓN: ELIMINAR UNA OFERTA ESPECÍFICA ---
+export const deleteOffer = async (buyerId: number, propertyId: number) => {
     const { data: currentContact } = await supabase
         .from('contactos')
         .select('datos_kyc')
@@ -479,15 +515,55 @@ export const unassignBuyerFromProperty = async (buyerId: number, propertyId: num
         .single();
 
     if (currentContact) {
-        const newKyc = { ...currentContact.datos_kyc };
-        delete newKyc.propiedadRelacionadaId;
-        delete newKyc.tipoRelacion;
+        const kyc = currentContact.datos_kyc || {};
+        let intereses = Array.isArray(kyc.intereses) ? [...kyc.intereses] : [];
+        
+        // Buscamos el interés y le borramos SOLO la ofertaFormal
+        const targetIndex = intereses.findIndex((i: any) => String(i.propiedadId) === String(propertyId));
+        
+        if (targetIndex >= 0) {
+            const interes = intereses[targetIndex];
+            // Borramos la oferta pero mantenemos el interés (visita/relación)
+            delete interes.ofertaFormal; 
+            interes.tipoRelacion = 'Propuesta de compra'; // Reseteamos a propuesta simple
+            intereses[targetIndex] = interes;
+
+            await supabase.from('contactos')
+            .update({ datos_kyc: { ...kyc, intereses } })
+            .eq('id', buyerId.toString());
+        }
+    }
+};
+
+export const unassignBuyerFromProperty = async (buyerId: number, propertyId: number) => {
+    // 1. Limpiar Contacto (borrar de la lista de intereses)
+    const { data: currentContact } = await supabase
+        .from('contactos')
+        .select('datos_kyc')
+        .eq('id', buyerId.toString())
+        .single();
+
+    if (currentContact) {
+        const kyc = currentContact.datos_kyc || {};
+        let intereses = Array.isArray(kyc.intereses) ? [...kyc.intereses] : [];
+        
+        // Filtramos para quitar SOLO la propiedad que estamos desvinculando
+        intereses = intereses.filter((i: any) => String(i.propiedadId) !== String(propertyId));
+
+        const newKyc = { 
+            ...kyc,
+            intereses: intereses,
+            // Limpiamos los campos legacy si coincidían
+            propiedadRelacionadaId: String(kyc.propiedadRelacionadaId) === String(propertyId) ? null : kyc.propiedadRelacionadaId,
+            tipoRelacion: String(kyc.propiedadRelacionadaId) === String(propertyId) ? null : kyc.tipoRelacion
+        };
         
         await supabase.from('contactos')
         .update({ datos_kyc: newKyc })
         .eq('id', buyerId.toString());
     }
 
+    // 2. Limpiar Propiedad
     const { data: currentProp } = await supabase
         .from('propiedades')
         .select('comprador_id, features')
@@ -508,6 +584,9 @@ export const unassignBuyerFromProperty = async (buyerId: number, propertyId: num
     }
 };
 
+// =========================================================================
+// FUNCIÓN CORREGIDA: getContactsByTenant (LEE RELACIONES MULTIPLES)
+// =========================================================================
 export const getContactsByTenant = async (tenantId: string) => {
   const { data: contacts, error } = await supabase
     .from('contactos')
@@ -523,8 +602,21 @@ export const getContactsByTenant = async (tenantId: string) => {
     .not('comprador_id', 'is', null);
   
   const mapContact = (c: any) => {
-      let propId = c.datos_kyc?.propiedadRelacionadaId;
-      let tipoRel = c.datos_kyc?.tipoRelacion;
+      // Recuperamos la lista de intereses
+      const intereses = c.datos_kyc?.intereses || [];
+      
+      // Migración al vuelo (Legacy -> Lista)
+      if (intereses.length === 0 && c.datos_kyc?.propiedadRelacionadaId) {
+          intereses.push({
+              propiedadId: c.datos_kyc.propiedadRelacionadaId,
+              tipoRelacion: c.datos_kyc.tipoRelacion || 'Propuesta de compra',
+              ofertaFormal: c.datos_kyc.ofertaFormal,
+              fechaInteres: new Date().toISOString()
+          });
+      }
+
+      // Para compatibilidad con tablas simples, tomamos el último interés
+      const ultimoInteres = intereses.length > 0 ? intereses[intereses.length - 1] : null;
 
       return {
           ...c.datos_kyc, 
@@ -532,8 +624,12 @@ export const getContactsByTenant = async (tenantId: string) => {
           nombreCompleto: c.nombre,
           email: c.email,
           telefono: c.telefono,
-          propiedadId: propId || null,
-          tipoRelacion: tipoRel || null 
+          // Pasamos la lista completa al frontend (CRÍTICO)
+          intereses: intereses,
+          // Campos planos para compatibilidad
+          propiedadId: ultimoInteres ? ultimoInteres.propiedadId : null,
+          tipoRelacion: ultimoInteres ? ultimoInteres.tipoRelacion : null,
+          ofertaFormal: ultimoInteres ? ultimoInteres.ofertaFormal : null
       };
   };
 
@@ -543,6 +639,7 @@ export const getContactsByTenant = async (tenantId: string) => {
   return { propietarios, compradores };
 };
 
+// --- FUNCIÓN DE ESCRITURA: Actualizar Contacto ---
 export const updateContact = async (contactId: number, updatedKycData: any) => {
     const contactIdString = contactId.toString();
     const { nombreCompleto, email, telefono } = updatedKycData;
@@ -571,6 +668,10 @@ export const deleteContact = async (contactId: number) => {
     
     if (error) throw error;
 };
+
+// ==========================================
+// 4. ESTADÍSTICAS Y DASHBOARD
+// ==========================================
 
 export const getSuperAdminStats = async () => {
     const { count: totalCompanies, error: errorCompanies } = await supabase
@@ -616,6 +717,10 @@ export const getSuperAdminStats = async () => {
         rolesDistribution
     };
 };
+
+// ==========================================
+// 5. FUNCIONES PARA PERSONAL EMPRESA
+// ==========================================
 
 export const getUsersByTenant = async (tenantId: string) => {
   const { data, error } = await supabase

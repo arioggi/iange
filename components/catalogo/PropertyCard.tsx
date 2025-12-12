@@ -15,6 +15,7 @@ interface PropertyCardProps {
     onVisitaClick?: () => void;
     onEditClick?: () => void;
     onOfferClick?: () => void;
+    offerCount?: number;
 }
 
 const formatCurrency = (value: string) => {
@@ -36,7 +37,7 @@ const formatDate = (dateString: string) => {
     });
 };
 
-const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario, onVisitaClick, onEditClick, onOfferClick }) => {
+const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario, onVisitaClick, onEditClick, onOfferClick, offerCount = 0 }) => {
     const imageUrl = 
         propiedad.fotos && propiedad.fotos.length > 0 
             ? URL.createObjectURL(propiedad.fotos[0]) 
@@ -64,12 +65,18 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario, onV
                 </div>
             )}
 
-            {/* --- BOTONES FLOTANTES (CÍRCULOS BLANCOS) --- */}
-            {/* Solo se muestran si NO está vendida */}
+            {/* --- NOTIFICACIÓN DE OFERTAS (SIN PARPADEO) --- */}
+            {offerCount > 0 && propiedad.status !== 'Vendida' && (
+                <div className="absolute top-3 left-3 z-10 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md flex items-center gap-1">
+                    <span className="text-sm">🔔</span> {offerCount} {offerCount === 1 ? 'Oferta' : 'Ofertas'}
+                </div>
+            )}
+
+            {/* --- BOTONES FLOTANTES (LIMPIOS) --- */}
             {propiedad.status !== 'Vendida' && (
                 <div className="absolute top-3 right-3 z-20 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                     
-                    {/* Botón Editar (Lápiz) */}
+                    {/* Botón Editar */}
                     <button 
                         onClick={(e) => handleButtonClick(e, onEditClick)}
                         className="bg-white text-gray-600 p-2 rounded-full shadow-md hover:bg-gray-100 hover:text-indigo-600 transition-colors border border-gray-100"
@@ -78,7 +85,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario, onV
                         <PencilIcon className="h-5 w-5" />
                     </button>
                     
-                    {/* Botón Interés Rápido (Destello) */}
+                    {/* Botón Visita */}
                     <button 
                         onClick={(e) => handleButtonClick(e, onVisitaClick)}
                         className="bg-white text-gray-600 p-2 rounded-full shadow-md hover:bg-gray-100 hover:text-iange-orange transition-colors border border-gray-100"
@@ -87,8 +94,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario, onV
                         <SparklesIcon className="h-5 w-5" />
                     </button>
 
-                    {/* NUEVO: Botón Oferta (Signo de Pesos) */}
-                    {/* Fondo blanco, icono verde por defecto */}
+                    {/* Botón Oferta (Sin punto rojo) */}
                     <button 
                         onClick={(e) => handleButtonClick(e, onOfferClick)}
                         className="bg-white text-green-600 p-2 rounded-full shadow-md hover:bg-green-50 transition-colors border border-gray-100"
@@ -99,7 +105,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario, onV
                 </div>
             )}
 
-            {/* Imagen con efecto grayscale si está vendida */}
+            {/* Imagen */}
             <div 
                 className={`h-48 bg-cover bg-center ${propiedad.status === 'Vendida' ? 'grayscale opacity-80' : ''}`} 
                 style={{ backgroundImage: `url(${imageUrl})` }}
@@ -114,7 +120,9 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario, onV
                 </p>
                  <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500">
                     <p>Propietario: <span className="font-medium text-gray-700">{propietario?.nombreCompleto || 'No asignado'}</span></p>
-                    <p className="mt-1">Fecha de alta: <span className="font-medium text-gray-700">{formatDate(propiedad.fecha_captacion)}</span></p>
+                    <p className="mt-1">
+                        Fecha de alta: <span className="font-medium text-gray-700">{formatDate(propiedad.fecha_captacion)}</span>
+                    </p>
                 </div>
             </div>
         </div>

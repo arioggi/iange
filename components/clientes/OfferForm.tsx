@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { OfferData, Propiedad, Comprador } from '../../types';
 
 const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -47,7 +47,8 @@ interface OfferFormProps {
     onFormChange: (data: OfferData) => void;
     onSave: () => void;
     onCancel: () => void;
-    compradores?: Comprador[]; // Hacemos opcional para seguridad
+    compradores?: Comprador[];
+    initialBuyerId?: number | null; // <--- NUEVO: ID para modo edición
 }
 
 const OfferForm: React.FC<OfferFormProps> = ({ 
@@ -56,9 +57,17 @@ const OfferForm: React.FC<OfferFormProps> = ({
     onFormChange, 
     onSave, 
     onCancel, 
-    compradores = [] // Default a array vacío para evitar pantalla blanca
+    compradores = [],
+    initialBuyerId = null // Default null (Modo Crear)
 }) => {
     
+    // Si entramos en modo edición, fijamos el comprador en el form inmediatamente
+    useEffect(() => {
+        if (initialBuyerId) {
+            onFormChange({ ...formData, compradorId: String(initialBuyerId) });
+        }
+    }, [initialBuyerId]);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         onFormChange({ ...formData, [name]: value });
@@ -75,6 +84,8 @@ const OfferForm: React.FC<OfferFormProps> = ({
 
     // Lógica para ocultar institución si es Infonavit o Contado
     const showInstitution = ['Crédito Bancario', 'Cofinavit', 'Otro'].includes(formData.formaPago);
+    
+    const isEditing = !!initialBuyerId; // Bandera para saber si estamos editando
 
     return (
         <form onSubmit={handleSubmit} className="bg-gray-50 p-6 rounded-lg">
@@ -88,21 +99,33 @@ const OfferForm: React.FC<OfferFormProps> = ({
                     </div>
                     <div className="ml-3">
                         <p className="text-sm text-green-700">
-                            Propuesta para: <span className="font-bold">{propiedad.calle} {propiedad.numero_exterior}</span>
+                            {isEditing ? 'Editando propuesta para:' : 'Nueva propuesta para:'} <span className="font-bold">{propiedad.calle} {propiedad.numero_exterior}</span>
                             <br/>Valor lista: <span className="font-semibold">{propiedad.valor_operacion}</span>
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* SECCIÓN 0: VINCULAR COMPRADOR */}
+            {/* SECCIÓN 0: VINCULAR COMPRADOR (BLOQUEADO SI ES EDICIÓN) */}
             <FormSection title="Cliente Comprador">
-                <Select label="Seleccionar Cliente Registrado" name="compradorId" value={formData.compradorId || ''} onChange={handleChange} fullWidth>
-                    <option value="">-- Selecciona un cliente --</option>
-                    {compradores.map(c => (
-                        <option key={c.id} value={c.id}>{c.nombreCompleto} ({c.email})</option>
-                    ))}
-                </Select>
+                {isEditing ? (
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
+                        <input 
+                            disabled 
+                            value={compradores.find(c => String(c.id) === String(initialBuyerId))?.nombreCompleto || 'Cliente Desconocido'}
+                            className="w-full bg-gray-200 border border-gray-300 rounded-md py-2 px-3 text-gray-600 cursor-not-allowed sm:text-sm"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">El cliente no se puede cambiar en modo edición.</p>
+                    </div>
+                ) : (
+                    <Select label="Seleccionar Cliente Registrado" name="compradorId" value={formData.compradorId || ''} onChange={handleChange} fullWidth>
+                        <option value="">-- Selecciona un cliente --</option>
+                        {compradores.map(c => (
+                            <option key={c.id} value={c.id}>{c.nombreCompleto} ({c.email})</option>
+                        ))}
+                    </Select>
+                )}
             </FormSection>
 
             <FormSection title="1. Precio y Condiciones">
@@ -144,11 +167,11 @@ const OfferForm: React.FC<OfferFormProps> = ({
             </FormSection>
 
             <div className="flex justify-end mt-8 pt-4 border-t space-x-4">
-                <button type="button" onClick={onCancel} className="bg-white text-gray-700 py-2 px-6 rounded-md border border-gray-300 hover:bg-gray-50 font-medium">
+                <button type="button" onClick={onCancel} className="bg-white text-gray-700 py-2 px-6 rounded-md border border-gray-300 hover:bg-gray-50 font-medium transition-colors">
                     Cancelar
                 </button>
-                <button type="submit" className="bg-green-600 text-white py-2 px-6 rounded-md hover:bg-green-700 font-medium shadow-sm flex items-center">
-                    Guardar Propuesta
+                <button type="submit" className="bg-green-600 text-white py-2 px-6 rounded-md hover:bg-green-700 font-medium shadow-sm flex items-center transition-colors">
+                    {isEditing ? 'Actualizar Oferta' : 'Guardar Propuesta'}
                 </button>
             </div>
         </form>

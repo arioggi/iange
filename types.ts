@@ -150,6 +150,27 @@ export interface Propiedad {
   comisionCompartida?: number;
 }
 
+// --- NUEVA INTERFAZ PARA OFERTAS DE COMPRA ---
+export interface OfferData {
+  compradorId: string;
+  precioOfrecido: string;
+  formaPago: 'Contado' | 'Crédito Bancario' | 'Infonavit' | 'Cofinavit' | 'Otro';
+  institucionFinanciera?: string;
+  montoApartado: string;
+  montoEnganche: string;
+  saldoAFirma: string;
+  vigenciaOferta: string;
+  observaciones?: string;
+}
+
+// --- NUEVA INTERFAZ PARA EL HISTORIAL DE INTERESES (MULTI-PROPIEDAD) ---
+export interface Interes {
+    propiedadId: number;
+    tipoRelacion: 'Propuesta de compra' | 'Propiedad Separada' | 'Venta finalizada';
+    ofertaFormal?: OfferData; // La oferta específica para ESTA propiedad
+    fechaInteres: string;
+}
+
 export interface KycData {
   nombreCompleto: string;
   curp: string;
@@ -189,6 +210,13 @@ export interface KycData {
 
   // --- NUEVO CAMPO ASESOR ---
   asesorId?: number | string; 
+
+  // --- CAMPOS DE VINCULACIÓN ---
+  // Legacy (Soporte temporal)
+  ofertaFormal?: OfferData; 
+  
+  // Nuevo sistema multi-propiedad
+  intereses?: Interes[]; // <--- AQUÍ SE GUARDARÁN MÚLTIPLES CASAS
 }
 
 export interface Propietario extends KycData {
@@ -259,17 +287,4 @@ export interface Log {
   rol: string;
   accion: string;
   resultado: 'Éxito' | 'Error';
-}
-
-// --- NUEVA INTERFAZ PARA OFERTAS DE COMPRA ---
-export interface OfferData {
-  compradorId: string;
-  precioOfrecido: string;
-  formaPago: 'Contado' | 'Crédito Bancario' | 'Infonavit' | 'Cofinavit' | 'Otro';
-  institucionFinanciera?: string;
-  montoApartado: string;
-  montoEnganche: string;
-  saldoAFirma: string;
-  vigenciaOferta: string;
-  observaciones?: string;
 }
