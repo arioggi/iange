@@ -327,6 +327,9 @@ export const getPropertiesByTenant = async (tenantId: string) => {
         // 2. Sobrescribimos con los datos LIMPIOS y REALES de la base de datos
         // Esto asegura que el precio sea numérico y el status sea el calculado
         id: p.id,
+        // AGREGA ESTA LÍNEA AQUÍ:
+        token_publico: p.token_publico, // <--- IMPORTANTE: Mapear el token de la BD al objeto
+
         propietarioId: p.contacto_id,
         compradorId: p.comprador_id,
         

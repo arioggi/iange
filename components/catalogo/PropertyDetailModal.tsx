@@ -153,35 +153,27 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
         }
     };
 
-    // --- NUEVA FUNCIÓN: COMPARTIR LINK PÚBLICO ---
+    // --- NUEVA FUNCIÓN: SIEMPRE COPIAR LINK (Sin menú nativo) ---
     const handleShareUrl = () => {
-        // 1. Determinar el identificador (Token UUID preferido, ID numérico como fallback)
+        // 1. Construir la URL (Igual que antes)
         const identifier = propiedad.token_publico || propiedad.id; 
-        
-        // 2. Determinar la ruta correcta. Si hay token usamos '/preview/', si no '/p/' (o lo que hayas configurado de fallback)
-        // Como en App.tsx configuramos /preview/:token, idealmente siempre deberíamos tener token.
         const path = propiedad.token_publico ? 'preview' : 'p';
-        
-        // 3. Determinar el dominio (Producción o Localhost)
         const domain = import.meta.env.VITE_APP_URL || window.location.origin;
         
-        // 4. Construir URL Final
         const publicUrl = `${domain}/${path}/${identifier}`;
         
-        const shareData = {
-            title: `Venta: ${propiedad.calle}`,
-            text: `¡Mira esta oportunidad! Propiedad en ${propiedad.colonia} por ${formatCurrency(propiedad.valor_operacion)}`,
-            url: publicUrl,
-        };
-
-        if (navigator.share) {
-            // Intento de compartir nativo (Móvil)
-            navigator.share(shareData).catch((err) => console.log('Error compartiendo URL', err));
-        } else {
-            // Fallback (Escritorio): Copiar al portapapeles
-            navigator.clipboard.writeText(publicUrl);
-            alert(`🔗 Enlace copiado: ${publicUrl}\n\nPégalo en Facebook, WhatsApp o Instagram.`);
-        }
+        // 2. FORZAR COPIADO AL PORTAPAPELES
+        // Eliminamos el 'if (navigator.share)' para que no abra el menú de Apple
+        navigator.clipboard.writeText(publicUrl)
+            .then(() => {
+                // Éxito
+                alert(`✅ ¡Link copiado!\n\n${publicUrl}\n\nYa puedes pegarlo donde quieras.`);
+            })
+            .catch((err) => {
+                // Error (por si el navegador bloquea el portapapeles)
+                console.error('Error al copiar:', err);
+                prompt('Copia este link manualmente:', publicUrl);
+            });
     };
 
     // --- FUNCIÓN: COPIAR CAPTION (Texto de Venta) ---

@@ -334,17 +334,22 @@ const App = () => {
     );
   }
 
-  // --- ESTRUCTURA DE RUTAS MODIFICADA PARA LANDING PÚBLICA ---
+  // --- ESTRUCTURA DE RUTAS ACTUALIZADA PARA SOPORTAR AMBOS TIPOS DE LINKS ---
   return (
     <>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       
       <Routes>
         {/* ======================================================== */}
-        {/* 1. RUTA PÚBLICA: ACCESIBLE PARA TODOS (Sin Login)        */}
-        {/* AHORA USA :token PARA ENLACES PERSONALIZADOS          */}
+        {/* 1. RUTAS PÚBLICAS (ACCESIBLES SIN LOGIN)                 */}
         {/* ======================================================== */}
+        
+        {/* Enlace Moderno (Estilo GoHighLevel) */}
         <Route path="/preview/:token" element={<PublicPropertyPage />} />
+
+        {/* Enlace Legacy / Fallback (Para propiedades sin token o links viejos) */}
+        <Route path="/p/:id" element={<PublicPropertyPage />} />
+
 
         {/* ======================================================== */}
         {/* 2. LOGIN: ACCESIBLE SOLO SI NO ESTÁS LOGUEADO            */}
