@@ -84,3 +84,9 @@ export const UserIcon: React.FC<{ className?: string }> = ({ className }) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
   </svg>
 );
+
+export const CurrencyDollarIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.768 0-1.536.219-1.969.932-.431.713-.431 2.137 0 2.818zm0-12.818l-.879-.659c-1.171-.879-3.07-.879-4.242 0-1.172.879-1.172 2.303 0 3.182C7.464 11.781 8.232 12 9 12c.768 0 1.536-.219 1.969-.932.431-.713.431-2.137 0-2.818z" />
+  </svg>
+);

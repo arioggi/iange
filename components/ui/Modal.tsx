@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom'; // Usaremos Portal para garantizar que cubra todo
 
 interface ModalProps {
     isOpen: boolean;
@@ -7,6 +8,7 @@ interface ModalProps {
     children: React.ReactNode;
     maxWidth?: string;
     hideHeader?: boolean;
+    zIndex?: number; // Nueva prop opcional para controlar capas
 }
 
 const Modal: React.FC<ModalProps> = ({ 
@@ -15,7 +17,8 @@ const Modal: React.FC<ModalProps> = ({
     title, 
     children, 
     maxWidth = "max-w-2xl",
-    hideHeader = false 
+    hideHeader = false,
+    zIndex = 50 // Valor por defecto
 }) => {
     const modalRef = useRef<HTMLDivElement>(null);
 
@@ -23,49 +26,56 @@ const Modal: React.FC<ModalProps> = ({
         const handleEscapeKey = (event: KeyboardEvent) => {
             if (event.key === 'Escape') onClose();
         };
-        const handleClickOutside = (event: MouseEvent) => {
-            if (modalRef.current && !modalRef.current.contains(event.target as Node)) onClose();
-        };
-
+        
+        // Bloquear scroll del body cuando el modal está abierto
         if (isOpen) {
             document.addEventListener('keydown', handleEscapeKey);
-            document.addEventListener('mousedown', handleClickOutside);
             document.body.style.overflow = 'hidden';
         }
+        
         return () => {
             document.removeEventListener('keydown', handleEscapeKey);
-            document.removeEventListener('mousedown', handleClickOutside);
             document.body.style.overflow = 'unset';
         };
     }, [isOpen, onClose]);
 
     if (!isOpen) return null;
 
-    // LÓGICA: Mostrar barra solo si NO está oculta Y tiene título
-    const showHeader = !hideHeader && (title && title.trim().length > 0);
+    // Renderizamos en el body usando Portal para escapar de cualquier contenedor relativo
+    return createPortal(
+        <div 
+            className="fixed inset-0 h-screen w-screen flex justify-center items-center p-4"
+            style={{ zIndex: zIndex }}
+        >
+            {/* 1. BACKDROP ESTANDARIZADO */}
+            <div 
+                className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity" 
+                onClick={onClose}
+            ></div>
 
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4 backdrop-blur-sm transition-opacity">
+            {/* 2. CONTENIDO DEL MODAL */}
             <div
                 ref={modalRef}
-                className={`bg-white rounded-xl shadow-2xl w-full ${maxWidth} max-h-[95vh] flex flex-col overflow-hidden`}
+                className={`relative bg-white rounded-xl shadow-2xl w-full ${maxWidth} max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-down`}
                 role="dialog"
                 aria-modal="true"
+                onClick={(e) => e.stopPropagation()} // Evitar cerrar al hacer clic dentro
             >
-                {showHeader && (
-                    <div className="p-4 border-b flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
-                        <h2 className="text-lg font-bold text-iange-dark">{title}</h2>
+                {!hideHeader && title && (
+                    <div className="p-4 border-b flex justify-between items-center bg-gray-50 sticky top-0 z-10 shrink-0">
+                        <h2 className="text-lg font-bold text-gray-800">{title}</h2>
                         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-                            <span className="text-2xl">&times;</span>
+                            <span className="text-2xl leading-none">&times;</span>
                         </button>
                     </div>
                 )}
                 
-                <div className={`${showHeader ? "p-6" : "p-0"} overflow-y-auto`}>
+                <div className={`${!hideHeader && title ? "p-6" : "p-0"} overflow-y-auto custom-scrollbar`}>
                     {children}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

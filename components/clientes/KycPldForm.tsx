@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { KycData, Propiedad } from '../../types';
+import { KycData, Propiedad, User } from '../../types'; // <--- Importamos User
 
-// --- COMPONENTES INTERNOS (DEFINICIÓN LOCAL PARA QUE FUNCIONE) ---
+// --- COMPONENTES INTERNOS ---
 const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
     <section className="mb-6">
         <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">{title}</h3>
@@ -11,13 +11,14 @@ const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ t
     </section>
 );
 
-const Input: React.FC<{ label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; type?: string; fullWidth?: boolean }> = ({ label, name, value, onChange, type = 'text', fullWidth }) => (
+const Input: React.FC<{ label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; type?: string; fullWidth?: boolean; placeholder?: string }> = ({ label, name, value, onChange, type = 'text', fullWidth, placeholder }) => (
     <div className={fullWidth ? 'md:col-span-2' : ''}>
         <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <input type={type} name={name} id={name} value={value} onChange={onChange} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-iange-orange focus:border-iange-orange sm:text-sm placeholder-gray-500 text-gray-900" />
+        <input type={type} name={name} id={name} value={value} onChange={onChange} placeholder={placeholder} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-iange-orange focus:border-iange-orange sm:text-sm placeholder-gray-500 text-gray-900" />
     </div>
 );
 
+// Este Select es simple para el resto de los campos
 const Select: React.FC<{ label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; children: React.ReactNode }> = ({ label, name, value, onChange, children }) => (
     <div>
         <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
@@ -48,71 +49,237 @@ const Checkbox: React.FC<{ label: string; name: string; checked: boolean; onChan
     </label>
 );
 
+// --- COMPONENTE ESPECIAL PARA PROPIEDADES ---
+const SelectPropiedad: React.FC<{ 
+    label: string; 
+    name: string; 
+    value: string; 
+    onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; 
+    children: React.ReactNode 
+}> = ({ label, name, value, onChange, children }) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <select 
+            name={name} 
+            id={name} 
+            value={value} 
+            onChange={onChange} 
+            className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-iange-orange focus:border-iange-orange sm:text-sm text-gray-900"
+        >
+            {children}
+        </select>
+    </div>
+);
+
 interface KycPldFormProps {
-    onSave: (selectedPropiedadId?: number) => void;
+    onSave: (selectedPropiedadId?: number, tipoRelacion?: string) => void;
     onCancel: () => void;
     formData: KycData;
     onFormChange: (data: KycData) => void;
     userType: 'Propietario' | 'Comprador';
     isEmbedded?: boolean;
     propiedades?: Propiedad[];
+    asesores?: User[]; // <--- NUEVA PROP PARA RECIBIR LA LISTA DE ASESORES
 }
 
-const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onFormChange, userType, isEmbedded = false, propiedades }) => {
-    const [selectedPropiedadId, setSelectedPropiedadId] = useState('');
+const KycPldForm: React.FC<KycPldFormProps> = ({ 
+    onSave, 
+    onCancel, 
+    formData, 
+    onFormChange, 
+    userType, 
+    isEmbedded = false, 
+    propiedades,
+    asesores = [] // <--- DEFAULT VACÍO
+}) => {
+    // Obtenemos el ID actual si estamos editando
+    const currentPropId = String((formData as any).propiedadId || '');
+    
+    const [selectedPropiedadId, setSelectedPropiedadId] = useState(currentPropId);
+    const [tipoRelacion, setTipoRelacion] = useState((formData as any).tipoRelacion || 'Propuesta de compra');
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
         const checked = (e.target as HTMLInputElement).checked;
         onFormChange({ ...formData, [name]: type === 'checkbox' ? checked : value });
     };
+
+    // --- LÓGICA DE VALIDACIÓN REFORZADA ---
+    const handlePropiedadChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const newId = e.target.value;
+        
+        if (newId === "") {
+            setSelectedPropiedadId("");
+            return;
+        }
+
+        const selectedProp = propiedades?.find(p => String(p.id) === newId);
+
+        if (selectedProp) {
+            const status = selectedProp.status ? selectedProp.status.toLowerCase() : '';
+            const isBlocked = status === 'separada' || status === 'vendida';
+            
+            // Permitimos seleccionar SI es la propiedad que YA tiene asignada este usuario (para poder editar su relación)
+            const isMyCurrentProperty = newId === currentPropId;
+
+            if (isBlocked && !isMyCurrentProperty) {
+                alert(`🚫 ACCIÓN DENEGADA\n\nEsta propiedad ya se encuentra ${selectedProp.status.toUpperCase()}.\nNo puedes asignarla a otro cliente en este momento.`);
+                // Forzamos el reset al valor anterior o vacío
+                // Usamos un timeout para asegurar que el render del select vuelva atrás
+                setTimeout(() => setSelectedPropiedadId(currentPropId), 0);
+                return; 
+            }
+        }
+
+        setSelectedPropiedadId(newId);
+    };
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(selectedPropiedadId ? Number(selectedPropiedadId) : undefined);
+        onSave(
+            selectedPropiedadId ? Number(selectedPropiedadId) : undefined,
+            selectedPropiedadId ? tipoRelacion : undefined 
+        );
     };
 
     const formClasses = "";
 
     return (
         <form onSubmit={handleSubmit} className={formClasses}>
-            {/* NOTA: Este componente no tiene clases de scrollbar ni padding. El padre lo maneja. */}
-
                 {userType === 'Comprador' && (
                     <FormSection title="Vincular a Propiedad">
-                        <div className="md:col-span-2">
+                        <div className="md:col-span-2 space-y-4">
                             {propiedades && propiedades.length > 0 ? (
                                 <>
-                                    <Select
-                                        label="Selecciona una propiedad disponible para este comprador (Opcional)"
+                                    <SelectPropiedad
+                                        label="Selecciona una propiedad para asignar"
                                         name="propiedadId"
                                         value={selectedPropiedadId}
-                                        onChange={(e) => setSelectedPropiedadId(e.target.value)}
+                                        onChange={handlePropiedadChange} 
                                     >
-                                        <option value="">No vincular por ahora</option>
-                                        {propiedades.map(prop => (
-                                            <option key={prop.id} value={prop.id}>
-                                                {`${prop.calle} ${prop.numero_exterior}, ${prop.colonia}`}
-                                            </option>
-                                        ))}
-                                    </Select>
-                                    <p className="mt-2 text-xs text-gray-500">
-                                        Al vincular un comprador, el estatus de la propiedad cambiará a "Vendida" en el catálogo.
-                                    </p>
+                                        <option value="">-- No vincular por ahora --</option>
+                                        {propiedades.map(prop => {
+                                            const status = prop.status ? prop.status.toLowerCase() : '';
+                                            const isBlocked = status === 'separada' || status === 'vendida';
+                                            const isMyCurrentProperty = String(prop.id) === currentPropId;
+                                            
+                                            // BLOQUEO VISUAL (Disabled)
+                                            // Se deshabilita SI está bloqueada Y NO es la mía
+                                            const isDisabled = isBlocked && !isMyCurrentProperty;
+                                            
+                                            let labelPrefix = '';
+                                            if (status === 'separada') labelPrefix = '🔒 [SEPARADA] ';
+                                            else if (status === 'vendida') labelPrefix = '🛑 [VENDIDA] ';
+                                            
+                                            return (
+                                                <option 
+                                                    key={prop.id} 
+                                                    value={prop.id} 
+                                                    disabled={isDisabled}
+                                                    className={isDisabled ? 'text-gray-400 bg-gray-100' : 'text-gray-900'}
+                                                >
+                                                    {`${labelPrefix}${prop.calle} ${prop.numero_exterior} - ${prop.colonia}`}
+                                                </option>
+                                            );
+                                        })}
+                                    </SelectPropiedad>
+                                    
+                                    {selectedPropiedadId && (
+                                        <div className="bg-gray-50 p-4 rounded-md border border-gray-200 animate-fade-in-down mt-2">
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Estatus de la Asignación</label>
+                                            <div className="space-y-2">
+                                                {['Propuesta de compra', 'Propiedad Separada', 'Venta finalizada'].map((tipo) => (
+                                                    <label key={tipo} className="flex items-center space-x-3 cursor-pointer">
+                                                        <input 
+                                                            type="radio" 
+                                                            name="tipoRelacion" 
+                                                            value={tipo}
+                                                            checked={tipoRelacion === tipo}
+                                                            onChange={(e) => setTipoRelacion(e.target.value)}
+                                                            className="h-4 w-4 text-iange-orange focus:ring-iange-orange border-gray-300"
+                                                        />
+                                                        <span className="text-sm text-gray-700">{tipo}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                            <div className={`text-xs mt-3 p-2 rounded border ${
+                                                tipoRelacion === 'Venta finalizada' ? 'bg-green-50 border-green-200 text-green-800' :
+                                                tipoRelacion === 'Propiedad Separada' ? 'bg-yellow-50 border-yellow-200 text-yellow-800' :
+                                                'bg-blue-50 border-blue-200 text-blue-800'
+                                            }`}>
+                                                {tipoRelacion === 'Venta finalizada' 
+                                                    ? '⚠️ Cierre Definitivo: La propiedad se marcará como VENDIDA.' 
+                                                    : tipoRelacion === 'Propiedad Separada' 
+                                                        ? '🔒 Bloqueo Temporal: La propiedad quedará apartada para este cliente.'
+                                                        : 'ℹ️ Propuesta: La propiedad sigue visible para otros clientes.'}
+                                            </div>
+                                        </div>
+                                    )}
                                 </>
                             ) : (
                                 <div className="p-4 bg-gray-100 rounded-md text-center">
                                     <p className="text-sm font-medium text-gray-700">No hay propiedades disponibles</p>
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        Para poder vincular un comprador, primero debes dar de alta una propiedad que no tenga un comprador asignado.
-                                    </p>
                                 </div>
                             )}
                         </div>
                     </FormSection>
                 )}
 
+                {/* --- SECCIÓN DE CITA (AHORA SIEMPRE VISIBLE PARA COMPRADORES) --- */}
+                {userType === 'Comprador' && (
+                    <div className="bg-blue-50 p-4 rounded-md border border-blue-200 mb-6 animate-fade-in-down">
+                        <h3 className="text-blue-800 font-bold text-sm uppercase mb-3 flex items-center gap-2">
+                            📅 Agendar Visita / Cita
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <Input 
+                                label="Fecha" 
+                                name="fechaCita" 
+                                type="date" 
+                                value={formData.fechaCita || ''} 
+                                onChange={handleChange} 
+                            />
+                            <Input 
+                                label="Hora" 
+                                name="horaCita" 
+                                type="time" 
+                                value={formData.horaCita || ''} 
+                                onChange={handleChange} 
+                            />
+                            <Input 
+                                label="Notas de la visita" 
+                                name="notasCita" 
+                                value={formData.notasCita || ''} 
+                                onChange={handleChange} 
+                                placeholder="Ej. Interesado en el patio..."
+                            />
+                        </div>
+                    </div>
+                )}
+                
                 <FormSection title={`Datos de Identificación del ${userType} (Persona Física)`}>
+                    
+                    {/* --- NUEVO SELECTOR DE ASESOR --- */}
+                    {asesores.length > 0 && (
+                        <div className="md:col-span-2 bg-yellow-50 p-3 rounded border border-yellow-200 mb-2">
+                            <label htmlFor="asesorId" className="block text-sm font-bold text-yellow-800 mb-1">
+                                Asesor Responsable (Quién atiende/vendió)
+                            </label>
+                            <select 
+                                name="asesorId" 
+                                id="asesorId" 
+                                value={formData.asesorId || ''} 
+                                onChange={handleChange as any} 
+                                className="w-full px-3 py-2 bg-white border border-yellow-300 rounded-md focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm text-gray-900"
+                            >
+                                <option value="">-- Seleccionar Asesor --</option>
+                                {asesores.map(asesor => (
+                                    <option key={asesor.id} value={String(asesor.id)}>{asesor.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
                     <Input label="Nombre(s) y apellidos" name="nombreCompleto" value={formData.nombreCompleto} onChange={handleChange} fullWidth/>
                     <Input label="CURP" name="curp" value={formData.curp} onChange={handleChange} />
                     <Input label="RFC" name="rfc" value={formData.rfc} onChange={handleChange} />
@@ -164,7 +331,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                         Cancelar
                     </button>
                     <button type="submit" className="bg-iange-orange text-white py-2 px-6 rounded-md hover:bg-orange-600">
-                        Añadir {userType}
+                        {userType === 'Comprador' && selectedPropiedadId ? 'Vincular y Guardar' : `Añadir ${userType}`}
                     </button>
                 </div>
             )}

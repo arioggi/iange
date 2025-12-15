@@ -37,22 +37,18 @@ export interface Oportunidad {
   validacionComprador: Validacion;
 }
 
-// --- ACTUALIZACIÓN DE PERMISOS ---
-// Se eliminaron 'operaciones' y 'documentosKyc'.
-// Se agregaron 'dashboard' y 'progreso' para tener control granular.
 export interface UserPermissions {
-  dashboard: boolean;    // 1. Dashboard
-  contactos: boolean;    // 2. Alta de Clientes
-  propiedades: boolean;  // 3. Catálogo
-  progreso: boolean;     // 4. Progreso de Ventas
-  reportes: boolean;     // 5. Reportes
-  crm: boolean;          // 6. CRM
-  equipo: boolean;       // Extra: Configuración de Personal
+  dashboard: boolean;
+  contactos: boolean;
+  propiedades: boolean;
+  progreso: boolean;
+  reportes: boolean;
+  crm: boolean;
+  equipo: boolean;
 }
 
-// --- ACTUALIZACIÓN CLAVE: IDs AHORA SON STRING | NUMBER ---
 export interface User {
-  id: number | string; // <--- CAMBIO AQUÍ (Soporta UUID de Supabase)
+  id: number | string;
   photo: string;
   name: string;
   email: string;
@@ -98,10 +94,11 @@ export interface Visita {
 }
 
 export interface Propiedad {
-  id: number; // Las propiedades locales siguen siendo number por ahora
+  id: number;
+  token_publico?: string; // <--- NUEVO CAMPO PARA LINKS PÚBLICOS (GoHighLevel Style)
   propietarioId: number;
   compradorId?: number | null;
-  asesorId: number | string; // <--- CAMBIO AQUÍ (El asesor puede venir de Supabase)
+  asesorId: number | string;
   calle: string;
   numero_exterior: string;
   numero_interior?: string;
@@ -126,8 +123,8 @@ export interface Propiedad {
   forma_pago?: string;
   notas_adicionales?: string;
   ubicacion_destacada?: string;
-  fotos: File[]; // Archivos locales (durante la carga)
-  imageUrls?: string[]; // <--- NUEVO: URLs de Supabase Storage (para mostrar)
+  fotos: File[];
+  imageUrls?: string[];
   fecha_captacion: string;
   fecha_venta: string | null;
   fichaTecnicaPdf: string;
@@ -136,9 +133,46 @@ export interface Propiedad {
   fuente_captacion: string;
   status: 'Validación Pendiente' | 'En Promoción' | 'Separada' | 'Vendida';
   visitas: Visita[];
+
+  // --- CAMPOS DE COMISIÓN (Captación vs Venta) ---
+  // Captación
+  comisionCaptacionOficina?: number;
+  comisionCaptacionAsesor?: number;
+  compartirComisionCaptacion?: boolean; 
+
+  // Venta
+  comisionVentaOficina?: number;
+  comisionVentaAsesor?: number;
+  compartirComisionVenta?: boolean; 
+
+  // Campos Legacy
   comisionOficina?: number;
   comisionAsesor?: number;
   comisionCompartida?: number;
+  
+  // Datos del Tenant (opcional, para renderizar branding en vista pública)
+  tenant_id?: string;
+}
+
+// --- INTERFAZ PARA OFERTAS DE COMPRA ---
+export interface OfferData {
+  compradorId: string;
+  precioOfrecido: string;
+  formaPago: 'Contado' | 'Crédito Bancario' | 'Infonavit' | 'Cofinavit' | 'Otro';
+  institucionFinanciera?: string;
+  montoApartado: string;
+  montoEnganche: string;
+  saldoAFirma: string;
+  vigenciaOferta: string;
+  observaciones?: string;
+}
+
+// --- INTERFAZ PARA EL HISTORIAL DE INTERESES ---
+export interface Interes {
+    propiedadId: number;
+    tipoRelacion: 'Propuesta de compra' | 'Propiedad Separada' | 'Venta finalizada';
+    ofertaFormal?: OfferData; 
+    fechaInteres: string;
 }
 
 export interface KycData {
@@ -172,6 +206,18 @@ export interface KycData {
   esPep: boolean;
   pepNombre?: string;
   pepCargo?: string;
+  
+  // --- CAMPOS PARA CITAS ---
+  fechaCita?: string; 
+  horaCita?: string;  
+  notasCita?: string;
+
+  // --- CAMPO ASESOR ---
+  asesorId?: number | string; 
+
+  // --- CAMPOS DE VINCULACIÓN ---
+  ofertaFormal?: OfferData; 
+  intereses?: Interes[]; 
 }
 
 export interface Propietario extends KycData {
@@ -193,17 +239,17 @@ export interface CompanySettings {
 }
 
 export interface Tenant {
-  id: string; // Tenants siempre han sido string (uuid simulado o real)
+  id: string;
   nombre: string;
   ownerEmail: string;
   telefono?: string;
+  logo_url?: string; // <--- Agregado para el branding
   fechaRegistro: string;
   estado: 'Activo' | 'Suspendido';
 }
 
-// --- ACTUALIZACIÓN CLAVE: Empresa soporta string en ID ---
 export interface Empresa {
-  id: string | number; // <--- CAMBIO AQUÍ
+  id: string | number;
   nombre: string;
   ownerEmail: string;
   telefono: string;
@@ -211,6 +257,7 @@ export interface Empresa {
   estado: 'Activo' | 'Suspendido';
   propiedadesRegistradas: number;
   dominio: string;
+  logo_url?: string; // <--- Agregado para el branding
   onboarded?: boolean;
   requiereAprobacionPublicar?: boolean;
   requiereAprobacionCerrar?: boolean;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Propiedad, User, CompanySettings, Propietario, Comprador, UserPermissions } from '../types'; // Agregamos UserPermissions
-import { PRIMARY_DASHBOARD_BUTTONS, ROLES } from '../constants'; // Agregamos ROLES
+import { Propiedad, User, CompanySettings, Propietario, Comprador, UserPermissions } from '../types';
+import { PRIMARY_DASHBOARD_BUTTONS, ROLES } from '../constants';
 import { BanknotesIcon, BuildingOfficeIcon, PresentationChartLineIcon, SparklesIcon, UsersIcon } from '../components/Icons';
 
 interface OportunidadesDashboardProps {
@@ -11,7 +11,7 @@ interface OportunidadesDashboardProps {
   compradores: Comprador[];
   companySettings?: CompanySettings | null;
   isLoading?: boolean;
-  currentUser: User; // <--- 1. Recibimos el usuario actual
+  currentUser: User;
 }
 
 interface StatCardProps {
@@ -79,9 +79,12 @@ const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+// CORRECCIÓN CRÍTICA: Parsing robusto para limpiar comas, signos de pesos y espacios
 const parseCurrencyString = (value: string | undefined): number => {
     if (!value) return 0;
-    return parseFloat(value.replace(/,/g, ''));
+    // Eliminamos todo lo que NO sea número, punto o guión
+    const sanitized = value.toString().replace(/[^0-9.-]+/g, '');
+    return parseFloat(sanitized) || 0;
 };
 
 const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({ 
@@ -91,7 +94,7 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
     compradores, 
     companySettings,
     isLoading,
-    currentUser // <--- 2. Recibimos el prop
+    currentUser
 }) => {
   const navigate = useNavigate();
   const [isChartVisible, setIsChartVisible] = useState(false);
@@ -103,20 +106,21 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
     return () => clearTimeout(timer);
   }, []);
   
-  // Lógica de filtrado de botones
   const visibleButtons = useMemo(() => {
-      // Si es Super Admin, ve todo
       if (currentUser.role === ROLES.SUPER_ADMIN) return PRIMARY_DASHBOARD_BUTTONS;
-
       const perms = currentUser.permissions || {} as UserPermissions;
-
       return PRIMARY_DASHBOARD_BUTTONS.filter(btn => {
-          // Si el botón no requiere permiso, se muestra
           if (!btn.permissionKey) return true;
-          // Si requiere permiso, verificamos si es true en el usuario
           return !!perms[btn.permissionKey];
       });
   }, [currentUser]);
+
+  const hasRealActivity = useMemo(() => {
+      const hasProperties = propiedades.length > 0;
+      const hasTeam = asesores.length > 1; 
+      const isOnboardedFlag = companySettings?.onboarded === true;
+      return hasProperties || hasTeam || isOnboardedFlag;
+  }, [propiedades, asesores, companySettings]);
 
   if (isLoading) {
       return (
@@ -126,22 +130,17 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
       );
   }
 
-  const hasRealActivity = useMemo(() => {
-      const hasProperties = propiedades.length > 0;
-      const hasTeam = asesores.length > 1; 
-      const isOnboardedFlag = companySettings?.onboarded === true;
-      return hasProperties || hasTeam || isOnboardedFlag;
-  }, [propiedades, asesores, companySettings]);
-
   if (!hasRealActivity) {
       return <WelcomeCard />;
   }
 
   const propiedadesActivas = propiedades.filter(p => p.status !== 'Vendida');
   const totalActivas = propiedadesActivas.length;
+  // Usamos el nuevo parser robusto
   const valorCarteraActiva = propiedadesActivas.reduce((sum, p) => sum + parseCurrencyString(p.valor_operacion), 0);
   
   const propiedadesVendidas = propiedades.filter(p => p.status === 'Vendida');
+  // Usamos el nuevo parser robusto
   const valorVentasTotales = propiedadesVendidas.reduce((sum, p) => sum + parseCurrencyString(p.valor_operacion), 0);
 
   const ingresosTotales = propiedadesVendidas.reduce((sum, p) => {
@@ -261,7 +260,6 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-lg shadow-sm border">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Accesos Rápidos</h3>
-                {/* AQUI USAMOS LA LISTA FILTRADA 'visibleButtons' */}
                 <div className="grid grid-cols-2 gap-4">
                     {visibleButtons.map((button) => (
                         <button

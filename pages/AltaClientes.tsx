@@ -3,6 +3,7 @@ import { Propietario, Propiedad, Comprador, ChecklistStatus, User, KycData } fro
 import Modal from '../components/ui/Modal';
 import AddPropiedadPropietarioForm from '../components/clientes/AddPropiedadPropietarioForm';
 import PropiedadesTable from '../components/clientes/PropiedadesTable';
+import CompradoresTable from '../components/clientes/CompradoresTable'; 
 import KycPldForm from '../components/clientes/KycPldForm';
 import { initialKycState } from '../constants'; 
 import EditPropiedadForm from '../components/clientes/EditPropiedadForm';
@@ -12,10 +13,13 @@ import {
     createProperty, 
     uploadPropertyImage, 
     compressImage,
-    deleteContact // <--- AHORA SÍ FUNCIONARÁ PORQUE YA EXISTE EN API.TS
+    deleteContact,
+    updateContact,
+    assignBuyerToProperty,    
+    unassignBuyerFromProperty 
 } from '../Services/api';
 
-const TABS = ['Propiedades y Propietarios', 'Compradores'];
+const TABS = ['Propiedades y Propietarios', 'Clientes'];
 
 const totalChecklistItems = FLUJO_PROGRESO.reduce((acc, etapa) => acc + etapa.items.length, 0);
 
@@ -56,16 +60,28 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
     onDataChange, 
 }) => {
     const [activeTab, setActiveTab] = useState(TABS[0]);
+    
+    // Modales
     const [isAddPropiedadModalOpen, setAddPropiedadModalOpen] = useState(false);
-    const [isAddCompradorModalOpen, setAddCompradorModalOpen] = useState(false);
     const [isEditModalOpen, setEditModalOpen] = useState(false);
     const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
-    const [selectedPropiedad, setSelectedPropiedad] = useState<Propiedad | null>(null);
-    const [nuevoCompradorData, setNuevoCompradorData] = useState<KycData>(initialKycState);
-    const [propiedadToDelete, setPropiedadToDelete] = useState<Propiedad | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
     
-    // Estado para indicar que estamos subiendo/guardando
+    const [isAddCompradorModalOpen, setAddCompradorModalOpen] = useState(false);
+    const [isEditCompradorModalOpen, setEditCompradorModalOpen] = useState(false);
+    const [isDeleteCompradorModalOpen, setDeleteCompradorModalOpen] = useState(false);
+
+    // Selección
+    const [selectedPropiedad, setSelectedPropiedad] = useState<Propiedad | null>(null);
+    const [selectedComprador, setSelectedComprador] = useState<Comprador | null>(null);
+    const [propiedadToDelete, setPropiedadToDelete] = useState<Propiedad | null>(null);
+    const [compradorToDelete, setCompradorToDelete] = useState<Comprador | null>(null);
+
+    // Datos
+    const [nuevoCompradorData, setNuevoCompradorData] = useState<KycData>(initialKycState);
+    const [editingCompradorData, setEditingCompradorData] = useState<KycData>(initialKycState);
+    
+    const [searchTerm, setSearchTerm] = useState('');
+    const [clientSearchTerm, setClientSearchTerm] = useState(''); 
     const [isProcessing, setIsProcessing] = useState(false);
 
     const filteredPropiedades = useMemo(() => {
@@ -79,49 +95,45 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
         });
     }, [searchTerm, propiedades, propietarios]);
 
-    // --- FUNCIÓN PRINCIPAL DE GUARDADO (CON COMPRESIÓN Y SUBIDA) ---
+    const filteredCompradores = useMemo(() => {
+        if (!clientSearchTerm) return compradores;
+        return compradores.filter(c => 
+            c.nombreCompleto.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+            c.email.toLowerCase().includes(clientSearchTerm.toLowerCase())
+        );
+    }, [clientSearchTerm, compradores]);
+
+    // --- PROPIEDADES LOGIC ---
     const handleAddPropiedadPropietario = async (nuevaPropiedad: any, nuevoPropietario: any) => {
         if (!currentUser.tenantId) {
             showToast('Error: No se identificó la empresa.', 'error');
             return;
         }
 
-        setIsProcessing(true); // Bloquear botón para evitar doble clic
+        setIsProcessing(true);
         showToast('Procesando imágenes y guardando...', 'success');
 
         try {
-            // 1. Guardar al Propietario en Supabase
             const ownerDb = await createContact(nuevoPropietario, currentUser.tenantId, 'propietario');
-            console.log("Propietario creado:", ownerDb);
-
-            // 2. Procesar y Subir Imágenes
             const uploadedImageUrls: string[] = [];
             
             if (nuevaPropiedad.fotos && nuevaPropiedad.fotos.length > 0) {
-                // Procesamos secuencialmente o en paralelo
                 for (const file of nuevaPropiedad.fotos) {
                     try {
-                        // A. Compresión (Tipo WhatsApp)
                         const compressedFile = await compressImage(file);
-                        // B. Subida a Storage
                         const publicUrl = await uploadPropertyImage(compressedFile);
                         uploadedImageUrls.push(publicUrl);
                     } catch (imgError) {
                         console.error("Error con imagen:", imgError);
-                        // Continuamos con las siguientes imágenes aunque una falle
                     }
                 }
             }
 
-            // 3. Guardar la Propiedad con las URLs y el ID del propietario
-            const propertyDb = await createProperty({
+            await createProperty({
                 ...nuevaPropiedad,
-                imageUrls: uploadedImageUrls // Pasamos las URLs de la nube
+                imageUrls: uploadedImageUrls
             }, currentUser.tenantId, ownerDb.id);
 
-            console.log("Propiedad creada:", propertyDb);
-
-            // 4. Actualizar la vista
             if (onDataChange) onDataChange();
             
             showToast('¡Propiedad registrada exitosamente!');
@@ -135,16 +147,54 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
         }
     };
 
-    const handleAddComprador = async (propiedadId?: number) => {
+    const handleEditClick = (propiedad: Propiedad) => {
+        setSelectedPropiedad(propiedad);
+        setEditModalOpen(true);
+    };
+
+    const localHandleUpdate = (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
+        handleUpdatePropiedad(updatedPropiedad, updatedPropietario);
+        if (onDataChange) onDataChange();
+        setEditModalOpen(false);
+        setSelectedPropiedad(null);
+    };
+
+    const handleDeleteClick = (propiedad: Propiedad) => {
+        setPropiedadToDelete(propiedad);
+        setDeleteModalOpen(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (propiedadToDelete) {
+            try {
+                await deleteContact(propiedadToDelete.propietarioId);
+                showToast('Propiedad y Propietario eliminados.', 'success');
+                if (onDataChange) onDataChange();
+            } catch (error: any) {
+                console.error(error);
+                showToast('Error al eliminar: ' + error.message, 'error');
+            } finally {
+                setDeleteModalOpen(false);
+                setPropiedadToDelete(null);
+            }
+        }
+    };
+
+    // --- COMPRADORES LOGIC (CLIENTES) ---
+
+    const handleAddComprador = async (propiedadId?: number, tipoRelacion?: string) => {
         if (!currentUser.tenantId) return;
         
         setIsProcessing(true);
         try {
-            // 1. Guardar Comprador
-            const compradorDb = await createContact(nuevoCompradorData, currentUser.tenantId, 'comprador');
+            const newBuyer = await createContact(nuevoCompradorData, currentUser.tenantId, 'comprador');
             
+            if (propiedadId && tipoRelacion) {
+                 await assignBuyerToProperty(newBuyer.id, propiedadId, tipoRelacion as any);
+            }
+
             if (onDataChange) onDataChange();
-            showToast('Comprador añadido con éxito');
+            showToast('Cliente comprador añadido y vinculado con éxito');
             setAddCompradorModalOpen(false);
         } catch (error: any) {
             showToast('Error al guardar comprador: ' + error.message, 'error');
@@ -158,9 +208,59 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
         setAddCompradorModalOpen(true);
     };
 
-    const handleEditClick = (propiedad: Propiedad) => {
-        setSelectedPropiedad(propiedad);
-        setEditModalOpen(true);
+    const handleEditCompradorClick = (comprador: Comprador) => {
+        setSelectedComprador(comprador);
+        setEditingCompradorData(comprador); 
+        setEditCompradorModalOpen(true);
+    };
+
+    const handleUpdateComprador = async (propiedadId?: number, tipoRelacion?: string) => {
+        if (!selectedComprador) return;
+        setIsProcessing(true);
+        try {
+            await updateContact(selectedComprador.id, editingCompradorData);
+            
+            if (propiedadId) {
+                await assignBuyerToProperty(selectedComprador.id, propiedadId, tipoRelacion as any);
+            } else {
+                 if (selectedComprador.propiedadId) {
+                     await unassignBuyerFromProperty(selectedComprador.id, selectedComprador.propiedadId);
+                 }
+            }
+
+            if (onDataChange) onDataChange();
+            showToast('Cliente actualizado con éxito');
+            setEditCompradorModalOpen(false);
+            setSelectedComprador(null);
+        } catch (error: any) {
+             showToast('Error al actualizar: ' + error.message, 'error');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleDeleteCompradorClick = (comprador: Comprador) => {
+        setCompradorToDelete(comprador);
+        setDeleteCompradorModalOpen(true);
+    };
+
+    const handleConfirmDeleteComprador = async () => {
+        if (compradorToDelete) {
+            try {
+                if (compradorToDelete.propiedadId) {
+                    await unassignBuyerFromProperty(compradorToDelete.id, compradorToDelete.propiedadId);
+                }
+
+                await deleteContact(compradorToDelete.id);
+                showToast('Cliente eliminado.', 'success');
+                if (onDataChange) onDataChange();
+            } catch (error: any) {
+                 showToast('Error al eliminar: ' + error.message, 'error');
+            } finally {
+                setDeleteCompradorModalOpen(false);
+                setCompradorToDelete(null);
+            }
+        }
     };
 
     useEffect(() => {
@@ -172,39 +272,6 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
             setInitialEditPropId(null);
         }
     }, [initialEditPropId, propiedades, setInitialEditPropId]);
-    
-    const handleDeleteClick = (propiedad: Propiedad) => {
-        setPropiedadToDelete(propiedad);
-        setDeleteModalOpen(true);
-    };
-
-    // --- CORRECCIÓN CRÍTICA: BORRADO REAL ---
-    const handleConfirmDelete = async () => {
-        if (propiedadToDelete) {
-            try {
-                // Borramos al Contacto (Dueño). Por la regla CASCADE de SQL, la propiedad se borra sola.
-                await deleteContact(propiedadToDelete.propietarioId);
-                
-                showToast('Propiedad y Propietario eliminados.', 'success');
-                
-                // Recargamos los datos de la pantalla
-                if (onDataChange) onDataChange();
-            } catch (error: any) {
-                console.error(error);
-                showToast('Error al eliminar: ' + error.message, 'error');
-            } finally {
-                setDeleteModalOpen(false);
-                setPropiedadToDelete(null);
-            }
-        }
-    };
-
-    const localHandleUpdate = (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
-        handleUpdatePropiedad(updatedPropiedad, updatedPropietario);
-        if (onDataChange) onDataChange();
-        setEditModalOpen(false);
-        setSelectedPropiedad(null);
-    };
 
     const renderContent = () => {
         switch (activeTab) {
@@ -228,23 +295,36 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                         <PropiedadesTable propiedades={filteredPropiedades} propietarios={propietarios} onEdit={handleEditClick} onDelete={handleDeleteClick}/>
                     </div>
                 );
-            case 'Compradores':
+            case 'Clientes':
                  return (
                     <div>
-                        <div className="flex justify-end mb-4">
-                            <button onClick={openCompradorModal} className="bg-iange-orange text-white py-2 px-4 rounded-md hover:bg-orange-600">
+                        <div className="flex justify-between items-center mb-4">
+                             <div className="relative flex-grow mr-4">
+                                <input
+                                    type="text"
+                                    placeholder="Buscar cliente..."
+                                    value={clientSearchTerm}
+                                    onChange={e => setClientSearchTerm(e.target.value)}
+                                    className="w-full max-w-md px-4 py-2 bg-gray-50 border rounded-md focus:outline-none focus:ring-2 focus:ring-iange-orange text-gray-900 placeholder-gray-500"
+                                />
+                            </div>
+                            <button onClick={openCompradorModal} className="bg-iange-orange text-white py-2 px-4 rounded-md hover:bg-orange-600 flex-shrink-0">
                                 Añadir Comprador
                             </button>
                         </div>
-                         <p className="text-center text-gray-500 p-8">La tabla de compradores se visualizará aquí.</p>
+                        <CompradoresTable 
+                            compradores={filteredCompradores} 
+                            onEdit={handleEditCompradorClick} 
+                            onDelete={handleDeleteCompradorClick} 
+                            propiedades={propiedades}
+                            asesores={asesores} // <--- 1. PASAR ASESORES
+                        />
                     </div>
                 );
             default:
                 return null;
         }
     };
-
-    const selectedPropietario = selectedPropiedad ? propietarios.find(p => p.id === selectedPropiedad.propietarioId) : null;
 
     return (
         <div className="bg-white p-8 rounded-lg shadow-sm">
@@ -270,6 +350,7 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                 {renderContent()}
             </div>
             
+            {/* Modal Alta Propiedad */}
             <Modal title="Añadir Nueva Propiedad y Propietario" isOpen={isAddPropiedadModalOpen} onClose={() => !isProcessing && setAddPropiedadModalOpen(false)}>
                 {isProcessing ? (
                     <div className="text-center py-12">
@@ -282,11 +363,17 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                 )}
             </Modal>
 
-             <Modal title="Añadir Nuevo Comprador" isOpen={isAddCompradorModalOpen} onClose={() => !isProcessing && setAddCompradorModalOpen(false)}>
+             {/* Modal Alta Comprador */}
+             <Modal 
+                title="Añadir Nuevo Cliente Comprador" 
+                isOpen={isAddCompradorModalOpen} 
+                onClose={() => !isProcessing && setAddCompradorModalOpen(false)}
+                maxWidth="max-w-4xl"
+            >
                 {isProcessing ? (
                     <div className="text-center py-12">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-iange-orange mx-auto mb-4"></div>
-                        <p>Guardando comprador...</p>
+                        <p>Guardando cliente...</p>
                     </div>
                 ) : (
                     <KycPldForm 
@@ -295,30 +382,55 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                         onSave={handleAddComprador}
                         onCancel={() => setAddCompradorModalOpen(false)} 
                         userType="Comprador"
-                        propiedades={propiedades.filter(p => !p.compradorId)}
+                        propiedades={propiedades}
+                        asesores={asesores} // <--- 2. PASAR ASESORES
                     />
                 )}
             </Modal>
-
-            {selectedPropiedad && selectedPropietario && (
-                <Modal title="Editar Propiedad y Propietario" isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)}>
-                    <EditPropiedadForm
-                        propiedad={selectedPropiedad}
-                        propietario={selectedPropietario}
-                        onSave={localHandleUpdate}
-                        onCancel={() => setEditModalOpen(false)}
-                        asesores={asesores}
+            
+            {/* Modal Editar Comprador */}
+            {selectedComprador && (
+                 <Modal 
+                    title="Editar Cliente Comprador" 
+                    isOpen={isEditCompradorModalOpen} 
+                    onClose={() => setEditCompradorModalOpen(false)}
+                    maxWidth="max-w-4xl"
+                >
+                    <KycPldForm 
+                        formData={editingCompradorData}
+                        onFormChange={setEditingCompradorData}
+                        onSave={handleUpdateComprador} 
+                        onCancel={() => setEditCompradorModalOpen(false)} 
+                        userType="Comprador"
+                        propiedades={propiedades} 
+                        asesores={asesores} // <--- 3. PASAR ASESORES
                     />
                 </Modal>
             )}
+
+            {/* Modal Editar Propiedad */}
+            {selectedPropiedad && (
+                <Modal title="Editar Propiedad y Propietario" isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)}>
+                    {propiedades.find(p => p.id === selectedPropiedad.id) && propietarios.find(p => p.id === selectedPropiedad.propietarioId) && (
+                        <EditPropiedadForm
+                            propiedad={selectedPropiedad}
+                            propietario={propietarios.find(p => p.id === selectedPropiedad.propietarioId)!}
+                            onSave={localHandleUpdate}
+                            onCancel={() => setEditModalOpen(false)}
+                            asesores={asesores}
+                        />
+                    )}
+                </Modal>
+            )}
             
+            {/* Modal Eliminar Propiedad */}
             {propiedadToDelete && (
                  <Modal title="Confirmar Eliminación" isOpen={isDeleteModalOpen} onClose={() => setDeleteModalOpen(false)}>
                     <div className="text-center">
                         <p className="text-lg text-gray-700">
-                           ¿Estás seguro de que quieres borrar la propiedad en <span className="font-bold">{`${propiedadToDelete.calle} ${propiedadToDelete.numero_exterior}`}</span>?
+                           ¿Estás seguro de que quieres borrar la propiedad?
                         </p>
-                        <p className="text-sm text-gray-500 mt-2">Esta acción también eliminará al propietario asociado y no se puede deshacer.</p>
+                        <p className="text-sm text-gray-500 mt-2">Esta acción también eliminará al propietario asociado.</p>
                         <div className="mt-6 flex justify-center space-x-4">
                             <button 
                                 onClick={() => setDeleteModalOpen(false)}
@@ -331,6 +443,31 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                                 className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
                             >
                                 Borrar Propiedad
+                            </button>
+                        </div>
+                    </div>
+                 </Modal>
+            )}
+
+             {/* Modal Eliminar Comprador */}
+             {compradorToDelete && (
+                 <Modal title="Confirmar Eliminación" isOpen={isDeleteCompradorModalOpen} onClose={() => setDeleteCompradorModalOpen(false)}>
+                    <div className="text-center">
+                        <p className="text-lg text-gray-700">
+                           ¿Estás seguro de que quieres borrar al cliente <span className="font-bold">{compradorToDelete.nombreCompleto}</span>?
+                        </p>
+                        <div className="mt-6 flex justify-center space-x-4">
+                            <button 
+                                onClick={() => setDeleteCompradorModalOpen(false)}
+                                className="px-6 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={handleConfirmDeleteComprador}
+                                className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                            >
+                                Borrar Cliente
                             </button>
                         </div>
                     </div>

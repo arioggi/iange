@@ -10,7 +10,8 @@ import {
   Plan,
   Log,
   KycData,
-  User // <--- AGREGADO: Faltaba este import para DEMO_SEED
+  User,
+  OfferData 
 } from './types';
 import {
   BuildingOfficeIcon,
@@ -24,7 +25,7 @@ import {
   GlobeAltIcon,
   Cog6ToothIcon,
   UserIcon,
-  ClipboardDocumentCheckIcon // <--- AGREGADO: Faltaba este import para la lista de reportes
+  ClipboardDocumentCheckIcon
 } from './components/Icons';
 
 // =================== ROLES ===================
@@ -178,7 +179,6 @@ export const MOCK_PLANS: Plan[] = [
 
 export const MOCK_LOGS: Log[] = [
   { id: 1, fecha: '2024-10-26 10:00:15', usuario: 'Ariel Poggi', rol: 'superadmin', accion: 'Creó la empresa "Asesores y Casas"', resultado: 'Éxito' },
-  // ... más logs
 ];
 
 export const PRIMARY_DASHBOARD_BUTTONS: (DashboardButton & { permissionKey?: keyof UserPermissions })[] = [
@@ -260,21 +260,37 @@ export const MOCK_OPORTUNIDAD: Oportunidad = {
   validacionComprador: { curp: false, rfc: false, listasNegras: false },
 };
 
-// --- MUEVE ESTO AQUÍ PARA ARREGLAR EL ERROR ---
 export const initialKycState: KycData = {
     nombreCompleto: '', curp: '', rfc: '', fechaNacimiento: '', nacionalidad: 'Mexicana', estadoCivil: 'Soltero(a)', profesion: '', domicilio: '', colonia: '', municipio: '', cp: '', estado: '', telefono: '', email: '', identificacionOficialTipo: 'INE', identificacionOficialNumero: '',
     esPersonaMoral: false,
     actuaPorCuentaPropia: true,
     origenRecursos: 'Salario', destinoRecursos: 'Uso personal',
     esPep: false,
+    fechaCita: '',
+    horaCita: '',
+    notasCita: '',
+    asesorId: '', // <--- CAMPO AGREGADO
 };
 
 export const DEMO_SEED = {
   empresas: [] as Empresa[],
-  users: [] as User[], // Ahora 'User' ya está importado correctamente
+  users: [] as User[], 
   propietarios: [] as Propietario[],
   propiedades: [] as Propiedad[],
 };
 
 export const MOCK_EMPRESAS = DEMO_SEED.empresas;
 export const USERS = DEMO_SEED.users;
+
+// --- 2. NUEVO ESTADO INICIAL PARA OFERTA ---
+export const initialOfferState: OfferData = {
+  compradorId: '', 
+  precioOfrecido: '',
+  formaPago: 'Contado',
+  institucionFinanciera: '',
+  montoApartado: '',
+  montoEnganche: '',
+  saldoAFirma: '',
+  vigenciaOferta: '',
+  observaciones: ''
+};
