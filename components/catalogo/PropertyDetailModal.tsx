@@ -3,6 +3,7 @@ import { Propiedad, Propietario, Comprador, OfferData } from '../../types';
 import { pdf } from '@react-pdf/renderer'; 
 import FichaTecnicaPDF from '../../components/PDF/FichaTecnicaPDF'; 
 import Modal from '../ui/Modal'; 
+// import { Helmet } from 'react-helmet-async'; // OJO: Helmet es para Páginas Públicas, no para Modales internos. Lo quito para evitar errores aquí.
 
 interface PropertyDetailModalProps {
     propiedad: Propiedad;
@@ -124,7 +125,6 @@ const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
             URL.revokeObjectURL(url); 
         } catch (error) {
             console.error("Error PDF:", error);
-            // Fallback silencioso o pequeño log, pero evitamos alert si no es crítico
         } finally {
             setIsGeneratingPdf(false);
         }
@@ -237,14 +237,23 @@ ${features.join('\n')}
                                 <button onClick={nextOffer} disabled={ofertasDisponibles.length <= 1} className="w-6 h-6 flex items-center justify-center rounded-full bg-white border">›</button>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                             <div><p className="text-xs uppercase font-semibold">Precio</p><p className="font-bold">{formatCurrency(currentOfferObj.datos.precioOfrecido)}</p></div>
                             <div><p className="text-xs uppercase font-semibold">Pago</p><p>{currentOfferObj.datos.formaPago}</p></div>
                         </div>
+
+                        {/* --- AQUI SE MUESTRAN LAS OBSERVACIONES --- */}
+                        {currentOfferObj.datos.observaciones && (
+                            <div className="mb-4 bg-white/50 p-3 rounded-lg border border-black/5 text-sm">
+                                <p className="text-xs uppercase font-semibold mb-1 opacity-70">Observaciones:</p>
+                                <p className="italic text-gray-700">"{currentOfferObj.datos.observaciones}"</p>
+                            </div>
+                        )}
+
                         {!isSold && (
-                            <div className="mt-4 flex justify-end gap-2">
-                                <button onClick={(e) => { e.stopPropagation(); onEditOffer && onEditOffer(currentOfferObj.datos, currentOfferObj.id); }} className="px-3 py-1 text-xs font-bold border border-green-300 text-green-700 rounded bg-white">Editar</button>
-                                <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(currentOfferObj.id); }} className="px-3 py-1 text-xs font-bold border border-red-300 text-red-600 rounded bg-white">Borrar</button>
+                            <div className="mt-4 flex justify-end gap-2 border-t border-black/5 pt-3">
+                                <button onClick={(e) => { e.stopPropagation(); onEditOffer && onEditOffer(currentOfferObj.datos, currentOfferObj.id); }} className="px-3 py-1 text-xs font-bold border border-green-300 text-green-700 rounded bg-white hover:bg-green-50 transition-colors">Editar</button>
+                                <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(currentOfferObj.id); }} className="px-3 py-1 text-xs font-bold border border-red-300 text-red-600 rounded bg-white hover:bg-red-50 transition-colors">Borrar</button>
                             </div>
                         )}
                     </div>
