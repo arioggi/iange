@@ -2,14 +2,14 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { supabase } from './supabaseClient'; 
 
-// Contexto de Autenticación
+// Contexto
 import { useAuth } from './authContext';
 
 // Tipos y constantes
 import { User, Propiedad, Propietario, Comprador, CompanySettings, UserPermissions } from "./types";
 import { ROLES, ROLE_DEFAULT_PERMISSIONS } from "./constants";
 import adapter from "./data/localStorageAdapter"; 
-import { getPropertiesByTenant, getContactsByTenant, getUsersByTenant, updateProperty, updateContact } from './Services/api';
+import { getPropertiesByTenant, getContactsByTenant, getUsersByTenant, updateProperty, updateContact, getTenantById } from './Services/api';
 
 // Páginas
 import Login from "./pages/Login";
@@ -24,12 +24,12 @@ import Configuraciones from "./pages/Configuraciones";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import PublicPropertyPage from "./pages/PublicPropertyPage";
 
-// Componentes de Configuración
+// Settings
 import PerfilEmpresa from "./components/settings/PerfilEmpresa";
 import PersonalEmpresa from "./components/settings/PersonalEmpresa";
 import Facturacion from "./components/settings/Facturacion";
 
-// Páginas de Super Admin
+// Super Admin
 import SuperAdminDashboard from "./pages/superadmin/Dashboard";
 import SuperAdminEmpresas from "./pages/superadmin/Empresas";
 import SuperAdminUsuarios from "./pages/superadmin/UsuariosGlobales";
@@ -43,29 +43,29 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Toast from './components/ui/Toast';
 
-// --- COMPONENTE DE PROTECCIÓN DE RUTAS ---
+// --- PROTECTED ROUTE ---
 const ProtectedRoute = ({ user, permissionKey, children }: { user: User, permissionKey?: keyof UserPermissions, children: React.ReactNode }) => {
     if (!user) return <Navigate to="/login" replace />;
     if (user.role === ROLES.SUPER_ADMIN) return <>{children}</>;
     
-    // Casting seguro para evitar errores de TypeScript con permisos dinámicos
     if (permissionKey && !(user.permissions as any)?.[permissionKey]) {
         return <Navigate to="/configuraciones/mi-perfil" replace />;
     }
     return <>{children}</>;
 };
 
-// --- LAYOUT PRINCIPAL ---
-const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitImpersonation }: { 
+// --- LAYOUT ---
+const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitImpersonation, logoUrl }: { 
     children: React.ReactNode, 
     user: User, 
     title: string, 
     onLogout: () => void,
     isImpersonating: boolean,
-    onExitImpersonation: () => void
+    onExitImpersonation: () => void,
+    logoUrl?: string | null 
 }) => (
     <div className="flex bg-gray-50 min-h-screen font-sans">
-      <Sidebar user={user} />
+      <Sidebar user={user} logoUrl={logoUrl} />
       <main className="flex-1 ml-64 p-8">
         <Header 
           title={title} user={user} onLogout={onLogout} 
@@ -77,14 +77,10 @@ const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitIm
 );
 
 const App = () => {
-  // 1. Usamos el estado global del AuthContext
   const { appUser: contextUser, status, logout } = useAuth();
   
-  // --- MODIFICACIÓN AGRESIVA: Loading es true si estamos cargando O si estamos autenticados pero sin usuario ---
-  // Esto fuerza a la app a esperar en la pantalla de carga hasta que se resuelva el perfil
   const isLoading = status === 'loading';
 
-  // 2. Calculamos permisos del usuario actual
   const user = useMemo(() => {
     if (!contextUser) return null;
 
@@ -105,41 +101,111 @@ const App = () => {
     return { ...contextUser, permissions: effectivePermissions };
   }, [contextUser]);
 
-  // Estados locales
   const [isImpersonating, setIsImpersonating] = useState(false);
-  const [dataLoading, setDataLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
+  
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [propiedades, setPropiedades] = useState<Propiedad[]>([]);
   const [propietarios, setPropietarios] = useState<Propietario[]>([]);
   const [compradores, setCompradores] = useState<Comprador[]>([]);
-  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
+  
+  // Inicialización inteligente de settings
+  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(() => {
+      if (contextUser?.tenantId) {
+          try {
+              return adapter.getTenantSettings(contextUser.tenantId);
+          } catch { return null; }
+      }
+      return null;
+  });
+
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [initialEditPropId, setInitialEditPropId] = useState<number | null>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
 
-  // --- CARGA DE DATOS ---
+  // --- FUNCIÓN DE TÍTULO DINÁMICO ---
+  const getTitleForPath = (path: string): string => {
+    if (path.startsWith('/reportes/')) return 'Detalle de Reporte';
+    if (path.startsWith('/superadmin')) return 'Panel Super Admin';
+    
+    const routes: Record<string, string> = {
+      '/': 'Inicio', 
+      '/oportunidades': 'Dashboard', 
+      '/clientes': 'Alta de Clientes',
+      '/catalogo': 'Catálogo', 
+      '/progreso': 'Progreso', 
+      '/reportes': 'Reportes',
+      '/configuraciones/mi-perfil': 'Mi Perfil', 
+      '/configuraciones/personal': 'Personal',
+      '/configuraciones/perfil': 'Perfil de Empresa', // Corregido para que salga el título correcto
+      '/configuraciones/facturacion': 'Facturación'
+    };
+
+    // Si no es una ruta conocida, muestra el nombre de la empresa
+    return routes[path] || companySettings?.name || 'IANGE';
+  };
+
+  // Refresh Data
   const refreshAppData = async () => {
-      if (!user) return;
+      if (!user) {
+          setDataLoading(false);
+          return;
+      }
+      
       if (!user.tenantId && user.role === ROLES.SUPER_ADMIN) {
           setDataLoading(false);
           return;
       }
+
       if (user.tenantId) {
+          setDataLoading(true);
+
           try {
-              const [props, contacts, usersDb] = await Promise.all([
+              const cachedSettings = adapter.getTenantSettings(user.tenantId);
+              if (cachedSettings) setCompanySettings(cachedSettings);
+
+              const localProps = adapter.listProperties(user.tenantId);
+              const localUsers = adapter.listUsers(user.tenantId);
+              const hasLocalActivity = (localProps && localProps.length > 0) || (localUsers && localUsers.length > 1);
+
+              const [props, contacts, usersDb, tenantData] = await Promise.all([
                   getPropertiesByTenant(user.tenantId),
                   getContactsByTenant(user.tenantId),
-                  getUsersByTenant(user.tenantId)
+                  getUsersByTenant(user.tenantId),
+                  getTenantById(user.tenantId)
               ]);
+              
               if (props) setPropiedades(props);
               if (contacts) {
                   setPropietarios(contacts.propietarios);
                   setCompradores(contacts.compradores);
               }
               if (usersDb) setAllUsers(usersDb);
-              setCompanySettings(adapter.getTenantSettings(user.tenantId));
+              
+              const hasNetworkActivity = (props && props.length > 0) || (usersDb && usersDb.length > 1);
+              let isNowOnboarded = cachedSettings.onboarded || hasLocalActivity || hasNetworkActivity;
+
+              if (isNowOnboarded && !cachedSettings.onboarded) {
+                  adapter.updateTenantSettings(user.tenantId, { onboarded: true });
+              }
+
+              if (tenantData) {
+                  const newSettings = {
+                      ...cachedSettings,
+                      name: tenantData.name || tenantData.nombre, 
+                      logo_url: tenantData.logo_url,
+                      onboarded: isNowOnboarded,
+                  };
+                  setCompanySettings(newSettings);
+                  adapter.updateTenantSettings(user.tenantId, newSettings);
+              } else {
+                  const fallbackSettings = { ...cachedSettings, onboarded: isNowOnboarded };
+                  setCompanySettings(fallbackSettings);
+                  adapter.updateTenantSettings(user.tenantId, fallbackSettings);
+              }
+
           } catch (error) {
               console.error("Error cargando datos:", error);
           } finally {
@@ -152,12 +218,12 @@ const App = () => {
 
   useEffect(() => { refreshAppData(); }, [user]); 
 
-  // --- REALTIME ---
   useEffect(() => {
       if (!user?.tenantId) return;
       const channel = supabase.channel('realtime:app-updates')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'propiedades', filter: `tenant_id=eq.${user.tenantId}` }, () => refreshAppData())
           .on('postgres_changes', { event: '*', schema: 'public', table: 'contactos', filter: `tenant_id=eq.${user.tenantId}` }, () => refreshAppData())
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'tenants', filter: `id=eq.${user.tenantId}` }, () => refreshAppData())
           .subscribe();
       return () => { supabase.removeChannel(channel); };
   }, [user?.tenantId]); 
@@ -211,53 +277,27 @@ const App = () => {
   const handleExitImpersonation = () => {}; 
   const onNavigateAndEdit = (id: number) => { setInitialEditPropId(id); navigate('/clientes'); };
 
-  const getTitleForPath = (path: string): string => {
-    if (path.startsWith('/reportes/')) return 'Detalle de Reporte';
-    if (path.startsWith('/superadmin')) return 'Panel Super Admin';
-    const routes: Record<string, string> = {
-      '/': 'Inicio', '/oportunidades': 'Dashboard', '/clientes': 'Alta de Clientes',
-      '/catalogo': 'Catálogo', '/progreso': 'Progreso', '/reportes': 'Reportes',
-      '/configuraciones/mi-perfil': 'Mi Perfil', '/configuraciones/personal': 'Personal',
-    };
-    return routes[path] || 'IANGE';
-  };
-
-  // 1. PANTALLA DE CARGA (Loading)
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center animate-pulse flex flex-col items-center">
           <div className="mb-4 h-16 flex items-center justify-center">
-             <img 
-                src="/logo.svg" 
-                alt="IANGE" 
-                className="h-full w-auto object-contain max-h-12"
-                onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    document.getElementById('loading-logo-fallback')?.classList.remove('hidden');
-                }}
-            />
-            <div id="loading-logo-fallback" className="hidden">
-               <div className="text-3xl font-bold text-iange-orange mb-2">IANGE<span className="text-gray-800">.</span></div>
-            </div>
+             <img src="/logo.svg" alt="IANGE" className="h-full w-auto object-contain max-h-12"/>
           </div>
-          <div className="text-gray-500">Cargando sesión...</div>
+          <div className="text-gray-500">Iniciando sesión...</div>
         </div>
       </div>
     );
   }
 
-  // 2. ERROR CRÍTICO: AUTENTICADO PERO SIN DATOS (STOP LOOP)
-  // Si llegamos aquí, 'status' NO es 'loading'. Si es 'authenticated' y 'user' es null,
-  // es IMPOSIBLE navegar, así que mostramos error.
   if (status === 'authenticated' && !user) {
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-white p-8 text-center">
             <div className="bg-red-50 p-6 rounded-lg max-w-md border border-red-100 shadow-sm">
                 <h1 className="text-2xl font-bold text-red-700 mb-2">⚠️ Error de Perfil</h1>
                 <p className="text-gray-700 mb-6">
-                    Se detectó tu sesión, pero no se pudo cargar la información de tu perfil.
-                    <br/><span className="text-sm text-gray-500">Esto suele ser un error de permisos en la base de datos.</span>
+                    Sesión iniciada, pero no se pudo cargar el perfil.
+                    <br/><span className="text-sm text-gray-500">Revisa permisos RLS en Supabase (tabla profiles).</span>
                 </p>
                 <button 
                     onClick={async () => { await logout(); navigate('/login'); }} 
@@ -270,7 +310,6 @@ const App = () => {
     );
   }
 
-  // 3. RUTAS (Solo se renderizan si NO está cargando y NO hay error crítico)
   return (
     <>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
@@ -279,12 +318,10 @@ const App = () => {
         <Route path="/preview/:token" element={<PublicPropertyPage />} />
         <Route path="/p/:id" element={<PublicPropertyPage />} />
 
-        {/* LOGIN */}
         <Route path="/login" element={
-            !user ? <Login onLogin={handleLogin} /> : <Navigate to="/" replace />
+            status === 'authenticated' ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />
         } />
 
-        {/* RUTAS PRIVADAS */}
         <Route path="/*" element={
             !user ? (
                 <Navigate to="/login" replace />
@@ -295,48 +332,25 @@ const App = () => {
                     onLogout={handleLogout}
                     isImpersonating={isImpersonating}
                     onExitImpersonation={handleExitImpersonation}
+                    logoUrl={companySettings?.logo_url}
                 >
                     <Routes>
                         <Route path="/" element={<Navigate to={getInitialRoute(user)} replace />} />
-                        
                         <Route path="/oportunidades" element={<ProtectedRoute user={user} permissionKey="dashboard"><OportunidadesDashboard propiedades={propiedades} asesores={asesores} propietarios={propietarios} compradores={compradores} companySettings={companySettings} isLoading={dataLoading} currentUser={user} /></ProtectedRoute>} />
-                        
                         <Route path="/clientes" element={<ProtectedRoute user={user} permissionKey="contactos"><AltaClientes showToast={showToast} propiedades={propiedades} setPropiedades={setPropiedades} propietarios={propietarios} setPropietarios={setPropietarios} compradores={compradores} setCompradores={setCompradores} handleUpdatePropiedad={handleUpdatePropiedad} handleDeletePropiedad={handleDeletePropiedad} initialEditPropId={initialEditPropId} setInitialEditPropId={setInitialEditPropId} asesores={asesores} currentUser={user} onDataChange={refreshAppData} /></ProtectedRoute>} />
-                        
                         <Route path="/catalogo" element={<ProtectedRoute user={user} permissionKey="propiedades"><Catalogo propiedades={propiedades} propietarios={propietarios} asesores={asesores} onAddVisita={handleAddVisita} handleUpdatePropiedad={handleUpdatePropiedad} showToast={showToast} currentUser={user} compradores={compradores} onDataChange={refreshAppData}/></ProtectedRoute>} />
-                        
                         <Route path="/progreso" element={<ProtectedRoute user={user} permissionKey="progreso"><Progreso propiedades={propiedades} propietarios={propietarios} onUpdatePropiedad={handleUpdatePropiedad} onNavigateAndEdit={onNavigateAndEdit} asesores={asesores} /></ProtectedRoute>} />
-                        
                         <Route path="/reportes" element={<ProtectedRoute user={user} permissionKey="reportes"><Reportes /></ProtectedRoute>} />
                         <Route path="/reportes/:reportId" element={<ProtectedRoute user={user} permissionKey="reportes"><ReporteDetalle propiedades={propiedades} asesores={asesores} compradores={compradores} /></ProtectedRoute>} />
-                        
                         <Route path="/crm" element={<ProtectedRoute user={user} permissionKey="crm"><PlaceholderPage title="CRM" /></ProtectedRoute>} />
-
                         <Route path="/configuraciones" element={<Configuraciones />}>
                              <Route index element={<Navigate to="mi-perfil" replace />} />
                              <Route path="mi-perfil" element={<MiPerfil user={user} onUserUpdated={handleUpdateUser} />} />
-                             
                              <Route path="perfil" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? <PerfilEmpresa user={user} /> : <Navigate to="/configuraciones/mi-perfil" />} />
-                             
                              <Route path="facturacion" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? <Facturacion /> : <Navigate to="/configuraciones/mi-perfil" />} />
-
                              <Route path="personal" element={<ProtectedRoute user={user} permissionKey="equipo"><PersonalEmpresa showToast={showToast} currentUser={user} onDataChange={refreshAppData} /></ProtectedRoute>} />
                         </Route>
-
-                        <Route path="/superadmin/*" element={
-                             user.role === ROLES.SUPER_ADMIN ? (
-                               <Routes>
-                                 <Route path="/" element={<SuperAdminDashboard />} />
-                                 <Route path="empresas" element={<SuperAdminEmpresas showToast={showToast} onImpersonate={handleImpersonate} />} />
-                                 <Route path="usuarios-globales" element={<SuperAdminUsuarios showToast={showToast} />} />
-                                 <Route path="planes" element={<SuperAdminPlanes />} />
-                                 <Route path="configuracion" element={<SuperAdminConfiguracion showToast={showToast} />} />
-                                 <Route path="reportes-globales" element={<SuperAdminReportes />} />
-                                 <Route path="logs" element={<SuperAdminLogs />} />
-                               </Routes>
-                             ) : <Navigate to="/" />
-                        } />
-
+                        <Route path="/superadmin/*" element={user.role === ROLES.SUPER_ADMIN ? (<Routes><Route path="/" element={<SuperAdminDashboard />} /><Route path="empresas" element={<SuperAdminEmpresas showToast={showToast} onImpersonate={handleImpersonate} />} /><Route path="usuarios-globales" element={<SuperAdminUsuarios showToast={showToast} />} /><Route path="planes" element={<SuperAdminPlanes />} /><Route path="configuracion" element={<SuperAdminConfiguracion showToast={showToast} />} /><Route path="reportes-globales" element={<SuperAdminReportes />} /><Route path="logs" element={<SuperAdminLogs />} /></Routes>) : <Navigate to="/" />} />
                         <Route path="*" element={<PlaceholderPage title="Página no encontrada" />} />
                     </Routes>
                 </MainLayout>

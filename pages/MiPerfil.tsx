@@ -7,7 +7,7 @@ import {
     updateUserPassword 
 } from '../Services/api';
 
-// Componente auxiliar para secciones (Sin cambios, funciona bien)
+// Componente auxiliar para secciones
 const FormSection: React.FC<{ title: string; children: React.ReactNode, description?: string }> = ({ title, children, description }) => (
     <section className="py-8 border-b border-gray-200 last:border-0">
         <div className="md:grid md:grid-cols-3 md:gap-6">
@@ -24,7 +24,7 @@ const FormSection: React.FC<{ title: string; children: React.ReactNode, descript
     </section>
 );
 
-// Componente Input (Sin cambios, funciona bien)
+// Componente Input reutilizable
 const Input: React.FC<{ label: string; type?: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; autoComplete?: string; }> = ({ label, type = 'text', name, value, onChange, autoComplete }) => (
     <div>
         <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
@@ -55,19 +55,19 @@ const MiPerfil: React.FC<MiPerfilProps> = ({ user }) => {
     const [formData, setFormData] = useState({
         name: user.name || '',
         email: user.email || '',
-        phone: user.phone || '',
+        phone: user.phone || '', 
         currentPassword: '',
         newPassword: '',
         confirmPassword: '',
     });
 
-    // EFFECT: Sincronizar formulario si el usuario cambia (ej. al subir foto nueva)
+    // EFFECT: Sincronizar formulario si el usuario cambia
     useEffect(() => {
         setFormData(prev => ({
             ...prev,
             name: user.name || '',
             email: user.email || '',
-            phone: user.phone || ''
+            phone: user.phone || '' 
         }));
     }, [user]);
 
@@ -80,7 +80,7 @@ const MiPerfil: React.FC<MiPerfilProps> = ({ user }) => {
         fileInputRef.current?.click();
     };
 
-    // --- LÓGICA DE SUBIDA DE IMAGEN CORREGIDA ---
+    // --- MANEJO DE FOTO DE PERFIL (SUBIR) ---
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -89,18 +89,16 @@ const MiPerfil: React.FC<MiPerfilProps> = ({ user }) => {
         setMessage(null);
 
         try {
-            // 1. Subir a Storage y obtener URL pública
-            // NOTA: Asegúrate de que uploadProfileAvatar en api.ts tenga { upsert: true }
+            // 1. Subir a Storage
             const publicUrl = await uploadProfileAvatar(user.id.toString(), file);
 
-            // 2. Agregar timestamp para evitar cache del navegador (Cache busting)
-            // Esto fuerza al navegador a ver la imagen como "nueva" sin romper el link
+            // 2. Agregar timestamp para cache busting
             const timestampedUrl = `${publicUrl}?t=${new Date().getTime()}`;
 
-            // 3. Actualizar la referencia en la base de datos de usuarios
+            // 3. Actualizar BD
             await updateUserProfile(user.id.toString(), { avatar_url: timestampedUrl });
 
-            // 4. Refrescar el contexto global para que el sidebar y header se actualicen
+            // 4. Refrescar contexto
             await refreshUser();
 
             setMessage({ type: 'success', text: 'Foto de perfil actualizada correctamente.' });
@@ -109,26 +107,48 @@ const MiPerfil: React.FC<MiPerfilProps> = ({ user }) => {
             setMessage({ type: 'error', text: 'Error al actualizar la foto. Intenta de nuevo.' });
         } finally {
             setLoading(false);
-            // Limpiar el input para permitir subir la misma foto si falló antes
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
+    // --- MANEJO DE FOTO DE PERFIL (ELIMINAR) ---
+    const handleDeleteAvatar = async () => {
+        if (!window.confirm("¿Estás seguro de que quieres eliminar tu foto de perfil?")) return;
+
+        setLoading(true);
+        setMessage(null);
+
+        try {
+            // 1. Enviamos null para borrar la referencia en la BD
+            // Usamos 'as any' porque a veces TS se queja de null en strings, pero Supabase lo acepta para borrar.
+            await updateUserProfile(user.id.toString(), { avatar_url: null } as any);
+
+            // 2. Refrescar contexto para que la UI vuelva a las iniciales
+            await refreshUser();
+
+            setMessage({ type: 'success', text: 'Foto de perfil eliminada.' });
+        } catch (error: any) {
+            console.error("Error eliminando avatar:", error);
+            setMessage({ type: 'error', text: 'Error al eliminar la foto.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // --- GUARDAR CAMBIOS DE TEXTO ---
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setMessage(null);
 
         try {
-            // Actualizar Info Básica
             if (formData.name !== user.name || formData.phone !== user.phone) {
                 await updateUserProfile(user.id.toString(), {
                     full_name: formData.name,
-                    phone: formData.phone
+                    phone: formData.phone 
                 });
             }
 
-            // Actualizar Password
             if (formData.newPassword) {
                 if (formData.newPassword.length < 6) throw new Error("La contraseña debe tener al menos 6 caracteres.");
                 if (formData.newPassword !== formData.confirmPassword) throw new Error("Las contraseñas no coinciden.");
@@ -149,6 +169,9 @@ const MiPerfil: React.FC<MiPerfilProps> = ({ user }) => {
         }
     };
 
+    // Helper para saber si tiene foto válida
+    const hasPhoto = user.photo && user.photo.length > 10;
+
     return (
         <div className="bg-white p-8 rounded-lg shadow-sm relative max-w-4xl mx-auto">
             
@@ -168,7 +191,6 @@ const MiPerfil: React.FC<MiPerfilProps> = ({ user }) => {
                 )}
             </div>
 
-            {/* Mensajes de Feedback */}
             {message && (
                 <div className={`mb-6 p-4 rounded-md flex items-center ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
                     {message.text}
@@ -176,17 +198,16 @@ const MiPerfil: React.FC<MiPerfilProps> = ({ user }) => {
             )}
             
             <form onSubmit={handleSubmit}>
-                <FormSection title="Avatar Público" description="Haz clic en cambiar foto para subir una nueva imagen. (JPG, PNG o WEBP)">
+                <FormSection title="Avatar Público" description="Haz clic en cambiar foto para subir una nueva imagen.">
                     <div className="flex items-center gap-6">
-                        {/* --- ÁREA DE LA FOTO BLINDADA CONTRA ERRORES --- */}
+                        {/* --- FOTO DE PERFIL --- */}
                         <div className="relative group">
-                            {user.photo && user.photo.length > 10 ? (
+                            {hasPhoto ? (
                                 <img 
                                     src={user.photo} 
                                     alt={`Avatar de ${user.name}`} 
                                     className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-md bg-gray-100"
                                     onError={(e) => {
-                                        // Si la imagen falla al cargar, mostramos un placeholder
                                         (e.target as HTMLImageElement).style.display = 'none';
                                         const nextSibling = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
                                         if (nextSibling) nextSibling.style.display = 'flex';
@@ -194,17 +215,17 @@ const MiPerfil: React.FC<MiPerfilProps> = ({ user }) => {
                                 />
                             ) : null}
                             
-                            {/* Fallback visual: Iniciales (se muestra si no hay foto o si falla la carga) */}
+                            {/* Fallback si no hay foto */}
                             <div 
                                 className="w-24 h-24 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center text-iange-orange font-bold text-3xl border-4 border-white shadow-md"
-                                style={{ display: (user.photo && user.photo.length > 10) ? 'none' : 'flex' }}
+                                style={{ display: hasPhoto ? 'none' : 'flex' }}
                             >
                                 {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
                             </div>
                         </div>
 
-                        {/* Input invisible y Botón */}
-                        <div>
+                        {/* Botones de Acción */}
+                        <div className="flex flex-col gap-3">
                             <input 
                                 type="file" 
                                 ref={fileInputRef} 
@@ -212,20 +233,36 @@ const MiPerfil: React.FC<MiPerfilProps> = ({ user }) => {
                                 accept="image/jpeg,image/png,image/webp"
                                 onChange={handleFileChange}
                             />
-                            <button 
-                                type="button" 
-                                onClick={handlePhotoClick}
-                                disabled={loading}
-                                className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-iange-orange transition-colors"
-                            >
-                                {loading ? 'Subiendo...' : 'Cambiar Foto'}
-                            </button>
+                            
+                            <div className="flex gap-2">
+                                <button 
+                                    type="button" 
+                                    onClick={handlePhotoClick}
+                                    disabled={loading}
+                                    className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-iange-orange transition-colors"
+                                >
+                                    {loading ? 'Subiendo...' : 'Cambiar Foto'}
+                                </button>
+
+                                {/* BOTÓN ELIMINAR (Solo visible si hay foto) */}
+                                {hasPhoto && (
+                                    <button 
+                                        type="button" 
+                                        onClick={handleDeleteAvatar}
+                                        disabled={loading}
+                                        className="px-4 py-2 bg-red-50 border border-red-200 rounded-md shadow-sm text-sm font-medium text-red-600 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
+                                    >
+                                        Eliminar
+                                    </button>
+                                )}
+                            </div>
+                            
                             <p className="mt-2 text-xs text-gray-500">Recomendado: Cuadrada, máx 2MB.</p>
                         </div>
                     </div>
                 </FormSection>
 
-                <FormSection title="Información Personal" description="Esta información será visible para la administración y tus compañeros.">
+                <FormSection title="Información Personal" description="Esta información será visible para tu equipo.">
                     <div className="grid grid-cols-1 gap-6">
                         <Input label="Nombre completo" name="name" value={formData.name} onChange={handleChange} />
                         <Input label="Teléfono / WhatsApp" name="phone" value={formData.phone} onChange={handleChange} />

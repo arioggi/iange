@@ -4,21 +4,24 @@ import { MENU_ITEMS, SETTINGS_MENU_ITEM, SETTINGS_MENU_ITEMS, SUPERADMIN_MENU_IT
 import { User, UserPermissions } from '../types';
 
 // ==========================================
-// COMPONENTE LOGO PERSONALIZADO
+// COMPONENTE LOGO PERSONALIZADO (DINÁMICO)
 // ==========================================
-const Logo = () => (
+const Logo = ({ url }: { url?: string | null }) => (
     <div className="flex justify-center items-center mb-12 h-16 px-2">
       <img 
-        src="/logo.svg" 
-        alt="IANGE" 
-        className="h-full w-auto object-contain max-h-10"
+        // Si hay URL personalizada usa esa, si no, usa el logo por defecto
+        src={url || "/logo.svg"} 
+        alt="Logo" 
+        className="h-full w-auto object-contain max-h-12 max-w-[180px]" 
         onError={(e) => {
+            // Si falla la imagen (personalizada o default), muestra el fallback SVG
             e.currentTarget.style.display = 'none';
             const fallback = document.getElementById('logo-fallback');
             if (fallback) fallback.classList.remove('hidden');
         }}
       />
       
+      {/* Fallback de texto si la imagen falla completamente */}
       <div id="logo-fallback" className="hidden">
           <svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
             <text x="0" y="30" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" fontSize="32" fontWeight="bold" fill="#1E1E1E">
@@ -65,9 +68,10 @@ const NavItem: React.FC<NavItemProps> = ({ item }) => {
 
 interface SidebarProps {
     user: User;
+    logoUrl?: string | null; // <--- Prop clave para el logo dinámico
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ user }) => {
+const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl }) => {
     const location = useLocation();
     const navigate = useNavigate();
     const isSettingsPage = location.pathname.startsWith('/configuraciones');
@@ -104,14 +108,11 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
 
     // --- LÓGICA DE NAVEGACIÓN CORREGIDA (BOTÓN ATRÁS) ---
     const handleBack = () => {
-        // 1. Si es Super Admin, siempre vuelve a su panel
         if (user.role === ROLES.SUPER_ADMIN) {
             navigate('/superadmin');
             return;
         }
         
-        // 2. Si no es Super Admin, buscamos su "Inicio" válido según permisos
-        // Esta lógica espejo asegura que no lo mandemos a una ruta prohibida
         const p = user.permissions || {} as UserPermissions;
 
         if (p.dashboard) navigate('/oportunidades');
@@ -121,9 +122,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
         else if (p.reportes) navigate('/reportes');
         else if (p.crm) navigate('/crm');
         else {
-            // Si no tiene acceso a NADA del menú principal, lo dejamos en su perfil
-            // Redirigirlo a /configuraciones/mi-perfil sería redundante si ya está ahí,
-            // pero es seguro si está en otra sub-página de configuración.
             navigate('/configuraciones/mi-perfil');
         }
     };
@@ -131,7 +129,8 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
     const MainMenu = () => (
         <>
             <div>
-                <Logo />
+                {/* Pasamos el logoUrl al componente Logo */}
+                <Logo url={logoUrl} />
                 <nav className="space-y-2">
                 {visibleMenuItems.map((item) => (
                     <NavItem key={item.name} item={item} />
@@ -148,7 +147,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
 
     const SuperAdminMenu = () => (
         <div>
-            <Logo />
+            <Logo url={logoUrl} />
             <nav className="space-y-2">
             {SUPERADMIN_MENU_ITEMS.map((item) => (
                 <NavItem key={item.name} item={item} />
@@ -159,7 +158,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user }) => {
 
     const SettingsMenu = () => (
          <div>
-            <Logo />
+            <Logo url={logoUrl} />
             <button
                 onClick={handleBack}
                 className="w-full text-left py-3 px-4 rounded-md bg-iange-salmon text-iange-dark font-semibold mb-4 hover:bg-orange-200 transition-colors flex items-center"
