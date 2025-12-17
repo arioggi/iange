@@ -2,7 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Propiedad, User, CompanySettings, Propietario, Comprador, UserPermissions } from '../types';
 import { PRIMARY_DASHBOARD_BUTTONS, ROLES } from '../constants';
-import { BanknotesIcon, BuildingOfficeIcon, PresentationChartLineIcon, SparklesIcon, UsersIcon } from '../components/Icons';
+import { BanknotesIcon, BuildingOfficeIcon, SparklesIcon, UsersIcon } from '../components/Icons';
+// IMPORTAMOS EL NUEVO COMPONENTE
+import Avatar from '../components/ui/Avatar'; 
 
 interface OportunidadesDashboardProps {
   propiedades: Propiedad[];
@@ -79,10 +81,8 @@ const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-// CORRECCIÓN CRÍTICA: Parsing robusto para limpiar comas, signos de pesos y espacios
 const parseCurrencyString = (value: string | undefined): number => {
     if (!value) return 0;
-    // Eliminamos todo lo que NO sea número, punto o guión
     const sanitized = value.toString().replace(/[^0-9.-]+/g, '');
     return parseFloat(sanitized) || 0;
 };
@@ -90,8 +90,6 @@ const parseCurrencyString = (value: string | undefined): number => {
 const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({ 
     propiedades, 
     asesores, 
-    propietarios, 
-    compradores, 
     companySettings,
     isLoading,
     currentUser
@@ -136,11 +134,9 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
 
   const propiedadesActivas = propiedades.filter(p => p.status !== 'Vendida');
   const totalActivas = propiedadesActivas.length;
-  // Usamos el nuevo parser robusto
   const valorCarteraActiva = propiedadesActivas.reduce((sum, p) => sum + parseCurrencyString(p.valor_operacion), 0);
   
   const propiedadesVendidas = propiedades.filter(p => p.status === 'Vendida');
-  // Usamos el nuevo parser robusto
   const valorVentasTotales = propiedadesVendidas.reduce((sum, p) => sum + parseCurrencyString(p.valor_operacion), 0);
 
   const ingresosTotales = propiedadesVendidas.reduce((sum, p) => {
@@ -185,31 +181,33 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
 
   return (
     <div className="space-y-8 animate-fade-in">
+        
+        {/* --- HEADER CON AVATAR REUTILIZABLE --- */}
+        <div className="mb-8 flex items-center space-x-5 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <div className="relative">
+                <Avatar 
+                    src={currentUser.photo} 
+                    name={currentUser.name} 
+                    size="xl" 
+                    border={true} // Borde naranja para destacar
+                />
+                <div className="absolute bottom-1 right-1 h-5 w-5 bg-green-400 border-2 border-white rounded-full"></div>
+            </div>
+
+            <div>
+                <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
+                    Hola, {currentUser.name.split(' ')[0]} 👋
+                </h1>
+                <p className="text-gray-500 mt-2 text-lg">
+                    Aquí tienes el resumen de tu actividad inmobiliaria de hoy.
+                </p>
+            </div>
+        </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <StatCard 
-              title="Propiedades Activas" 
-              value={String(totalActivas)} 
-              icon={BuildingOfficeIcon} 
-              color="bg-blue-500"
-              subTitle="Valor Total de Cartera"
-              subValue={formatCurrency(valorCarteraActiva)}
-          />
-          <StatCard 
-              title="Ventas" 
-              value={String(propiedadesVendidas.length)} 
-              icon={SparklesIcon} 
-              color="bg-green-500"
-              subTitle="Valor Total de Ventas"
-              subValue={formatCurrency(valorVentasTotales)}
-          />
-          <StatCard 
-              title="Ingresos por Comisión" 
-              value={formatCurrency(ingresosTotales)} 
-              icon={BanknotesIcon} 
-              color="bg-purple-500"
-              subTitle="Comisión Promedio"
-              subValue={formatCurrency(comisionPromedio)}
-          />
+          <StatCard title="Propiedades Activas" value={String(totalActivas)} icon={BuildingOfficeIcon} color="bg-blue-500" subTitle="Valor Total de Cartera" subValue={formatCurrency(valorCarteraActiva)} />
+          <StatCard title="Ventas" value={String(propiedadesVendidas.length)} icon={SparklesIcon} color="bg-green-500" subTitle="Valor Total de Ventas" subValue={formatCurrency(valorVentasTotales)} />
+          <StatCard title="Ingresos por Comisión" value={formatCurrency(ingresosTotales)} icon={BanknotesIcon} color="bg-purple-500" subTitle="Comisión Promedio" subValue={formatCurrency(comisionPromedio)} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -219,12 +217,7 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
                 {chartData.map(item => (
                     <div key={item.month} className="flex flex-col items-center w-1/12">
                         <div className="text-sm font-bold text-gray-800">{item.count}</div>
-                        <div 
-                            className="w-full bg-iange-orange rounded-t-md mt-1 transition-[height] duration-700 ease-out" 
-                            style={{ 
-                                height: isChartVisible ? `${(item.count / maxCaptaciones) * 170}px` : '0px' 
-                            }}>
-                        </div>
+                        <div className="w-full bg-iange-orange rounded-t-md mt-1 transition-[height] duration-700 ease-out" style={{ height: isChartVisible ? `${(item.count / maxCaptaciones) * 170}px` : '0px' }}></div>
                         <span className="text-xs font-semibold mt-2 text-gray-500 uppercase">{item.month}</span>
                     </div>
                 ))}
@@ -262,33 +255,39 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Accesos Rápidos</h3>
                 <div className="grid grid-cols-2 gap-4">
                     {visibleButtons.map((button) => (
-                        <button
-                            key={button.label}
-                            onClick={() => navigate(button.path)}
-                            className="p-4 rounded-lg bg-iange-salmon text-iange-dark font-bold hover:bg-orange-200 text-center transition-colors"
-                        >
+                        <button key={button.label} onClick={() => navigate(button.path)} className="p-4 rounded-lg bg-iange-salmon text-iange-dark font-bold hover:bg-orange-200 text-center transition-colors">
                             {button.label}
                         </button>
                     ))}
                 </div>
-                {visibleButtons.length === 0 && (
-                    <p className="text-center text-gray-500 py-4 text-sm">No tienes accesos directos disponibles.</p>
-                )}
+                {visibleButtons.length === 0 && <p className="text-center text-gray-500 py-4 text-sm">No tienes accesos directos disponibles.</p>}
             </div>
+             
+             {/* --- LISTA DE EQUIPO USANDO EL COMPONENTE AVATAR --- */}
              <div className="bg-white p-6 rounded-lg shadow-sm border">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Equipo</h3>
                 <ul className="space-y-3">
-                    {asesores.map(asesor => (
-                         <li key={asesor.id} className="flex items-center">
-                             <div className="w-9 h-9 bg-iange-salmon rounded-full flex items-center justify-center text-iange-orange font-bold text-sm uppercase">
-                                {asesor.photo}
-                            </div>
-                             <div className="ml-3">
-                                <p className="text-sm font-medium text-gray-800">{asesor.name}</p>
-                                <p className="text-xs text-gray-500">{asesor.role}</p>
-                             </div>
-                         </li>
-                    ))}
+                    {asesores.map(asesor => {
+                         // Usamos la foto del usuario actual si coincide, para evitar datos viejos
+                         const isMe = String(asesor.id) === String(currentUser.id) || asesor.email === currentUser.email;
+                         const realPhoto = isMe ? currentUser.photo : asesor.photo;
+
+                         return (
+                            <li key={asesor.id} className="flex items-center">
+                                {/* Componente Avatar Reutilizable */}
+                                <Avatar 
+                                    src={realPhoto} 
+                                    name={asesor.name} 
+                                    size="sm" 
+                                    className="w-9 h-9" // Override ligero de tamaño para ajustar a la lista
+                                />
+                                <div className="ml-3">
+                                    <p className="text-sm font-medium text-gray-800">{asesor.name}</p>
+                                    <p className="text-xs text-gray-500 capitalize">{asesor.role}</p>
+                                </div>
+                            </li>
+                         );
+                    })}
                      {asesores.length === 0 && (
                         <li className="text-center text-sm text-gray-500 py-4">No hay usuarios en esta empresa.</li>
                     )}

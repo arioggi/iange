@@ -229,13 +229,16 @@ export interface Comprador extends KycData {
   propiedadId?: number | null;
 }
 
+// --- CONFIGURACIÓN DE LA EMPRESA ---
 export interface CompanySettings {
+  name?: string; // <--- Agregado para soportar el nombre en el frontend
   onboarded?: boolean;
   requiereAprobacionPublicar?: boolean;
   requiereAprobacionCerrar?: boolean;
   integracionWhatsapp?: boolean;
   integracionCorreo?: boolean;
   integracionPortales?: boolean;
+  logo_url?: string | null; // <--- CAMPO CLAVE PARA EL LOGO DINÁMICO
 }
 
 export interface Tenant {

@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { ROLE_DEFAULT_PERMISSIONS } from '../constants';
+import { User } from '../types'; // Importante para tipado
 
 // ==========================================
 // 0. UTILIDADES (COMPRESIÓN DE IMÁGENES)
@@ -25,13 +26,17 @@ export const compressImage = async (file: File, quality = 0.7, maxWidth = 1280):
                 canvas.width = width;
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
-                ctx?.drawImage(img, 0, 0, width, height);
+                if (ctx) {
+                    ctx.drawImage(img, 0, 0, width, height);
+                }
+
+                const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
 
                 canvas.toBlob(
                     (blob) => {
                         if (blob) {
                             const newFile = new File([blob], file.name, {
-                                type: 'image/jpeg',
+                                type: outputType,
                                 lastModified: Date.now(),
                             });
                             resolve(newFile);
@@ -39,7 +44,7 @@ export const compressImage = async (file: File, quality = 0.7, maxWidth = 1280):
                             reject(new Error('Error al comprimir la imagen'));
                         }
                     },
-                    'image/jpeg',
+                    outputType,
                     quality
                 );
             };
@@ -103,7 +108,7 @@ export const deleteTenantFully = async (tenantId: string) => {
 };
 
 // ==========================================
-// 2. GESTIÓN DE USUARIOS
+// 2. GESTIÓN DE USUARIOS GLOBALES
 // ==========================================
 
 export const getAllGlobalUsers = async () => {
@@ -126,16 +131,23 @@ export const getAllGlobalUsers = async () => {
   }));
 };
 
-export const updateUserProfile = async (userId: string, updates: any) => {
-  const { data, error } = await supabase
-    .from('profiles')
-    .update(updates)
-    .eq('id', userId)
-    .select()
-    .single();
+export const updateUserProfile = async (userId: string, updates: { 
+    full_name?: string; 
+    phone?: string; 
+    avatar_url?: string;
+    role?: string;       
+    permissions?: any;   
+}) => {
+    const { error: profileError } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', userId);
 
-  if (error) throw error;
-  return data;
+    if (profileError) throw profileError;
+
+    if (updates.phone) {
+        await supabase.auth.updateUser({ phone: updates.phone });
+    }
 };
 
 export const createGlobalUserProfile = async (profileData: any) => {
@@ -296,10 +308,6 @@ export const createProperty = async (propertyData: any, tenantId: string, ownerI
   return data;
 };
 
-// =========================================================================
-// FUNCIÓN CORREGIDA: getPropertiesByTenant
-// (Normalizamos mayúsculas y minúsculas para detectar el estado correctamente)
-// =========================================================================
 export const getPropertiesByTenant = async (tenantId: string) => {
   const { data, error } = await supabase
     .from('propiedades')
@@ -310,39 +318,27 @@ export const getPropertiesByTenant = async (tenantId: string) => {
   if (error) throw error;
 
   return data.map((p: any) => {
-    // 1. Normalización del estatus para evitar errores de lectura
     const dbStatus = p.estatus ? p.estatus.toLowerCase() : 'disponible';
     
-    let uiStatus = 'En Promoción'; // Default seguro
+    let uiStatus = 'En Promoción'; 
     if (dbStatus === 'vendida') uiStatus = 'Vendida';
     else if (dbStatus === 'separada') uiStatus = 'Separada';
     else if (dbStatus === 'en promoción' || dbStatus === 'disponible') uiStatus = 'En Promoción';
     else uiStatus = 'Validación Pendiente';
 
     return {
-        // CORRECCIÓN VITAL: 
-        // 1. Expandimos features PRIMERO (datos sucios/crudos del formulario)
         ...p.features, 
-
-        // 2. Sobrescribimos con los datos LIMPIOS y REALES de la base de datos
-        // Esto asegura que el precio sea numérico y el status sea el calculado
         id: p.id,
-        // AGREGA ESTA LÍNEA AQUÍ:
-        token_publico: p.token_publico, // <--- IMPORTANTE: Mapear el token de la BD al objeto
-
+        token_publico: p.token_publico, 
         propietarioId: p.contacto_id,
         compradorId: p.comprador_id,
-        
-        valor_operacion: p.precio?.toString() || '', // Usamos el precio numérico de la BD
+        valor_operacion: p.precio?.toString() || '', 
         tipo_inmueble: p.tipo,
-        status: uiStatus, // Usamos el status normalizado
-        
-        // Mapeo de fechas e imágenes
+        status: uiStatus, 
         fecha_venta: p.features?.fecha_venta || p.fecha_venta || null,
         fotos: [], 
         imageUrls: p.images || [], 
         fecha_captacion: p.created_at,
-        
         progreso: p.features?.progreso || 0,
         checklist: p.features?.checklist || {},
         visitas: p.features?.visitas || [],
@@ -350,7 +346,6 @@ export const getPropertiesByTenant = async (tenantId: string) => {
   });
 };
 
-// --- FUNCIÓN DE ESCRITURA: Actualizar Propiedad ---
 export const updateProperty = async (propertyData: any, ownerId: string) => {
     const { 
         id, 
@@ -384,7 +379,6 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
         (featuresPayload as any).fecha_venta = fecha_venta;
     }
 
-    // CANDADO DE SEGURIDAD: Liberar comprador si se pone disponible
     const compradorIdToSave = dbStatus === 'disponible' ? null : (compradorId || undefined);
 
     const dbPayload = {
@@ -409,9 +403,9 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
     return data;
 };
 
-// =========================================================================
-// NUEVA LÓGICA MULTI-OFERTA (1 COMPRADOR -> N PROPIEDADES)
-// =========================================================================
+// ==========================================
+// 4. OFERTAS Y CONTACTOS (RELACIONES)
+// ==========================================
 
 export const assignBuyerToProperty = async (
     buyerId: number, 
@@ -422,7 +416,6 @@ export const assignBuyerToProperty = async (
     const pIdString = propertyId.toString();
     const bIdString = buyerId.toString();
     
-    // 1. Obtener el contacto actual
     const { data: currentContact } = await supabase
         .from('contactos')
         .select('datos_kyc')
@@ -431,36 +424,28 @@ export const assignBuyerToProperty = async (
 
     if (currentContact) {
         const kyc = currentContact.datos_kyc || {};
-        // Inicializamos la lista si no existe
         let intereses = Array.isArray(kyc.intereses) ? [...kyc.intereses] : [];
 
-        // Buscamos si ya tiene interés en ESTA propiedad específica
         const existingIndex = intereses.findIndex((i: any) => String(i.propiedadId) === pIdString);
 
-        // Creamos el objeto del nuevo interés
         const nuevoInteres = {
             propiedadId: propertyId,
             tipoRelacion: tipoRelacion,
             fechaInteres: new Date().toISOString(),
-            // Si nos mandan oferta nueva, la usamos. Si no, mantenemos la anterior.
             ofertaFormal: offerData !== undefined ? offerData : (existingIndex >= 0 ? intereses[existingIndex].ofertaFormal : undefined)
         };
 
         if (existingIndex >= 0) {
-            // Actualizamos el existente (sin borrar los otros)
             intereses[existingIndex] = { ...intereses[existingIndex], ...nuevoInteres };
         } else {
-            // Agregamos uno nuevo a la lista (sin borrar los otros)
             intereses.push(nuevoInteres);
         }
 
-        // Guardamos la lista completa actualizada
         await supabase.from('contactos')
         .update({
             datos_kyc: {
                 ...kyc,
                 intereses: intereses,
-                // Mantenemos esto solo para compatibilidad (indica la "última" propiedad tocada)
                 propiedadRelacionadaId: propertyId,
                 tipoRelacion: tipoRelacion
             }
@@ -468,7 +453,6 @@ export const assignBuyerToProperty = async (
         .eq('id', bIdString);
     }
 
-    // 2. Actualizar la Propiedad (Solo si es Venta o Separación REAL)
     if (tipoRelacion === 'Venta finalizada' || tipoRelacion === 'Propiedad Separada') {
         const estatusDb = tipoRelacion === 'Venta finalizada' ? 'vendida' : 'separada';
         const fechaVenta = tipoRelacion === 'Venta finalizada' ? new Date().toISOString() : null;
@@ -484,14 +468,13 @@ export const assignBuyerToProperty = async (
 
         await supabase.from('propiedades')
         .update({
-            comprador_id: bIdString, // Aquí sí es único: la casa se aparta para ÉL
+            comprador_id: bIdString, 
             estatus: estatusDb,
             features: newFeatures
         })
         .eq('id', pIdString);
         
     } else {
-        // Si es solo Propuesta, liberamos la propiedad si antes estaba asignada
         const { data: currentProp } = await supabase
             .from('propiedades')
             .select('comprador_id')
@@ -509,7 +492,6 @@ export const assignBuyerToProperty = async (
     }
 };
 
-// --- NUEVA FUNCIÓN: ELIMINAR UNA OFERTA ESPECÍFICA ---
 export const deleteOffer = async (buyerId: number, propertyId: number) => {
     const { data: currentContact } = await supabase
         .from('contactos')
@@ -521,14 +503,12 @@ export const deleteOffer = async (buyerId: number, propertyId: number) => {
         const kyc = currentContact.datos_kyc || {};
         let intereses = Array.isArray(kyc.intereses) ? [...kyc.intereses] : [];
         
-        // Buscamos el interés y le borramos SOLO la ofertaFormal
         const targetIndex = intereses.findIndex((i: any) => String(i.propiedadId) === String(propertyId));
         
         if (targetIndex >= 0) {
             const interes = intereses[targetIndex];
-            // Borramos la oferta pero mantenemos el interés (visita/relación)
             delete interes.ofertaFormal; 
-            interes.tipoRelacion = 'Propuesta de compra'; // Reseteamos a propuesta simple
+            interes.tipoRelacion = 'Propuesta de compra'; 
             intereses[targetIndex] = interes;
 
             await supabase.from('contactos')
@@ -539,7 +519,6 @@ export const deleteOffer = async (buyerId: number, propertyId: number) => {
 };
 
 export const unassignBuyerFromProperty = async (buyerId: number, propertyId: number) => {
-    // 1. Limpiar Contacto (borrar de la lista de intereses)
     const { data: currentContact } = await supabase
         .from('contactos')
         .select('datos_kyc')
@@ -550,13 +529,11 @@ export const unassignBuyerFromProperty = async (buyerId: number, propertyId: num
         const kyc = currentContact.datos_kyc || {};
         let intereses = Array.isArray(kyc.intereses) ? [...kyc.intereses] : [];
         
-        // Filtramos para quitar SOLO la propiedad que estamos desvinculando
         intereses = intereses.filter((i: any) => String(i.propiedadId) !== String(propertyId));
 
         const newKyc = { 
             ...kyc,
             intereses: intereses,
-            // Limpiamos los campos legacy si coincidían
             propiedadRelacionadaId: String(kyc.propiedadRelacionadaId) === String(propertyId) ? null : kyc.propiedadRelacionadaId,
             tipoRelacion: String(kyc.propiedadRelacionadaId) === String(propertyId) ? null : kyc.tipoRelacion
         };
@@ -566,7 +543,6 @@ export const unassignBuyerFromProperty = async (buyerId: number, propertyId: num
         .eq('id', buyerId.toString());
     }
 
-    // 2. Limpiar Propiedad
     const { data: currentProp } = await supabase
         .from('propiedades')
         .select('comprador_id, features')
@@ -587,9 +563,6 @@ export const unassignBuyerFromProperty = async (buyerId: number, propertyId: num
     }
 };
 
-// =========================================================================
-// FUNCIÓN CORREGIDA: getContactsByTenant (LEE RELACIONES MULTIPLES)
-// =========================================================================
 export const getContactsByTenant = async (tenantId: string) => {
   const { data: contacts, error } = await supabase
     .from('contactos')
@@ -598,17 +571,9 @@ export const getContactsByTenant = async (tenantId: string) => {
 
   if (error) throw error;
 
-  const { data: properties } = await supabase
-    .from('propiedades')
-    .select('id, comprador_id')
-    .eq('tenant_id', tenantId)
-    .not('comprador_id', 'is', null);
-  
   const mapContact = (c: any) => {
-      // Recuperamos la lista de intereses
       const intereses = c.datos_kyc?.intereses || [];
       
-      // Migración al vuelo (Legacy -> Lista)
       if (intereses.length === 0 && c.datos_kyc?.propiedadRelacionadaId) {
           intereses.push({
               propiedadId: c.datos_kyc.propiedadRelacionadaId,
@@ -618,7 +583,6 @@ export const getContactsByTenant = async (tenantId: string) => {
           });
       }
 
-      // Para compatibilidad con tablas simples, tomamos el último interés
       const ultimoInteres = intereses.length > 0 ? intereses[intereses.length - 1] : null;
 
       return {
@@ -627,9 +591,7 @@ export const getContactsByTenant = async (tenantId: string) => {
           nombreCompleto: c.nombre,
           email: c.email,
           telefono: c.telefono,
-          // Pasamos la lista completa al frontend (CRÍTICO)
           intereses: intereses,
-          // Campos planos para compatibilidad
           propiedadId: ultimoInteres ? ultimoInteres.propiedadId : null,
           tipoRelacion: ultimoInteres ? ultimoInteres.tipoRelacion : null,
           ofertaFormal: ultimoInteres ? ultimoInteres.ofertaFormal : null
@@ -642,7 +604,6 @@ export const getContactsByTenant = async (tenantId: string) => {
   return { propietarios, compradores };
 };
 
-// --- FUNCIÓN DE ESCRITURA: Actualizar Contacto ---
 export const updateContact = async (contactId: number, updatedKycData: any) => {
     const contactIdString = contactId.toString();
     const { nombreCompleto, email, telefono } = updatedKycData;
@@ -673,7 +634,7 @@ export const deleteContact = async (contactId: number) => {
 };
 
 // ==========================================
-// 4. ESTADÍSTICAS Y DASHBOARD
+// 5. ESTADÍSTICAS Y DASHBOARD
 // ==========================================
 
 export const getSuperAdminStats = async () => {
@@ -722,30 +683,56 @@ export const getSuperAdminStats = async () => {
 };
 
 // ==========================================
-// 5. FUNCIONES PARA PERSONAL EMPRESA
+// 6. FUNCIONES PARA PERSONAL EMPRESA (CORREGIDA)
 // ==========================================
 
-export const getUsersByTenant = async (tenantId: string) => {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('tenant_id', tenantId);
+// --- FUNCIÓN CORREGIDA Y OPTIMIZADA ---
+export const getUsersByTenant = async (tenantId: string): Promise<User[]> => {
+    try {
+        const { data: profiles, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('tenant_id', tenantId);
 
-  if (error) {
-    console.error('Error fetching tenant users:', error);
-    throw error;
-  }
+        if (error) {
+            console.error('Error fetching users:', error);
+            return [];
+        }
 
-  return data.map((p: any) => ({
-    id: p.id,
-    name: p.full_name || p.email?.split('@')[0] || 'Sin Nombre',
-    email: p.email,
-    role: p.role,
-    tenantId: p.tenant_id,
-    permissions: p.permissions || null, 
-    avatar: p.avatar_url,
-    phone: p.phone
-  }));
+        if (!profiles) return [];
+
+        const users: User[] = profiles.map(p => {
+            let photoUrl = '';
+
+            // Si tiene avatar_url, construimos la URL completa
+            if (p.avatar_url) {
+                if (p.avatar_url.startsWith('http')) {
+                    photoUrl = p.avatar_url;
+                } else {
+                    const { data } = supabase.storage
+                        .from('avatars')
+                        .getPublicUrl(p.avatar_url);
+                    photoUrl = data.publicUrl;
+                }
+            }
+
+            return {
+                id: p.id,
+                email: p.email,
+                name: p.full_name || p.name || 'Sin Nombre', 
+                role: p.role || 'asesor',
+                photo: photoUrl, // AHORA SÍ ES UNA URL COMPLETA
+                phone: p.phone || '',
+                permissions: p.permissions,
+                tenantId: p.tenant_id
+            };
+        });
+
+        return users;
+    } catch (error) {
+        console.error('Error en getUsersByTenant:', error);
+        return [];
+    }
 };
 
 export const createTenantUser = async (email: string, password: string, tenantId: string, role: string, name: string, permissions?: any) => {
@@ -782,34 +769,24 @@ export const createTenantUser = async (email: string, password: string, tenantId
 };
 
 // ==========================================
-// 6. GESTIÓN DE PERFIL (AVATAR Y SEGURIDAD)
+// 7. GESTIÓN DE PERFIL (AVATAR Y SEGURIDAD)
 // ==========================================
 
-// Función para subir avatar con estrategia de "Sobrescritura"
 export const uploadProfileAvatar = async (userId: string, file: File) => {
     try {
-        // 1. Comprimir la imagen usando tu utilidad existente
-        const compressedFile = await compressImage(file, 0.7, 500); // 500px es suficiente para avatar
-
-        // 2. Definir ruta única por usuario (siempre el mismo nombre para evitar basura)
-        // Usamos 'avatars' como bucket. Asegúrate de crearlo en Supabase Storage.
+        const compressedFile = await compressImage(file, 0.7, 500); 
         const filePath = `${userId}/avatar.jpg`; 
 
-        // 3. Subir con 'upsert: true' para sobrescribir la anterior
         const { error: uploadError } = await supabase.storage
             .from('avatars') 
             .upload(filePath, compressedFile, {
-                cacheControl: '0', // Importante para evitar caché agresivo de CDN
+                cacheControl: '0', 
                 upsert: true
             });
 
         if (uploadError) throw uploadError;
 
-        // 4. Obtener URL pública
         const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-        
-        // 5. Agregar timestamp para "cache busting" en el frontend
-        // Esto fuerza al navegador a descargar la nueva imagen aunque se llame igual
         const publicUrlWithCacheBuster = `${data.publicUrl}?t=${Date.now()}`;
 
         return publicUrlWithCacheBuster;
@@ -820,7 +797,6 @@ export const uploadProfileAvatar = async (userId: string, file: File) => {
     }
 };
 
-// Función para actualizar contraseña
 export const updateUserPassword = async (newPassword: string) => {
     const { data, error } = await supabase.auth.updateUser({
         password: newPassword
@@ -831,20 +807,15 @@ export const updateUserPassword = async (newPassword: string) => {
 };
 
 // ==========================================
-// 7. GESTIÓN DE PERFIL EMPRESA (TENANT)
+// 8. GESTIÓN DE PERFIL EMPRESA (TENANT)
 // ==========================================
 
-// Subir Logo de Empresa
 export const uploadCompanyLogo = async (tenantId: string, file: File) => {
     try {
-        // Usamos el mismo compresor que ya tienes
         const compressedFile = await compressImage(file, 0.8, 800); 
-        
-        // Ruta: company-logos/tenantId_timestamp.jpg
         const fileName = `${tenantId}_${Date.now()}.jpg`;
-        const filePath = `${fileName}`; // O folder structure si prefieres
+        const filePath = `${fileName}`; 
 
-        // Asegúrate de tener un bucket llamado 'company-logos' en Supabase Storage
         const { error: uploadError } = await supabase.storage
             .from('company-logos') 
             .upload(filePath, compressedFile, {
@@ -861,13 +832,11 @@ export const uploadCompanyLogo = async (tenantId: string, file: File) => {
     }
 };
 
-// Actualizar Datos de la Empresa
 export const updateTenant = async (tenantId: string, updates: {
     nombre?: string;
     telefono?: string;
-    direccion?: string; // Asumiendo que agregaste este campo o usas 'direccion_fiscal'
+    direccion?: string; 
     logo_url?: string;
-    // Configs
     requiereAprobacionPublicar?: boolean;
     requiereAprobacionCerrar?: boolean;
     integracionWhatsapp?: boolean;
@@ -883,7 +852,6 @@ export const updateTenant = async (tenantId: string, updates: {
     return data;
 };
 
-// Obtener Tenant por ID (para cargar el formulario)
 export const getTenantById = async (tenantId: string) => {
     const { data, error } = await supabase
         .from('tenants')

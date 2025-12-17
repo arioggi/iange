@@ -1,209 +1,296 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../../authContext';
-import { getTenantById, updateTenant, uploadCompanyLogo } from '../../Services/api';
-import { Tenant } from '../../types';
+import { User } from '../../types';
+import { 
+    getTenantById, 
+    updateTenant, 
+    uploadCompanyLogo 
+} from '../../Services/api';
+import { useAuth } from '../../authContext'; // Para recargar si es necesario
 
-// Componente auxiliar para Toggles (Interruptores)
-const Toggle: React.FC<{ label: string; checked: boolean; onChange: (val: boolean) => void }> = ({ label, checked, onChange }) => (
-    <div className="flex items-center justify-between py-3">
-        <span className="text-sm font-medium text-gray-700">{label}</span>
-        <button
-            type="button"
-            onClick={() => onChange(!checked)}
-            className={`${checked ? 'bg-iange-orange' : 'bg-gray-200'} relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none`}
-        >
-            <span aria-hidden="true" className={`${checked ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`} />
-        </button>
+// Componentes UI (Reutilizamos los mismos estilos que MiPerfil)
+const FormSection: React.FC<{ title: string; children: React.ReactNode, description?: string }> = ({ title, children, description }) => (
+    <section className="py-8 border-b border-gray-200 last:border-0">
+        <div className="md:grid md:grid-cols-3 md:gap-6">
+            <div className="md:col-span-1">
+                <h3 className="text-lg font-medium leading-6 text-gray-900">{title}</h3>
+                {description && <p className="mt-1 text-sm text-gray-600">{description}</p>}
+            </div>
+            <div className="mt-5 md:mt-0 md:col-span-2">
+                <div className="space-y-6">
+                    {children}
+                </div>
+            </div>
+        </div>
+    </section>
+);
+
+const Input: React.FC<{ label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; disabled?: boolean; placeholder?: string }> = ({ label, name, value, onChange, disabled, placeholder }) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <input 
+            type="text" 
+            name={name} 
+            id={name} 
+            value={value} 
+            onChange={onChange} 
+            disabled={disabled}
+            placeholder={placeholder}
+            className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-iange-orange focus:border-iange-orange sm:text-sm disabled:bg-gray-100 disabled:text-gray-500" 
+        />
     </div>
 );
 
-const PerfilEmpresa = () => {
-    const { appUser } = useAuth();
-    const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [tenant, setTenant] = useState<Tenant | null>(null);
+interface PerfilEmpresaProps {
+    user: User;
+}
+
+const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [loading, setLoading] = useState(false);
+    const [pageLoading, setPageLoading] = useState(true);
+    const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
-    // Cargar datos al montar
+    // Estado del formulario
+    const [formData, setFormData] = useState({
+        nombre: '',
+        telefono: '',
+        direccion: '',
+        rfc: '', // Solo lectura usualmente
+        logo_url: ''
+    });
+
+    // 1. Cargar datos de la empresa al entrar
     useEffect(() => {
-        if (appUser?.tenantId) {
-            getTenantById(appUser.tenantId)
-                .then(data => {
-                    setTenant(data);
-                    setLoading(false);
-                })
-                .catch(err => {
-                    console.error("Error cargando empresa:", err);
-                    setLoading(false);
-                });
-        }
-    }, [appUser]);
+        const loadTenantData = async () => {
+            if (!user.tenantId) {
+                setPageLoading(false);
+                return;
+            }
 
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!tenant || !appUser?.tenantId) return;
-        
-        setSaving(true);
-        try {
-            await updateTenant(appUser.tenantId, {
-                nombre: tenant.nombre,
-                telefono: tenant.telefono,
-                requiereAprobacionPublicar: tenant.requiereAprobacionPublicar,
-                requiereAprobacionCerrar: tenant.requiereAprobacionCerrar
-                // Agrega dirección aquí si tu BD lo soporta
-            });
-            alert('Datos de empresa actualizados correctamente');
-        } catch (error) {
-            console.error(error);
-            alert('Error al guardar');
-        } finally {
-            setSaving(false);
-        }
+            try {
+                const data = await getTenantById(user.tenantId);
+                if (data) {
+                    setFormData({
+                        nombre: data.name || data.nombre || '', // Soporte para ambos nombres de columna
+                        telefono: data.telefono || '',
+                        direccion: data.direccion || '',
+                        rfc: data.rfc || '',
+                        logo_url: data.logo_url || ''
+                    });
+                }
+            } catch (error) {
+                console.error("Error cargando empresa:", error);
+                setMessage({ type: 'error', text: 'No se pudo cargar la información de la empresa.' });
+            } finally {
+                setPageLoading(false);
+            }
+        };
+
+        loadTenantData();
+    }, [user.tenantId]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleLogoClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    // --- SUBIDA DE LOGO ---
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file || !appUser?.tenantId) return;
+        if (!file || !user.tenantId) return;
+
+        setLoading(true);
+        setMessage(null);
 
         try {
-            // Feedback visual inmediato (opcional) o spinner local
-            const newLogoUrl = await uploadCompanyLogo(appUser.tenantId, file);
+            // 1. Subir imagen
+            const publicUrl = await uploadCompanyLogo(user.tenantId, file);
             
-            // Actualizar estado local y BD
-            setTenant(prev => prev ? ({ ...prev, logo_url: newLogoUrl }) : null);
-            await updateTenant(appUser.tenantId, { logo_url: newLogoUrl });
+            // 2. Cache busting (truco para refrescar imagen al instante)
+            const timestampedUrl = `${publicUrl}?t=${new Date().getTime()}`;
+
+            // 3. Guardar URL en la base de datos inmediatamente
+            await updateTenant(user.tenantId, { logo_url: timestampedUrl });
+
+            // 4. Actualizar estado local para ver el cambio
+            setFormData(prev => ({ ...prev, logo_url: timestampedUrl }));
             
-        } catch (error) {
-            console.error("Error subiendo logo", error);
-            alert("No se pudo subir el logo");
+            setMessage({ type: 'success', text: 'Logo actualizado correctamente.' });
+
+        } catch (error: any) {
+            console.error("Error subiendo logo:", error);
+            setMessage({ type: 'error', text: 'Error al subir el logo.' });
+        } finally {
+            setLoading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
-    if (loading) return <div className="p-8">Cargando datos de empresa...</div>;
-    if (!tenant) return <div className="p-8">No se encontró información de la empresa.</div>;
+    // --- NUEVA FUNCIÓN: ELIMINAR LOGO ---
+    const handleDeleteLogo = async () => {
+        if (!user.tenantId) return;
+        
+        // Confirmación simple
+        if (!window.confirm("¿Seguro que quieres eliminar el logo y volver al original?")) return;
+
+        setLoading(true);
+        setMessage(null);
+
+        try {
+            // Enviamos logo_url: null para borrarlo de la base de datos
+            await updateTenant(user.tenantId, { logo_url: null } as any); 
+            
+            // Actualizamos la vista local inmediatamente
+            setFormData(prev => ({ ...prev, logo_url: '' }));
+            setMessage({ type: 'success', text: 'Logo eliminado. Se mostrará el logo por defecto.' });
+        } catch (error) {
+            console.error("Error eliminando logo:", error);
+            setMessage({ type: 'error', text: 'Error al eliminar el logo.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // --- GUARDAR TEXTOS ---
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user.tenantId) return;
+
+        setLoading(true);
+        setMessage(null);
+
+        try {
+            await updateTenant(user.tenantId, {
+                nombre: formData.nombre,
+                telefono: formData.telefono,
+                direccion: formData.direccion
+                // El RFC usualmente no se edita aquí por seguridad fiscal, pero puedes agregarlo si quieres
+            });
+
+            setMessage({ type: 'success', text: 'Información de la empresa guardada.' });
+        } catch (error: any) {
+            console.error("Error guardando empresa:", error);
+            setMessage({ type: 'error', text: 'Error al guardar cambios.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (pageLoading) {
+        return <div className="p-8 text-center text-gray-500">Cargando información de la empresa...</div>;
+    }
+
+    if (!user.tenantId) {
+        return <div className="p-8 text-center text-red-500">No tienes una empresa asignada.</div>;
+    }
 
     return (
-        <div className="max-w-4xl">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Perfil de Empresa</h2>
-            
-            <form onSubmit={handleSave} className="space-y-8 divide-y divide-gray-200">
-                {/* SECCIÓN 1: IDENTIDAD */}
-                <div className="pt-8 space-y-6 sm:pt-10 sm:space-y-5">
-                    <div>
-                        <h3 className="text-lg leading-6 font-medium text-gray-900">Identidad de Marca</h3>
-                        <p className="mt-1 max-w-2xl text-sm text-gray-500">Logo y nombre público de la inmobiliaria.</p>
+        <div className="bg-white p-8 rounded-lg shadow-sm max-w-4xl mx-auto">
+            <div className="flex justify-between items-center mb-8 border-b pb-4">
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Perfil de Empresa</h2>
+                    <p className="text-sm text-gray-500 mt-1">Configura la identidad de tu inmobiliaria.</p>
+                </div>
+                {loading && (
+                    <div className="flex items-center text-iange-orange font-medium animate-pulse">
+                         <span className="mr-2">💾</span> Guardando...
                     </div>
+                )}
+            </div>
 
-                    <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
-                        <label className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">
-                            Logo
-                        </label>
-                        <div className="mt-1 sm:mt-0 sm:col-span-2">
-                            <div className="flex items-center">
-                                <span className="h-20 w-20 rounded-full overflow-hidden bg-gray-100 border border-gray-200 flex items-center justify-center">
-                                    {tenant.logo_url ? (
-                                        <img src={tenant.logo_url} alt="Logo empresa" className="h-full w-full object-cover" />
-                                    ) : (
-                                        <svg className="h-full w-full text-gray-300" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M24 20.993V24H0v-2.996A14.977 14.977 0 0112.004 15c4.904 0 9.26 2.354 11.996 5.993zM16.002 8.999a4 4 0 11-8 0 4 4 0 018 0z" />
-                                        </svg>
-                                    )}
-                                </span>
-                                <input 
-                                    type="file" 
-                                    ref={fileInputRef}
-                                    className="hidden" 
-                                    accept="image/*"
-                                    onChange={handleLogoChange}
+            {message && (
+                <div className={`mb-6 p-4 rounded-md ${message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {message.text}
+                </div>
+            )}
+
+            <form onSubmit={handleSubmit}>
+                <FormSection title="Logotipo" description="Este logo aparecerá en tus reportes, fichas técnicas y el panel de tus asesores.">
+                    <div className="flex items-center gap-6">
+                        {/* Contenedor del Logo con fondo sutil para ver transparencias */}
+                        <div className="relative group bg-gray-50 rounded-lg p-2 border border-gray-200">
+                            {formData.logo_url ? (
+                                <img 
+                                    src={formData.logo_url} 
+                                    alt="Logo Empresa" 
+                                    className="h-24 w-24 object-contain"
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                        (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                                    }}
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="ml-5 bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm leading-4 font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
-                                >
-                                    Cambiar
-                                </button>
+                            ) : null}
+                            
+                            {/* Fallback si no hay logo (Icono genérico) */}
+                            <div className={`h-24 w-24 flex items-center justify-center text-gray-400 ${formData.logo_url ? 'hidden' : ''}`}>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
                             </div>
                         </div>
-                    </div>
 
-                    <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
-                        <label className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">Nombre Comercial</label>
-                        <div className="mt-1 sm:mt-0 sm:col-span-2">
-                            <input
-                                type="text"
-                                value={tenant.nombre}
-                                onChange={(e) => setTenant({ ...tenant, nombre: e.target.value })}
-                                className="max-w-lg block w-full shadow-sm focus:ring-iange-orange focus:border-iange-orange sm:text-sm border-gray-300 rounded-md"
+                        {/* Botones de Acción */}
+                        <div className="flex flex-col gap-3">
+                            <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                className="hidden" 
+                                accept="image/png,image/jpeg,image/webp" // Soporte explícito para PNG
+                                onChange={handleFileChange}
                             />
+                            
+                            <div className="flex gap-2">
+                                <button 
+                                    type="button" 
+                                    onClick={handleLogoClick}
+                                    disabled={loading}
+                                    className="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                >
+                                    {loading ? 'Subiendo...' : 'Subir Logo'}
+                                </button>
+
+                                {/* BOTÓN ELIMINAR (Solo visible si hay logo) */}
+                                {formData.logo_url && (
+                                    <button 
+                                        type="button" 
+                                        onClick={handleDeleteLogo}
+                                        disabled={loading}
+                                        className="px-4 py-2 bg-red-50 border border-red-200 rounded-md shadow-sm text-sm font-medium text-red-600 hover:bg-red-100 transition-colors"
+                                    >
+                                        Eliminar
+                                    </button>
+                                )}
+                            </div>
+                            
+                            <p className="mt-2 text-xs text-gray-500">Recomendado: PNG transparente, 500x500px.</p>
                         </div>
                     </div>
-                </div>
+                </FormSection>
 
-                {/* SECCIÓN 2: CONTACTO */}
-                <div className="pt-8 space-y-6 sm:pt-10 sm:space-y-5">
-                    <div>
-                        <h3 className="text-lg leading-6 font-medium text-gray-900">Información Fiscal y Contacto</h3>
-                    </div>
-                    
-                    {/* Correo (Solo Lectura) */}
-                    <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
-                        <label className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">Correo Dueño/Admin</label>
-                        <div className="mt-1 sm:mt-0 sm:col-span-2">
-                            <input
-                                disabled
-                                type="text"
-                                value={tenant.ownerEmail}
-                                className="max-w-lg block w-full bg-gray-50 shadow-sm sm:text-sm border-gray-300 rounded-md cursor-not-allowed text-gray-500"
-                            />
-                            <p className="mt-2 text-sm text-gray-500">Contacte a soporte para cambiar el correo titular.</p>
+                <FormSection title="Datos Generales" description="Información de contacto y fiscal de la inmobiliaria.">
+                    <div className="grid grid-cols-1 gap-6">
+                        <Input label="Nombre de la Inmobiliaria" name="nombre" value={formData.nombre} onChange={handleChange} placeholder="Ej. Inmobiliaria Regia" />
+                        <Input label="Teléfono de Contacto" name="telefono" value={formData.telefono} onChange={handleChange} placeholder="Ej. 81 8888 8888" />
+                        <Input label="Dirección Física" name="direccion" value={formData.direccion} onChange={handleChange} placeholder="Ej. Av. Siempre Viva 123, Monterrey" />
+                        <div className="opacity-75">
+                            <Input label="RFC (Identificador Fiscal)" name="rfc" value={formData.rfc} onChange={handleChange} disabled={true} />
+                            <p className="text-xs text-gray-400 mt-1">El RFC no se puede editar directamente. Contacta a soporte.</p>
                         </div>
                     </div>
+                </FormSection>
 
-                    <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:border-t sm:border-gray-200 sm:pt-5">
-                        <label className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">Teléfono Público</label>
-                        <div className="mt-1 sm:mt-0 sm:col-span-2">
-                            <input
-                                type="text"
-                                value={tenant.telefono || ''}
-                                onChange={(e) => setTenant({ ...tenant, telefono: e.target.value })}
-                                className="max-w-lg block w-full shadow-sm focus:ring-iange-orange focus:border-iange-orange sm:text-sm border-gray-300 rounded-md"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                {/* SECCIÓN 3: CONFIGURACIÓN OPERATIVA */}
-                <div className="pt-8 space-y-6 sm:pt-10 sm:space-y-5">
-                    <div>
-                        <h3 className="text-lg leading-6 font-medium text-gray-900">Reglas de Negocio</h3>
-                        <p className="mt-1 max-w-2xl text-sm text-gray-500">Controla cómo opera tu equipo.</p>
-                    </div>
-                    
-                    <div className="space-y-4">
-                         <Toggle 
-                            label="Requerir aprobación para publicar propiedades" 
-                            checked={tenant.requiereAprobacionPublicar || false} 
-                            onChange={(val) => setTenant({...tenant, requiereAprobacionPublicar: val})} 
-                        />
-                         <Toggle 
-                            label="Requerir aprobación para cerrar ventas" 
-                            checked={tenant.requiereAprobacionCerrar || false} 
-                            onChange={(val) => setTenant({...tenant, requiereAprobacionCerrar: val})} 
-                        />
-                    </div>
-                </div>
-
-                <div className="pt-5 pb-10">
-                    <div className="flex justify-end">
-                        <button
-                            type="submit"
-                            disabled={saving}
-                            className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-iange-orange hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-iange-orange"
-                        >
-                            {saving ? 'Guardando...' : 'Guardar Configuración'}
-                        </button>
-                    </div>
+                <div className="pt-6 flex justify-end">
+                    <button 
+                        type="submit" 
+                        disabled={loading}
+                        className={`py-2 px-8 rounded-md text-white font-medium shadow-sm transition-all ${loading ? 'bg-gray-400' : 'bg-iange-orange hover:bg-orange-600'}`}
+                    >
+                        {loading ? 'Guardando...' : 'Guardar Cambios'}
+                    </button>
                 </div>
             </form>
         </div>
