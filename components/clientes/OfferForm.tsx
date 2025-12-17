@@ -1,5 +1,7 @@
 import React, { useEffect } from 'react';
 import { OfferData, Propiedad, Comprador } from '../../types';
+// [1] IMPORTAMOS EL COMPONENTE CURRENCY INPUT
+import { CurrencyInput } from '../ui/CurrencyInput';
 
 const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
     <section className="mb-6 border-b pb-4">
@@ -10,15 +12,11 @@ const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ t
     </section>
 );
 
-const Input: React.FC<{ label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => void; type?: string; fullWidth?: boolean; placeholder?: string; prefix?: string }> = ({ label, name, value, onChange, type = 'text', fullWidth, placeholder, prefix }) => (
+// Componente simple para inputs de texto NORMALES (no moneda)
+const TextInput: React.FC<{ label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void; type?: string; fullWidth?: boolean; placeholder?: string; }> = ({ label, name, value, onChange, type = 'text', fullWidth, placeholder }) => (
     <div className={fullWidth ? 'md:col-span-2' : ''}>
         <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
         <div className="relative rounded-md shadow-sm">
-            {prefix && (
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                    <span className="text-gray-500 sm:text-sm">{prefix}</span>
-                </div>
-            )}
             <input 
                 type={type} 
                 name={name} 
@@ -26,7 +24,7 @@ const Input: React.FC<{ label: string; name: string; value: string; onChange: (e
                 value={value} 
                 onChange={onChange} 
                 placeholder={placeholder} 
-                className={`w-full rounded-md border border-gray-300 bg-white py-2 px-3 shadow-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 sm:text-sm ${prefix ? 'pl-8' : ''}`} 
+                className="w-full rounded-md border border-gray-300 bg-white py-2 px-3 shadow-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 sm:text-sm" 
             />
         </div>
     </div>
@@ -48,7 +46,7 @@ interface OfferFormProps {
     onSave: () => void;
     onCancel: () => void;
     compradores?: Comprador[];
-    initialBuyerId?: number | null; // <--- NUEVO: ID para modo edición
+    initialBuyerId?: number | null; 
 }
 
 const OfferForm: React.FC<OfferFormProps> = ({ 
@@ -58,7 +56,7 @@ const OfferForm: React.FC<OfferFormProps> = ({
     onSave, 
     onCancel, 
     compradores = [],
-    initialBuyerId = null // Default null (Modo Crear)
+    initialBuyerId = null 
 }) => {
     
     // Si entramos en modo edición, fijamos el comprador en el form inmediatamente
@@ -68,8 +66,14 @@ const OfferForm: React.FC<OfferFormProps> = ({
         }
     }, [initialBuyerId]);
 
+    // Manejador genérico para inputs normales y selects
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
+        onFormChange({ ...formData, [name]: value });
+    };
+
+    // [2] Manejador ESPECÍFICO para CurrencyInput (recibe string limpio)
+    const handleCurrencyChange = (name: string, value: string) => {
         onFormChange({ ...formData, [name]: value });
     };
 
@@ -82,10 +86,8 @@ const OfferForm: React.FC<OfferFormProps> = ({
         onSave();
     };
 
-    // Lógica para ocultar institución si es Infonavit o Contado
     const showInstitution = ['Crédito Bancario', 'Cofinavit', 'Otro'].includes(formData.formaPago);
-    
-    const isEditing = !!initialBuyerId; // Bandera para saber si estamos editando
+    const isEditing = !!initialBuyerId; 
 
     return (
         <form onSubmit={handleSubmit} className="bg-gray-50 p-6 rounded-lg">
@@ -106,7 +108,7 @@ const OfferForm: React.FC<OfferFormProps> = ({
                 </div>
             </div>
 
-            {/* SECCIÓN 0: VINCULAR COMPRADOR (BLOQUEADO SI ES EDICIÓN) */}
+            {/* SECCIÓN 0: VINCULAR COMPRADOR */}
             <FormSection title="Cliente Comprador">
                 {isEditing ? (
                     <div className="md:col-span-2">
@@ -129,7 +131,14 @@ const OfferForm: React.FC<OfferFormProps> = ({
             </FormSection>
 
             <FormSection title="1. Precio y Condiciones">
-                <Input label="Precio Ofrecido" name="precioOfrecido" value={formData.precioOfrecido} onChange={handleChange} prefix="$" placeholder="Ej. 2,500,000" />
+                {/* [3] PRECIO OFRECIDO CON CURRENCY INPUT */}
+                <CurrencyInput 
+                    label="Precio Ofrecido" 
+                    name="precioOfrecido" 
+                    value={formData.precioOfrecido} 
+                    onChange={(val) => handleCurrencyChange('precioOfrecido', val)} 
+                    placeholder="Ej. 2,500,000" 
+                />
                 
                 <Select label="Forma de Pago" name="formaPago" value={formData.formaPago} onChange={handleChange}>
                     <option value="Contado">Contado</option>
@@ -140,18 +149,36 @@ const OfferForm: React.FC<OfferFormProps> = ({
                 </Select>
 
                 {showInstitution && (
-                    <Input label="Institución Financiera" name="institucionFinanciera" value={formData.institucionFinanciera || ''} onChange={handleChange} placeholder="Ej. BBVA, Santander..." fullWidth />
+                    <TextInput label="Institución Financiera" name="institucionFinanciera" value={formData.institucionFinanciera || ''} onChange={handleChange} placeholder="Ej. BBVA, Santander..." fullWidth />
                 )}
             </FormSection>
 
             <FormSection title="2. Desglose (Flujo)">
-                <Input label="Apartado" name="montoApartado" value={formData.montoApartado} onChange={handleChange} prefix="$" />
-                <Input label="Enganche" name="montoEnganche" value={formData.montoEnganche} onChange={handleChange} prefix="$" />
-                <Input label="Saldo a Firma" name="saldoAFirma" value={formData.saldoAFirma} onChange={handleChange} prefix="$" fullWidth />
+                {/* [4] CAMPOS MONETARIOS DE FLUJO */}
+                <CurrencyInput 
+                    label="Apartado" 
+                    name="montoApartado" 
+                    value={formData.montoApartado} 
+                    onChange={(val) => handleCurrencyChange('montoApartado', val)} 
+                />
+                <CurrencyInput 
+                    label="Enganche" 
+                    name="montoEnganche" 
+                    value={formData.montoEnganche} 
+                    onChange={(val) => handleCurrencyChange('montoEnganche', val)} 
+                />
+                <div className="md:col-span-2">
+                    <CurrencyInput 
+                        label="Saldo a Firma" 
+                        name="saldoAFirma" 
+                        value={formData.saldoAFirma} 
+                        onChange={(val) => handleCurrencyChange('saldoAFirma', val)} 
+                    />
+                </div>
             </FormSection>
             
             <FormSection title="3. Vigencia y Observaciones">
-                <Input label="Vigencia de la oferta" name="vigenciaOferta" type="date" value={formData.vigenciaOferta} onChange={handleChange} />
+                <TextInput label="Vigencia de la oferta" name="vigenciaOferta" type="date" value={formData.vigenciaOferta} onChange={handleChange} />
                 
                 <div className="md:col-span-2">
                     <label htmlFor="observaciones" className="block text-sm font-medium text-gray-700 mb-1">Observaciones</label>
