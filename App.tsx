@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { supabase } from './supabaseClient'; 
 
+// --- 1. IMPORTAMOS EL CONTEXTO (Para evitar el loop infinito) ---
+import { useAuth } from './authContext';
+
 // Tipos y constantes
 import { User, Propiedad, Propietario, Comprador, CompanySettings, UserPermissions } from "./types";
 import { ROLES, ROLE_DEFAULT_PERMISSIONS } from "./constants";
@@ -41,17 +44,19 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Toast from './components/ui/Toast';
 
-// --- 1. COMPONENTE DE PROTECCIÓN DE RUTAS ---
+// --- COMPONENTE DE PROTECCIÓN DE RUTAS ---
 const ProtectedRoute = ({ user, permissionKey, children }: { user: User, permissionKey?: keyof UserPermissions, children: React.ReactNode }) => {
     if (!user) return <Navigate to="/login" replace />;
     if (user.role === ROLES.SUPER_ADMIN) return <>{children}</>;
-    if (permissionKey && !user.permissions?.[permissionKey]) {
+    
+    // USAMOS 'as any' PARA EVITAR ERRORES DE TYPESCRIPT AQUÍ
+    if (permissionKey && !(user.permissions as any)?.[permissionKey]) {
         return <Navigate to="/configuraciones/mi-perfil" replace />;
     }
     return <>{children}</>;
 };
 
-// --- 2. LAYOUT PRINCIPAL ---
+// --- LAYOUT PRINCIPAL ---
 const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitImpersonation }: { 
     children: React.ReactNode, 
     user: User, 
@@ -73,9 +78,35 @@ const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitIm
 );
 
 const App = () => {
-  // --- ESTADO ---
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true); 
+  // --- CAMBIO CLAVE: USAMOS EL CONTEXTO EN LUGAR DE ESTADO MANUAL ---
+  const { appUser: contextUser, status, logout } = useAuth();
+  const loading = status === 'loading';
+
+  // --- LÓGICA DE PERMISOS RESTAURADA (Para arreglar Sidebar Vacío y Errores TS) ---
+  const user = useMemo(() => {
+    if (!contextUser) return null;
+
+    // Casting 'as any' para evitar errores de índice en TS
+    const userRole = (contextUser.role || 'asesor') as any;
+    // Recuperamos los permisos por defecto según el rol
+    const defaultPerms = ROLE_DEFAULT_PERMISSIONS[userRole] || ROLE_DEFAULT_PERMISSIONS['asesor'];
+    const dbPerms = contextUser.permissions || {};
+
+    // Fusionamos permisos (DB gana sobre default, default cubre huecos)
+    const effectivePermissions: UserPermissions = {
+        dashboard: (dbPerms as any).dashboard ?? defaultPerms.dashboard,
+        contactos: (dbPerms as any).contactos ?? defaultPerms.contactos,
+        propiedades: (dbPerms as any).propiedades ?? defaultPerms.propiedades,
+        progreso: (dbPerms as any).progreso ?? defaultPerms.progreso,
+        reportes: (dbPerms as any).reportes ?? defaultPerms.reportes,
+        crm: (dbPerms as any).crm ?? defaultPerms.crm,
+        equipo: (dbPerms as any).equipo ?? defaultPerms.equipo,
+    };
+
+    return { ...contextUser, permissions: effectivePermissions };
+  }, [contextUser]);
+
+  // Estados locales (MANTENIDOS EXACTAMENTE IGUAL)
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
 
@@ -95,88 +126,10 @@ const App = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // --- AUTENTICACIÓN ---
-  useEffect(() => {
-    let mounted = true;
+  // --- AQUI BORRAMOS EL USEEFFECT DE AUTH MANUAL QUE CAUSABA EL LOOP ---
+  // (El authContext ya maneja la sesión, así que no necesitamos duplicar esa lógica aquí)
 
-    const loadProfile = async (sessionUser: any) => {
-        try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', sessionUser.id)
-                .single();
-            
-            if (mounted) {
-                if (data) {
-                    const userRole = data.role || 'asesor';
-                    const defaultPerms = ROLE_DEFAULT_PERMISSIONS[userRole] || ROLE_DEFAULT_PERMISSIONS['asesor'];
-                    const dbPerms = data.permissions || {};
-
-                    const effectivePermissions: UserPermissions = {
-                        dashboard: dbPerms.dashboard ?? defaultPerms.dashboard,
-                        contactos: dbPerms.contactos ?? defaultPerms.contactos,
-                        propiedades: dbPerms.propiedades ?? defaultPerms.propiedades,
-                        progreso: dbPerms.progreso ?? defaultPerms.progreso,
-                        reportes: dbPerms.reportes ?? defaultPerms.reportes,
-                        crm: dbPerms.crm ?? defaultPerms.crm,
-                        equipo: dbPerms.equipo ?? defaultPerms.equipo,
-                    };
-
-                    setDataLoading(true);
-
-                    setUser({
-                        id: data.id as any,
-                        email: sessionUser.email || '',
-                        name: data.full_name || 'Usuario',
-                        role: userRole,
-                        photo: data.avatar_url || 'VP',
-                        tenantId: data.tenant_id,
-                        permissions: effectivePermissions, 
-                        phone: data.phone || '',
-                    });
-                } else if (error) {
-                    console.error("Error perfil:", error.message);
-                }
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            if (mounted) setLoading(false);
-        }
-    };
-
-    const checkCurrentSession = async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-            await loadProfile(session.user);
-        } else {
-            if (mounted) setLoading(false);
-        }
-    };
-
-    checkCurrentSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (!mounted) return;
-
-        if (event === 'SIGNED_OUT') {
-            setUser(null);
-            // No forzamos navegación aquí para permitir ver rutas públicas
-        } else if (event === 'SIGNED_IN' && session?.user) {
-            if (userRef.current?.id === session.user.id) return;
-            loadProfile(session.user); 
-        }
-    });
-
-    return () => {
-        mounted = false;
-        subscription.unsubscribe();
-    };
-  }, []); 
-
-
-  // --- CARGA DE DATOS ---
+  // --- CARGA DE DATOS (INTACTA) ---
   const refreshAppData = async () => {
       if (!user) return;
       if (!user.tenantId && user.role === ROLES.SUPER_ADMIN) {
@@ -216,7 +169,7 @@ const App = () => {
     refreshAppData();
   }, [user]); 
 
-  // --- REALTIME ---
+  // --- REALTIME (INTACTO) ---
   useEffect(() => {
       if (!user?.tenantId) return;
 
@@ -263,11 +216,9 @@ const App = () => {
     if (error) alert(error.message);
   };
 
+  // Logout usando Contexto
   const handleLogout = async () => {
-    setLoading(true);
-    await supabase.auth.signOut();
-    setUser(null);
-    setLoading(false);
+    await logout();
     navigate('/login');
   };
 
@@ -334,36 +285,40 @@ const App = () => {
     );
   }
 
-  // --- ESTRUCTURA DE RUTAS ACTUALIZADA PARA SOPORTAR AMBOS TIPOS DE LINKS ---
+  // --- PROTECCIÓN CONTRA LOOP (Si el perfil falla en cargar) ---
+  if (status === 'authenticated' && !user) {
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-red-50 p-6 text-center">
+            <h1 className="text-2xl font-bold text-red-700 mb-2">Error de Sincronización</h1>
+            <p className="text-gray-700 mb-6 max-w-md">
+                No se pudo cargar tu perfil.
+            </p>
+            <button 
+                onClick={async () => { await logout(); navigate('/login'); }} 
+                className="bg-red-600 text-white px-6 py-2 rounded-md hover:bg-red-700 transition"
+            >
+                Reiniciar Sesión
+            </button>
+        </div>
+    );
+  }
+
+  // --- ESTRUCTURA DE RUTAS (INTACTA) ---
   return (
     <>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       
       <Routes>
-        {/* ======================================================== */}
-        {/* 1. RUTAS PÚBLICAS (ACCESIBLES SIN LOGIN)                 */}
-        {/* ======================================================== */}
-        
-        {/* Enlace Moderno (Estilo GoHighLevel) */}
+        {/* RUTAS PÚBLICAS */}
         <Route path="/preview/:token" element={<PublicPropertyPage />} />
-
-        {/* Enlace Legacy / Fallback (Para propiedades sin token o links viejos) */}
         <Route path="/p/:id" element={<PublicPropertyPage />} />
 
-
-        {/* ======================================================== */}
-        {/* 2. LOGIN: ACCESIBLE SOLO SI NO ESTÁS LOGUEADO            */}
-        {/* ======================================================== */}
+        {/* LOGIN */}
         <Route path="/login" element={
             !user ? <Login onLogin={handleLogin} /> : <Navigate to="/" replace />
         } />
 
-        {/* ======================================================== */}
-        {/* 3. RUTAS PRIVADAS: REQUIEREN USUARIO AUTENTICADO         */}
-        {/* ======================================================== */}
-        {/* Cualquier otra ruta (/*) se procesa aquí.                */}
-        {/* Si no hay usuario, redirige a Login.                     */}
-        {/* Si hay usuario, renderiza MainLayout con las rutas App   */}
+        {/* RUTAS PRIVADAS */}
         <Route path="/*" element={
             !user ? (
                 <Navigate to="/login" replace />
@@ -376,7 +331,6 @@ const App = () => {
                     onExitImpersonation={handleExitImpersonation}
                 >
                     <Routes>
-                        {/* Redirección Inicial Inteligente */}
                         <Route path="/" element={<Navigate to={getInitialRoute(user)} replace />} />
                         
                         <Route path="/oportunidades" element={
