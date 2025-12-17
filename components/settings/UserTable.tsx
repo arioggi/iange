@@ -24,10 +24,19 @@ const UserTable: React.FC<UserTableProps> = ({ users, onEdit, onDelete }) => {
                         <tr key={user.id} className="hover:bg-gray-50">
                             <td className="px-6 py-4">
                                 <div className="flex items-center">
-                                    <div className="flex-shrink-0 h-10 w-10">
-                                        <div className="h-10 w-10 rounded-full bg-iange-salmon text-iange-orange flex items-center justify-center font-bold">
-                                            {user.photo}
-                                        </div>
+                                    <div className="flex-shrink-0 h-10 w-10 relative">
+                                        {/* --- CORRECCIÓN: Lógica para mostrar IMAGEN o INICIAL --- */}
+                                        {user.photo && user.photo.length > 10 ? (
+                                            <img 
+                                                className="h-10 w-10 rounded-full object-cover border border-gray-200" 
+                                                src={user.photo} 
+                                                alt={user.name} 
+                                            />
+                                        ) : (
+                                            <div className="h-10 w-10 rounded-full bg-iange-salmon text-iange-orange flex items-center justify-center font-bold text-lg border border-iange-salmon">
+                                                {user.name.charAt(0).toUpperCase()}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="ml-4">
                                         <div className="text-sm font-medium text-gray-900">{user.name}</div>

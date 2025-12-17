@@ -780,3 +780,117 @@ export const createTenantUser = async (email: string, password: string, tenantId
 
     return authData.user;
 };
+
+// ==========================================
+// 6. GESTIÓN DE PERFIL (AVATAR Y SEGURIDAD)
+// ==========================================
+
+// Función para subir avatar con estrategia de "Sobrescritura"
+export const uploadProfileAvatar = async (userId: string, file: File) => {
+    try {
+        // 1. Comprimir la imagen usando tu utilidad existente
+        const compressedFile = await compressImage(file, 0.7, 500); // 500px es suficiente para avatar
+
+        // 2. Definir ruta única por usuario (siempre el mismo nombre para evitar basura)
+        // Usamos 'avatars' como bucket. Asegúrate de crearlo en Supabase Storage.
+        const filePath = `${userId}/avatar.jpg`; 
+
+        // 3. Subir con 'upsert: true' para sobrescribir la anterior
+        const { error: uploadError } = await supabase.storage
+            .from('avatars') 
+            .upload(filePath, compressedFile, {
+                cacheControl: '0', // Importante para evitar caché agresivo de CDN
+                upsert: true
+            });
+
+        if (uploadError) throw uploadError;
+
+        // 4. Obtener URL pública
+        const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+        
+        // 5. Agregar timestamp para "cache busting" en el frontend
+        // Esto fuerza al navegador a descargar la nueva imagen aunque se llame igual
+        const publicUrlWithCacheBuster = `${data.publicUrl}?t=${Date.now()}`;
+
+        return publicUrlWithCacheBuster;
+
+    } catch (error) {
+        console.error("Error subiendo avatar:", error);
+        throw error;
+    }
+};
+
+// Función para actualizar contraseña
+export const updateUserPassword = async (newPassword: string) => {
+    const { data, error } = await supabase.auth.updateUser({
+        password: newPassword
+    });
+
+    if (error) throw error;
+    return data;
+};
+
+// ==========================================
+// 7. GESTIÓN DE PERFIL EMPRESA (TENANT)
+// ==========================================
+
+// Subir Logo de Empresa
+export const uploadCompanyLogo = async (tenantId: string, file: File) => {
+    try {
+        // Usamos el mismo compresor que ya tienes
+        const compressedFile = await compressImage(file, 0.8, 800); 
+        
+        // Ruta: company-logos/tenantId_timestamp.jpg
+        const fileName = `${tenantId}_${Date.now()}.jpg`;
+        const filePath = `${fileName}`; // O folder structure si prefieres
+
+        // Asegúrate de tener un bucket llamado 'company-logos' en Supabase Storage
+        const { error: uploadError } = await supabase.storage
+            .from('company-logos') 
+            .upload(filePath, compressedFile, {
+                upsert: true
+            });
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('company-logos').getPublicUrl(filePath);
+        return data.publicUrl;
+    } catch (error) {
+        console.error("Error subiendo logo:", error);
+        throw error;
+    }
+};
+
+// Actualizar Datos de la Empresa
+export const updateTenant = async (tenantId: string, updates: {
+    nombre?: string;
+    telefono?: string;
+    direccion?: string; // Asumiendo que agregaste este campo o usas 'direccion_fiscal'
+    logo_url?: string;
+    // Configs
+    requiereAprobacionPublicar?: boolean;
+    requiereAprobacionCerrar?: boolean;
+    integracionWhatsapp?: boolean;
+}) => {
+    const { data, error } = await supabase
+        .from('tenants')
+        .update(updates)
+        .eq('id', tenantId)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+};
+
+// Obtener Tenant por ID (para cargar el formulario)
+export const getTenantById = async (tenantId: string) => {
+    const { data, error } = await supabase
+        .from('tenants')
+        .select('*')
+        .eq('id', tenantId)
+        .single();
+    
+    if (error) throw error;
+    return data;
+};

@@ -1,11 +1,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-// CAMBIO: Importamos BrowserRouter en lugar de HashRouter
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import adapter from './data/localStorageAdapter';
+// 1. IMPORTAR EL PROVEEDOR
+import { AuthProvider } from './authContext';
 
-// Inicialización de datos locales (legacy)
 adapter.migrateData();
 
 const rootElement = document.getElementById('root');
@@ -16,9 +16,11 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    {/* CAMBIO: Usamos BrowserRouter para URLs limpias (sin #) */}
     <BrowserRouter>
-      <App />
+      {/* 2. ENVOLVER LA APP */}
+      <AuthProvider>
+        <App />
+      </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

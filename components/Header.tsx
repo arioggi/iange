@@ -55,10 +55,28 @@ const Header: React.FC<HeaderProps> = ({ title, user, onLogout, isImpersonating,
                 <p className="font-semibold text-gray-800">{user.name}</p>
                 <p className="text-sm text-gray-500">{user.role}</p>
             </div>
+            
             <div className="relative" ref={dropdownRef}>
-                <button onClick={() => setDropdownOpen(!dropdownOpen)} className="w-12 h-12 bg-iange-orange rounded-full flex items-center justify-center text-white font-bold text-xl cursor-pointer">
-                {user.photo}
+                {/* --- BOTÓN DE PERFIL CORREGIDO --- */}
+                <button 
+                    onClick={() => setDropdownOpen(!dropdownOpen)} 
+                    className="w-12 h-12 rounded-full overflow-hidden focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-iange-orange transition-all"
+                >
+                    {user.photo && user.photo.length > 10 ? (
+                        // Opción A: Mostrar la imagen real
+                        <img 
+                            src={user.photo} 
+                            alt="Perfil" 
+                            className="w-full h-full object-cover" 
+                        />
+                    ) : (
+                        // Opción B: Fallback (Inicial sobre fondo naranja)
+                        <div className="w-full h-full bg-iange-orange flex items-center justify-center text-white font-bold text-xl">
+                            {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                        </div>
+                    )}
                 </button>
+
                 {dropdownOpen && (
                     <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200">
                         <Link to="/configuraciones/mi-perfil" onClick={() => setDropdownOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
