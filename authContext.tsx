@@ -22,8 +22,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
   const [appUser, setAppUser] = useState<User | null>(null);
 
+  // --- FUNCIÓN MEJORADA PARA DEBUGGEAR ---
   const loadAppUser = async (sbUser: SupabaseUser) => {
     try {
+      console.log("🔄 [Auth] Cargando perfil desde Supabase para:", sbUser.id);
+
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
@@ -31,11 +34,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (error) {
-        // No lanzamos error para evitar loop, simplemente no hay perfil
-        return;
+        // AQUÍ VERÁS EL ERROR REAL EN LA CONSOLA (ej. Permisos o No encontrado)
+        console.error("❌ [Auth] Error obteniendo perfil:", error.message, error);
+        return; 
       }
 
       if (data) {
+        console.log("✅ [Auth] Perfil encontrado:", data);
         const mappedUser: User = {
             id: data.id,
             email: data.email || sbUser.email || '',
@@ -47,9 +52,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             phone: data.phone || '',
         };
         setAppUser(mappedUser);
+      } else {
+        console.warn("⚠️ [Auth] No se encontró data para el perfil (sin error explícito).");
       }
     } catch (err) {
-      console.error("[Auth] Error inesperado:", err);
+      console.error("💥 [Auth] Excepción inesperada:", err);
     }
   };
 
