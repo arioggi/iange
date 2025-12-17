@@ -77,9 +77,12 @@ const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitIm
 );
 
 const App = () => {
-  // 1. Usamos el estado global del AuthContext (Evita conflictos y loops)
+  // 1. Usamos el estado global del AuthContext
   const { appUser: contextUser, status, logout } = useAuth();
-  const loading = status === 'loading';
+  
+  // --- MODIFICACIÓN AGRESIVA: Loading es true si estamos cargando O si estamos autenticados pero sin usuario ---
+  // Esto fuerza a la app a esperar en la pantalla de carga hasta que se resuelva el perfil
+  const isLoading = status === 'loading';
 
   // 2. Calculamos permisos del usuario actual
   const user = useMemo(() => {
@@ -89,7 +92,6 @@ const App = () => {
     const defaultPerms = ROLE_DEFAULT_PERMISSIONS[userRole] || ROLE_DEFAULT_PERMISSIONS['asesor'];
     const dbPerms = contextUser.permissions || {};
 
-    // Fusionamos permisos (La DB tiene prioridad sobre los defaults)
     const effectivePermissions: UserPermissions = {
         dashboard: (dbPerms as any).dashboard ?? defaultPerms.dashboard,
         contactos: (dbPerms as any).contactos ?? defaultPerms.contactos,
@@ -103,32 +105,27 @@ const App = () => {
     return { ...contextUser, permissions: effectivePermissions };
   }, [contextUser]);
 
-  // Estados locales de la aplicación
+  // Estados locales
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
-
-  // Estados de datos
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [propiedades, setPropiedades] = useState<Propiedad[]>([]);
   const [propietarios, setPropietarios] = useState<Propietario[]>([]);
   const [compradores, setCompradores] = useState<Comprador[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
-
-  // Estados de UI
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [initialEditPropId, setInitialEditPropId] = useState<number | null>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
 
-  // --- CARGA DE DATOS DEL NEGOCIO ---
+  // --- CARGA DE DATOS ---
   const refreshAppData = async () => {
       if (!user) return;
       if (!user.tenantId && user.role === ROLES.SUPER_ADMIN) {
           setDataLoading(false);
           return;
       }
-
       if (user.tenantId) {
           try {
               const [props, contacts, usersDb] = await Promise.all([
@@ -136,17 +133,15 @@ const App = () => {
                   getContactsByTenant(user.tenantId),
                   getUsersByTenant(user.tenantId)
               ]);
-              
               if (props) setPropiedades(props);
               if (contacts) {
                   setPropietarios(contacts.propietarios);
                   setCompradores(contacts.compradores);
               }
               if (usersDb) setAllUsers(usersDb);
-              
               setCompanySettings(adapter.getTenantSettings(user.tenantId));
           } catch (error) {
-              console.error("Error cargando datos del negocio:", error);
+              console.error("Error cargando datos:", error);
           } finally {
               setDataLoading(false);
           }
@@ -155,26 +150,19 @@ const App = () => {
       }
   };
 
-  useEffect(() => {
-    refreshAppData();
-  }, [user]); 
+  useEffect(() => { refreshAppData(); }, [user]); 
 
-  // --- REALTIME UPDATES ---
+  // --- REALTIME ---
   useEffect(() => {
       if (!user?.tenantId) return;
-
       const channel = supabase.channel('realtime:app-updates')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'propiedades', filter: `tenant_id=eq.${user.tenantId}` }, () => refreshAppData())
           .on('postgres_changes', { event: '*', schema: 'public', table: 'contactos', filter: `tenant_id=eq.${user.tenantId}` }, () => refreshAppData())
           .subscribe();
-
       return () => { supabase.removeChannel(channel); };
   }, [user?.tenantId]); 
 
-  // Helpers
-  const asesores = useMemo(() => allUsers.filter(u => 
-    u.role === ROLES.ASESOR || u.role === ROLES.ADMIN_EMPRESA || u.role === ROLES.EMPRESA
-  ), [allUsers]);
+  const asesores = useMemo(() => allUsers.filter(u => u.role === ROLES.ASESOR || u.role === ROLES.ADMIN_EMPRESA || u.role === ROLES.EMPRESA), [allUsers]);
 
   const getInitialRoute = (currentUser: User) => {
       if (currentUser.role === ROLES.SUPER_ADMIN) return '/superadmin';
@@ -234,8 +222,8 @@ const App = () => {
     return routes[path] || 'IANGE';
   };
 
-  // --- PANTALLA DE CARGA ---
-  if (loading) {
+  // 1. PANTALLA DE CARGA (Loading)
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center animate-pulse flex flex-col items-center">
@@ -253,13 +241,15 @@ const App = () => {
                <div className="text-3xl font-bold text-iange-orange mb-2">IANGE<span className="text-gray-800">.</span></div>
             </div>
           </div>
-          <div className="text-gray-500">Iniciando sesión...</div>
+          <div className="text-gray-500">Cargando sesión...</div>
         </div>
       </div>
     );
   }
 
-  // --- PANTALLA DE ERROR DE SESIÓN (Detiene el Loop Infinito) ---
+  // 2. ERROR CRÍTICO: AUTENTICADO PERO SIN DATOS (STOP LOOP)
+  // Si llegamos aquí, 'status' NO es 'loading'. Si es 'authenticated' y 'user' es null,
+  // es IMPOSIBLE navegar, así que mostramos error.
   if (status === 'authenticated' && !user) {
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-white p-8 text-center">
@@ -267,20 +257,20 @@ const App = () => {
                 <h1 className="text-2xl font-bold text-red-700 mb-2">⚠️ Error de Perfil</h1>
                 <p className="text-gray-700 mb-6">
                     Se detectó tu sesión, pero no se pudo cargar la información de tu perfil.
-                    <br/><span className="text-sm text-gray-500">(Revisa la consola con F12 para ver detalles)</span>
+                    <br/><span className="text-sm text-gray-500">Esto suele ser un error de permisos en la base de datos.</span>
                 </p>
                 <button 
-                    onClick={handleLogout} 
+                    onClick={async () => { await logout(); navigate('/login'); }} 
                     className="w-full bg-red-600 text-white px-6 py-3 rounded-md hover:bg-red-700 transition font-medium shadow-sm"
                 >
-                    Cerrar Sesión y Reintentar
+                    Cerrar Sesión
                 </button>
             </div>
         </div>
     );
   }
 
-  // --- RUTAS DE LA APP ---
+  // 3. RUTAS (Solo se renderizan si NO está cargando y NO hay error crítico)
   return (
     <>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
@@ -289,7 +279,7 @@ const App = () => {
         <Route path="/preview/:token" element={<PublicPropertyPage />} />
         <Route path="/p/:id" element={<PublicPropertyPage />} />
 
-        {/* LOGIN: Si ya tiene usuario, va al inicio */}
+        {/* LOGIN */}
         <Route path="/login" element={
             !user ? <Login onLogin={handleLogin} /> : <Navigate to="/" replace />
         } />
