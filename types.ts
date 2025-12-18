@@ -45,7 +45,7 @@ export interface UserPermissions {
   reportes: boolean;
   crm: boolean;
   equipo: boolean;
-  billing_edit: boolean; // <--- AGREGAMOS ESTA LÍNEA AQUÍ
+  billing_edit: boolean; 
 }
 
 export interface User {
@@ -61,6 +61,10 @@ export interface User {
   permissions?: UserPermissions;
   zona?: string;
   mustChangePassword?: boolean;
+  // --- CAMPOS DE SUSCRIPCIÓN ---
+  subscriptionStatus?: string;  
+  planId?: string | null;       
+  currentPeriodEnd?: string | null; 
 }
 
 export interface ChecklistStatus {

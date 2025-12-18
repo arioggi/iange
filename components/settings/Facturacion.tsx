@@ -73,7 +73,6 @@ const Select: React.FC<{ label: string; required?: boolean; name: string; value?
 const Facturacion: React.FC = () => {
     const { appUser } = useAuth(); 
     const [loading, setLoading] = useState(true);
-    // Nota: planActivoId se queda en null hasta que crees la columna plan_id en la tabla tenants
     const [planActivoId, setPlanActivoId] = useState<number | null>(null);
     
     const [formData, setFormData] = useState({
@@ -81,7 +80,7 @@ const Facturacion: React.FC = () => {
         rfc: '',
         email_facturacion: '',
         direccion_fiscal: '',
-        metodo_pago: 'Tarjeta crédito-débito', // Valor inicial ajustado
+        metodo_pago: 'Tarjeta crédito-débito', 
         nombre_titular: '',
         banco: '',
         cuenta_bancaria: '',
@@ -96,10 +95,9 @@ const Facturacion: React.FC = () => {
             }
 
             try {
-                // Solo pedimos billing_info para evitar el error 400 de plan_id
                 const { data, error } = await supabase
                     .from('tenants')
-                    .select('billing_info') 
+                    .select('billing_info, plan_id, subscription_status') 
                     .eq('id', appUser.tenantId)
                     .maybeSingle();
 
@@ -108,8 +106,15 @@ const Facturacion: React.FC = () => {
                     return;
                 }
 
-                if (data && data.billing_info) {
-                    setFormData(prev => ({ ...prev, ...data.billing_info }));
+                if (data) {
+                    // Aseguramos que se lea el plan_id correctamente
+                    if (data.plan_id) {
+                        setPlanActivoId(Number(data.plan_id));
+                    }
+
+                    if (data.billing_info) {
+                        setFormData(prev => ({ ...prev, ...data.billing_info }));
+                    }
                 }
             } catch (err) {
                 console.error("💥 Error inesperado:", err);
@@ -126,14 +131,17 @@ const Facturacion: React.FC = () => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handlePayPlan = async (priceId: string) => {
+    // --- FUNCIÓN CORREGIDA ---
+    const handlePayPlan = async (priceId: string, planId: number) => {
         if (!priceId) return alert("Este plan no tiene un ID de Stripe configurado.");
         try {
+            // AQUÍ ESTABA EL ERROR: Faltaba pasar planId como el quinto parámetro
             await stripeService.createCheckoutSession(
                 priceId,
                 appUser?.tenantId || '',
                 appUser?.email || '',
-                appUser?.id || ''
+                appUser?.id?.toString() || '',
+                planId // <--- AHORA SÍ SE ENVÍA EL DATO
             );
         } catch (error) {
             console.error("Error Stripe:", error);
@@ -164,7 +172,13 @@ const Facturacion: React.FC = () => {
         <div className="bg-white p-8 rounded-lg shadow-sm">
             <h2 className="text-2xl font-bold text-gray-800 mb-6">Facturación y Planes</h2>
 
-            {/* SECCIÓN DE PLANES RECUPERADA */}
+            {appUser?.subscriptionStatus === 'trialing' && (
+                <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 text-blue-700 rounded-md">
+                    <p className="font-bold">✨ Estás en periodo de prueba</p>
+                    <p className="text-sm">Tu acceso actual es cortesía de IANGE. Selecciona un plan abajo para asegurar tu continuidad después del periodo de regalo.</p>
+                </div>
+            )}
+
             <FormSection title="Planes de Suscripción">
                 <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                     {MOCK_PLANS.filter(p => p.estado === 'Activo').map((plan) => {
@@ -185,7 +199,7 @@ const Facturacion: React.FC = () => {
                                 <button 
                                     type="button" 
                                     disabled={esPlanActual} 
-                                    onClick={() => handlePayPlan(plan.stripePriceId || '')} 
+                                    onClick={() => handlePayPlan(plan.stripePriceId || '', plan.id)} 
                                     className={`w-full py-3 font-bold rounded-lg transition-colors ${esPlanActual ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-gray-900 text-white hover:bg-black'}`}
                                 >
                                     {esPlanActual ? 'Plan Activo' : 'Seleccionar Plan'}
@@ -204,7 +218,6 @@ const Facturacion: React.FC = () => {
                     <Textarea label="Dirección fiscal" name="direccion_fiscal" value={formData.direccion_fiscal} onChange={handleInputChange} required />
                 </FormSection>
 
-                {/* SECCIÓN CORREGIDA: FORMA DE PAGO */}
                 <FormSection title="Forma de pago">
                     <Select label="Selecciona tu método" name="metodo_pago" value={formData.metodo_pago} required onChange={handleInputChange}>
                         <option value="Tarjeta crédito-débito">Tarjeta crédito-débito</option>
