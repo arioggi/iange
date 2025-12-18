@@ -43,10 +43,53 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Toast from './components/ui/Toast';
 
-// --- PROTECTED ROUTE ---
+// --- COMPONENTE DE BIENVENIDA (CUSTOMER JOURNEY) ---
+const WelcomeBanner = ({ user }: { user: User }) => {
+    const navigate = useNavigate();
+    
+    // Caso 1: No ha elegido plan (subscriptionStatus suele ser 'trialing' por defecto o vacío)
+    if (!user.planId) {
+        return (
+            <div className="bg-orange-600 text-white p-4 rounded-lg mb-6 shadow-md flex justify-between items-center animate-pulse">
+                <div>
+                    <p className="font-bold text-lg">¡Bienvenido a IANGE! 👋</p>
+                    <p className="text-sm opacity-90">Para comenzar a gestionar tus propiedades y equipo, primero <strong>escoge un plan</strong>. ¡Te regalamos los primeros 30 días!</p>
+                </div>
+                <button 
+                    onClick={() => navigate('/configuraciones/facturacion')}
+                    className="bg-white text-orange-600 px-6 py-2 rounded-full font-bold hover:bg-gray-100 transition shadow-sm whitespace-nowrap ml-4"
+                >
+                    Ver Planes
+                </button>
+            </div>
+        );
+    }
+
+    // Caso 2: Ya tiene plan (está en trialing o activo)
+    return (
+        <div className="bg-green-600 text-white p-4 rounded-lg mb-6 shadow-md">
+            <p className="font-bold text-lg">¡Plan Activado! 🚀</p>
+            <p className="text-sm opacity-90">
+                Tienes <strong>30 días de regalo</strong> antes de tu primer cobro. Ahora puedes agregar asesores, configurar tu oficina y subir propiedades.
+            </p>
+        </div>
+    );
+};
+
+// --- PROTECTED ROUTE (ACTUALIZADO PARA EL JOURNEY) ---
 const ProtectedRoute = ({ user, permissionKey, children }: { user: User, permissionKey?: keyof UserPermissions, children: React.ReactNode }) => {
     if (!user) return <Navigate to="/login" replace />;
+    
+    // Super Admin siempre tiene acceso
     if (user.role === ROLES.SUPER_ADMIN) return <>{children}</>;
+
+    // Bloqueo TOTAL solo si la cuenta está explícitamente cancelada o suspendida
+    if (user.subscriptionStatus === 'canceled' || user.subscriptionStatus === 'suspended') {
+        return <Navigate to="/configuraciones/facturacion" replace />;
+    }
+
+    // Nota: No bloqueamos el acceso a las rutas aquí para que puedan "ver" los menús.
+    // El bloqueo de "no poder hacer nada" se maneja deshabilitando botones en los componentes hijos.
     
     if (permissionKey && !(user.permissions as any)?.[permissionKey]) {
         return <Navigate to="/configuraciones/mi-perfil" replace />;
@@ -71,13 +114,17 @@ const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitIm
           title={title} user={user} onLogout={onLogout} 
           isImpersonating={isImpersonating} onExitImpersonation={onExitImpersonation}
         />
-        <div className="mt-8">{children}</div>
+        <div className="mt-8">
+            {/* Banner de Bienvenida inyectado aquí */}
+            {user.role !== ROLES.SUPER_ADMIN && <WelcomeBanner user={user} />}
+            {children}
+        </div>
       </main>
     </div>
 );
 
 const App = () => {
-  const { appUser: contextUser, status, logout } = useAuth();
+  const { appUser: contextUser, status, logout, refreshUser } = useAuth(); 
   
   const isLoading = status === 'loading';
 
@@ -96,6 +143,7 @@ const App = () => {
         reportes: (dbPerms as any).reportes ?? defaultPerms.reportes,
         crm: (dbPerms as any).crm ?? defaultPerms.crm,
         equipo: (dbPerms as any).equipo ?? defaultPerms.equipo,
+        billing_edit: (dbPerms as any).billing_edit ?? defaultPerms.billing_edit,
     };
 
     return { ...contextUser, permissions: effectivePermissions };
@@ -109,7 +157,6 @@ const App = () => {
   const [propietarios, setPropietarios] = useState<Propietario[]>([]);
   const [compradores, setCompradores] = useState<Comprador[]>([]);
   
-  // Inicialización inteligente de settings
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(() => {
       if (contextUser?.tenantId) {
           try {
@@ -125,7 +172,6 @@ const App = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // --- FUNCIÓN DE TÍTULO DINÁMICO ---
   const getTitleForPath = (path: string): string => {
     if (path.startsWith('/reportes/')) return 'Detalle de Reporte';
     if (path.startsWith('/superadmin')) return 'Panel Super Admin';
@@ -139,15 +185,13 @@ const App = () => {
       '/reportes': 'Reportes',
       '/configuraciones/mi-perfil': 'Mi Perfil', 
       '/configuraciones/personal': 'Personal',
-      '/configuraciones/perfil': 'Perfil de Empresa', // Corregido para que salga el título correcto
+      '/configuraciones/perfil': 'Perfil de Empresa',
       '/configuraciones/facturacion': 'Facturación'
     };
 
-    // Si no es una ruta conocida, muestra el nombre de la empresa
     return routes[path] || companySettings?.name || 'IANGE';
   };
 
-  // Refresh Data
   const refreshAppData = async () => {
       if (!user) {
           setDataLoading(false);
@@ -185,9 +229,9 @@ const App = () => {
               if (usersDb) setAllUsers(usersDb);
               
               const hasNetworkActivity = (props && props.length > 0) || (usersDb && usersDb.length > 1);
-              let isNowOnboarded = cachedSettings.onboarded || hasLocalActivity || hasNetworkActivity;
+              let isNowOnboarded = (cachedSettings?.onboarded) || hasLocalActivity || hasNetworkActivity;
 
-              if (isNowOnboarded && !cachedSettings.onboarded) {
+              if (isNowOnboarded && !cachedSettings?.onboarded) {
                   adapter.updateTenantSettings(user.tenantId, { onboarded: true });
               }
 
@@ -198,12 +242,12 @@ const App = () => {
                       logo_url: tenantData.logo_url,
                       onboarded: isNowOnboarded,
                   };
-                  setCompanySettings(newSettings);
-                  adapter.updateTenantSettings(user.tenantId, newSettings);
+                  setCompanySettings(newSettings as any);
+                  adapter.updateTenantSettings(user.tenantId, newSettings as any);
               } else {
                   const fallbackSettings = { ...cachedSettings, onboarded: isNowOnboarded };
-                  setCompanySettings(fallbackSettings);
-                  adapter.updateTenantSettings(user.tenantId, fallbackSettings);
+                  setCompanySettings(fallbackSettings as any);
+                  adapter.updateTenantSettings(user.tenantId, fallbackSettings as any);
               }
 
           } catch (error) {
@@ -223,10 +267,14 @@ const App = () => {
       const channel = supabase.channel('realtime:app-updates')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'propiedades', filter: `tenant_id=eq.${user.tenantId}` }, () => refreshAppData())
           .on('postgres_changes', { event: '*', schema: 'public', table: 'contactos', filter: `tenant_id=eq.${user.tenantId}` }, () => refreshAppData())
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'tenants', filter: `id=eq.${user.tenantId}` }, () => refreshAppData())
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'tenants', filter: `id=eq.${user.tenantId}` }, async () => {
+              console.log("🔔 Cambio en Tenant detectado, refrescando datos y usuario...");
+              await refreshAppData();
+              await refreshUser(); 
+          })
           .subscribe();
       return () => { supabase.removeChannel(channel); };
-  }, [user?.tenantId]); 
+  }, [user?.tenantId, refreshUser]);
 
   const asesores = useMemo(() => allUsers.filter(u => u.role === ROLES.ASESOR || u.role === ROLES.ADMIN_EMPRESA || u.role === ROLES.EMPRESA), [allUsers]);
 
@@ -259,6 +307,11 @@ const App = () => {
 
   const handleUpdatePropiedad = async (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
     if (!user) return;
+    // Bloqueo manual si no hay plan
+    if (!user.planId) {
+        showToast('Debes elegir un plan para guardar información.', 'error');
+        return;
+    }
     showToast('Guardando cambios...', 'success');
     try {
         await updateContact(updatedPropietario.id, updatedPropietario);
@@ -336,6 +389,7 @@ const App = () => {
                 >
                     <Routes>
                         <Route path="/" element={<Navigate to={getInitialRoute(user)} replace />} />
+                        
                         <Route path="/oportunidades" element={<ProtectedRoute user={user} permissionKey="dashboard"><OportunidadesDashboard propiedades={propiedades} asesores={asesores} propietarios={propietarios} compradores={compradores} companySettings={companySettings} isLoading={dataLoading} currentUser={user} /></ProtectedRoute>} />
                         <Route path="/clientes" element={<ProtectedRoute user={user} permissionKey="contactos"><AltaClientes showToast={showToast} propiedades={propiedades} setPropiedades={setPropiedades} propietarios={propietarios} setPropietarios={setPropietarios} compradores={compradores} setCompradores={setCompradores} handleUpdatePropiedad={handleUpdatePropiedad} handleDeletePropiedad={handleDeletePropiedad} initialEditPropId={initialEditPropId} setInitialEditPropId={setInitialEditPropId} asesores={asesores} currentUser={user} onDataChange={refreshAppData} /></ProtectedRoute>} />
                         <Route path="/catalogo" element={<ProtectedRoute user={user} permissionKey="propiedades"><Catalogo propiedades={propiedades} propietarios={propietarios} asesores={asesores} onAddVisita={handleAddVisita} handleUpdatePropiedad={handleUpdatePropiedad} showToast={showToast} currentUser={user} compradores={compradores} onDataChange={refreshAppData}/></ProtectedRoute>} />
@@ -343,13 +397,17 @@ const App = () => {
                         <Route path="/reportes" element={<ProtectedRoute user={user} permissionKey="reportes"><Reportes /></ProtectedRoute>} />
                         <Route path="/reportes/:reportId" element={<ProtectedRoute user={user} permissionKey="reportes"><ReporteDetalle propiedades={propiedades} asesores={asesores} compradores={compradores} /></ProtectedRoute>} />
                         <Route path="/crm" element={<ProtectedRoute user={user} permissionKey="crm"><PlaceholderPage title="CRM" /></ProtectedRoute>} />
+                        
                         <Route path="/configuraciones" element={<Configuraciones />}>
                              <Route index element={<Navigate to="mi-perfil" replace />} />
                              <Route path="mi-perfil" element={<MiPerfil user={user} onUserUpdated={handleUpdateUser} />} />
                              <Route path="perfil" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? <PerfilEmpresa user={user} /> : <Navigate to="/configuraciones/mi-perfil" />} />
+                             
                              <Route path="facturacion" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? <Facturacion /> : <Navigate to="/configuraciones/mi-perfil" />} />
+                             
                              <Route path="personal" element={<ProtectedRoute user={user} permissionKey="equipo"><PersonalEmpresa showToast={showToast} currentUser={user} onDataChange={refreshAppData} /></ProtectedRoute>} />
                         </Route>
+
                         <Route path="/superadmin/*" element={user.role === ROLES.SUPER_ADMIN ? (<Routes><Route path="/" element={<SuperAdminDashboard />} /><Route path="empresas" element={<SuperAdminEmpresas showToast={showToast} onImpersonate={handleImpersonate} />} /><Route path="usuarios-globales" element={<SuperAdminUsuarios showToast={showToast} />} /><Route path="planes" element={<SuperAdminPlanes />} /><Route path="configuracion" element={<SuperAdminConfiguracion showToast={showToast} />} /><Route path="reportes-globales" element={<SuperAdminReportes />} /><Route path="logs" element={<SuperAdminLogs />} /></Routes>) : <Navigate to="/" />} />
                         <Route path="*" element={<PlaceholderPage title="Página no encontrada" />} />
                     </Routes>
