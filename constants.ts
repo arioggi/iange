@@ -171,34 +171,34 @@ export const SUPERADMIN_REPORTS_LIST = [
   { id: 'top-asesores', title: 'Top 5 Asesores con Más Cierres', description: 'Ranking de los asesores más efectivos en todas las empresas.', icon: UsersIcon },
 ];
 
-// --- ACTUALIZACIÓN DE PLANES CON STRIPE IDs ---
+// --- PLANES ACTUALIZADOS CON PRICE IDs EN MXN (PESOS) ---
 export const MOCK_PLANS: Plan[] = [
   { 
     id: 1, 
     nombre: 'Starter', 
-    precio: '$0', 
+    precio: '$499 MXN', 
     limiteUsuarios: 5, 
     limitePropiedades: 50, 
     estado: 'Activo',
-    stripePriceId: 'price_1Qz8UZJxBv7KwQkghijkZmRzyZTNmmsSr1bf9XkC45kKDJpyQXXMSnIpOvhvaQOl0hGCHdcdyWzBod7USC3s2sS100omn4RyiH' 
+    stripePriceId: 'price_1Sfl2DJxBv7KwQkgeHBjM8Fj' 
   },
   { 
     id: 2, 
     nombre: 'Business', 
-    precio: '$99 / mes', 
+    precio: '$1,999 MXN / mes', 
     limiteUsuarios: 25, 
     limitePropiedades: 500, 
     estado: 'Activo',
-    stripePriceId: 'price_1Qz8UZJxBv7KwQkghijkZmRzyZTNmmsSr1bf9XkC45kKDJpyQXXMSnIpOvhvaQOl0hGCHdcdyWzBod7USC3s2sS100omn4RyiH' 
+    stripePriceId: 'price_1Sfl47JxBv7KwQkgCFgM7oyg' 
   },
   { 
     id: 3, 
     nombre: 'Enterprise', 
-    precio: '$299 / mes', 
+    precio: '$5,999 MXN / mes', 
     limiteUsuarios: 100, 
     limitePropiedades: 'Ilimitado', 
     estado: 'Activo',
-    stripePriceId: ''
+    stripePriceId: 'price_1Sfl4xJxBv7KwQkgLrvbK4zV'
   },
 ];
 
