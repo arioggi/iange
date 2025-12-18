@@ -87,14 +87,15 @@ export const DEFAULT_ROUTES: Record<string, string> = {
   [ROLES.NOTARIA]: '/reportes',
 };
 
+// --- CORRECCIÓN CLAVE: Agregamos billing_edit a todos los roles ---
 export const ROLE_DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
-  [ROLES.SUPER_ADMIN]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true },
-  [ROLES.IANGE_ADMIN]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true },
-  [ROLES.CUENTA_EMPRESA]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true },
-  [ROLES.ADMIN_EMPRESA]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true },
-  [ROLES.ASESOR]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: false, crm: true, equipo: false },
-  [ROLES.GESTOR]: { dashboard: true, contactos: false, propiedades: false, progreso: true, reportes: false, crm: false, equipo: false },
-  [ROLES.NOTARIA]: { dashboard: false, contactos: false, propiedades: false, progreso: true, reportes: false, crm: false, equipo: false },
+  [ROLES.SUPER_ADMIN]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true, billing_edit: true },
+  [ROLES.IANGE_ADMIN]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true, billing_edit: true },
+  [ROLES.CUENTA_EMPRESA]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true, billing_edit: true },
+  [ROLES.ADMIN_EMPRESA]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true, billing_edit: true },
+  [ROLES.ASESOR]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: false, crm: true, equipo: false, billing_edit: false },
+  [ROLES.GESTOR]: { dashboard: true, contactos: false, propiedades: false, progreso: true, reportes: false, crm: false, equipo: false, billing_edit: false },
+  [ROLES.NOTARIA]: { dashboard: false, contactos: false, propiedades: false, progreso: true, reportes: false, crm: false, equipo: false, billing_edit: false },
 };
 
 export const PERMISSION_PATH_MAP: Record<keyof UserPermissions, string[]> = {
@@ -105,6 +106,7 @@ export const PERMISSION_PATH_MAP: Record<keyof UserPermissions, string[]> = {
   reportes: ['/reportes'],
   crm: ['/crm'],
   equipo: ['/configuraciones/personal'],
+  billing_edit: ['/configuraciones/facturacion'], // Agregamos el mapeo de ruta
 };
 
 const ALL_PATHS = [
@@ -151,7 +153,7 @@ export const SETTINGS_MENU_ITEMS: MenuItem[] = [
   { name: 'Mi perfil', path: '/configuraciones/mi-perfil', icon: UserIcon },
   { name: 'Perfil de empresa', path: '/configuraciones/perfil', icon: BuildingOfficeIcon },
   { name: 'Personal', path: '/configuraciones/personal', permissionKey: 'equipo', icon: UserGroupIcon },
-  { name: 'Facturación', path: '/configuraciones/facturacion', icon: BanknotesIcon },
+  { name: 'Facturación', path: '/configuraciones/facturacion', permissionKey: 'billing_edit', icon: BanknotesIcon },
 ];
 
 export const SUPERADMIN_MENU_ITEMS: MenuItem[] = [
@@ -171,7 +173,7 @@ export const SUPERADMIN_REPORTS_LIST = [
   { id: 'top-asesores', title: 'Top 5 Asesores con Más Cierres', description: 'Ranking de los asesores más efectivos en todas las empresas.', icon: UsersIcon },
 ];
 
-// --- PLANES ACTUALIZADOS CON PRICE IDs EN MXN (PESOS) ---
+// --- PLANES ---
 export const MOCK_PLANS: Plan[] = [
   { 
     id: 1, 

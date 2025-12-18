@@ -45,6 +45,7 @@ export interface UserPermissions {
   reportes: boolean;
   crm: boolean;
   equipo: boolean;
+  billing_edit: boolean; // <--- AGREGAMOS ESTA LÍNEA AQUÍ
 }
 
 export interface User {
@@ -266,7 +267,7 @@ export interface Plan {
   limiteUsuarios: number | string;
   limitePropiedades: number | string;
   estado: 'Activo' | 'Inactivo';
-  stripePriceId?: string; // <--- ESTO DEBE QUEDAR AQUÍ
+  stripePriceId?: string;
 }
 
 export interface Log {

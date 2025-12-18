@@ -2,7 +2,8 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import { User as SupabaseUser, Session } from "@supabase/supabase-js";
-import { User } from "./types";
+import { User, UserPermissions } from "./types";
+import { ROLES, ROLE_MIGRATION_MAP } from "./constants"; // Importamos el mapa de normalización
 
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
@@ -10,10 +11,15 @@ interface AuthContextValue {
   status: AuthStatus;
   authUser: SupabaseUser | null;
   user: User | null; 
-  appUser: User | null; // Mantenemos este alias para que el resto de la App no se rompa
+  appUser: User | null; // Alias para compatibilidad
   login: (email: string, password: string) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  /**
+   * Nueva función para controlar el acceso en la UI.
+   * Verifica si el usuario tiene un rol administrativo o el permiso específico en el JSONB.
+   */
+  hasPermission: (permissionKey: keyof UserPermissions) => boolean; 
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -41,14 +47,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data) {
+        // --- NORMALIZACIÓN DEL ROL ---
+        // Utilizamos el mapa de migración para convertir strings como "Administrador" a "adminempresa"
+        const rawRole = data.role || 'asesor';
+        const normalizedRole = ROLE_MIGRATION_MAP[rawRole] || rawRole;
+
         const mappedUser: User = {
             id: data.id,
             email: data.email || sbUser.email || '',
             name: data.full_name || 'Usuario',
-            role: data.role || 'asesor',
+            role: normalizedRole, // Almacenamos el rol normalizado
             photo: data.avatar_url || '',
-            tenantId: data.tenant_id,
-            permissions: data.permissions || {},
+            tenantId: data.tenant_id, // Vinculación clave para facturación
+            permissions: data.permissions || {}, // Objeto JSONB de permisos
             phone: data.phone || sbUser.phone || '', 
         };
         setUser(mappedUser);
@@ -60,6 +71,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshUser = async () => {
     if (authUser) await loadAppUser(authUser);
+  };
+
+  // Lógica centralizada de permisos
+  const hasPermission = (permissionKey: keyof UserPermissions): boolean => {
+    if (!user) return false;
+    // Los administradores (usando roles normalizados) tienen acceso total por defecto
+    const isAdmin = [ROLES.SUPER_ADMIN, ROLES.ADMIN_EMPRESA, ROLES.CUENTA_EMPRESA].includes(user.role as any);
+    if (isAdmin) return true;
+    // Si no es admin, verifica el permiso específico en el JSONB
+    return !!user.permissions?.[permissionKey];
   };
 
   useEffect(() => {
@@ -96,8 +117,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Exportamos AMBOS nombres para que toda la App esté contenta
-  const value: AuthContextValue = { status, authUser, user, appUser: user, login, logout, refreshUser };
+  const value: AuthContextValue = { 
+    status, 
+    authUser, 
+    user, 
+    appUser: user, 
+    login, 
+    logout, 
+    refreshUser,
+    hasPermission // Exportamos la función para usarla en la UI
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
