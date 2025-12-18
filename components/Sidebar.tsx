@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { MENU_ITEMS, SETTINGS_MENU_ITEM, SETTINGS_MENU_ITEMS, SUPERADMIN_MENU_ITEMS, ROLES } from '../constants';
 import { User, UserPermissions } from '../types';
+import { useAuth } from '../authContext'; // 1. Importamos el hook global
 
 // ==========================================
 // COMPONENTE LOGO PERSONALIZADO (DINÁMICO)
@@ -9,19 +10,15 @@ import { User, UserPermissions } from '../types';
 const Logo = ({ url }: { url?: string | null }) => (
     <div className="flex justify-center items-center mb-12 h-16 px-2">
       <img 
-        // Si hay URL personalizada usa esa, si no, usa el logo por defecto
         src={url || "/logo.svg"} 
         alt="Logo" 
         className="h-full w-auto object-contain max-h-12 max-w-[180px]" 
         onError={(e) => {
-            // Si falla la imagen (personalizada o default), muestra el fallback SVG
             e.currentTarget.style.display = 'none';
             const fallback = document.getElementById('logo-fallback');
             if (fallback) fallback.classList.remove('hidden');
         }}
       />
-      
-      {/* Fallback de texto si la imagen falla completamente */}
       <div id="logo-fallback" className="hidden">
           <svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
             <text x="0" y="30" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" fontSize="32" fontWeight="bold" fill="#1E1E1E">
@@ -68,45 +65,41 @@ const NavItem: React.FC<NavItemProps> = ({ item }) => {
 
 interface SidebarProps {
     user: User;
-    logoUrl?: string | null; // <--- Prop clave para el logo dinámico
+    logoUrl?: string | null;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl }) => {
     const location = useLocation();
     const navigate = useNavigate();
+    
+    // 2. Obtenemos la función de permisos centralizada del Contexto
+    const { hasPermission: checkPermission } = useAuth(); 
+
     const isSettingsPage = location.pathname.startsWith('/configuraciones');
     const isSuperAdminPage = location.pathname.startsWith('/superadmin');
     
-    const userPermissions = user.permissions || {} as UserPermissions;
-
-    const hasPermission = (item: { permissionKey?: keyof UserPermissions }): boolean => {
-      if (!item.permissionKey) {
-        return true;
-      }
-      return !!userPermissions[item.permissionKey];
-    };
-
-    const visibleMenuItems = MENU_ITEMS.filter(hasPermission);
+    // Filtramos el menú principal usando la lógica global
+    const visibleMenuItems = MENU_ITEMS.filter(item => {
+        if (!item.permissionKey) return true;
+        return checkPermission(item.permissionKey);
+    });
     
+    // 3. REEMPLAZO DE visibleSettingsMenuItems SIN BLOQUEOS MANUALES
     const visibleSettingsMenuItems = SETTINGS_MENU_ITEMS.filter(item => {
+        // "Mi perfil" es siempre visible
         if(item.path === "/configuraciones/mi-perfil") return true;
         
-        const isAdmin = user.role === ROLES.EMPRESA || user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.SUPER_ADMIN || user.role === ROLES.CUENTA_EMPRESA;
-
-        if (isAdmin) {
-            return true;
+        // Si el item tiene llave de permiso (ej: 'billing_edit'), consultamos al Contexto.
+        // Si NO tiene llave (ej: 'Perfil de empresa'), permitimos el acceso solo a administradores.
+        if (item.permissionKey) {
+            return checkPermission(item.permissionKey);
+        } else {
+            return [ROLES.EMPRESA, ROLES.ADMIN_EMPRESA, ROLES.SUPER_ADMIN, ROLES.CUENTA_EMPRESA].includes(user.role as any);
         }
-
-        if (item.path === '/configuraciones/perfil' || item.path === '/configuraciones/facturacion') {
-            return false;
-        }
-        
-        return hasPermission(item);
     });
     
     const canSeeSettings = visibleSettingsMenuItems.length > 0;
 
-    // --- LÓGICA DE NAVEGACIÓN CORREGIDA (BOTÓN ATRÁS) ---
     const handleBack = () => {
         if (user.role === ROLES.SUPER_ADMIN) {
             navigate('/superadmin');
@@ -129,7 +122,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl }) => {
     const MainMenu = () => (
         <>
             <div>
-                {/* Pasamos el logoUrl al componente Logo */}
                 <Logo url={logoUrl} />
                 <nav className="space-y-2">
                 {visibleMenuItems.map((item) => (
