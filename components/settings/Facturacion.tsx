@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { useAuth } from '../../authContext';
+import { stripeService } from '../../Services/stripeService';
+import { MOCK_PLANS } from '../../constants';
 
 // --- COMPONENTES INTERNOS REUTILIZABLES ---
 
@@ -77,22 +80,82 @@ const FileInput: React.FC<{ label: string; name: string, accept?: string }> = ({
 
 const Facturacion: React.FC = () => {
     const [metodoPago, setMetodoPago] = useState('Transferencia');
+    const { user } = useAuth(); // Obtenemos el usuario autenticado
+
+    // Función para manejar el clic en pagar
+    const handlePayPlan = async (priceId: string) => {
+        if (!priceId) {
+            alert("Este plan no tiene un ID de Stripe configurado.");
+            return;
+        }
+
+        // DEPURACIÓN: Verificamos por qué el tenantId llega vacío según tus logs
+        console.log("Iniciando pago para el usuario:", user?.email);
+        
+        // Si el tenantId no existe en el usuario, usamos uno temporal para las pruebas de Stripe
+        // OJO: En producción esto debe venir de tu base de datos obligatoriamente
+        const currentTenantId = user?.tenantId || 'TEST_TENANT_ID_LOCAL';
+
+        if (!user?.tenantId) {
+            console.warn("⚠️ No se encontró tenantId en el contexto. Usando ID de prueba.");
+        }
+
+        try {
+            await stripeService.createCheckoutSession(
+                priceId,
+                currentTenantId,
+                user?.email || 'test@ejemplo.com',
+                user?.id?.toString() || '0'
+            );
+        } catch (error) {
+            console.error("Error al procesar pago:", error);
+            alert("Error al conectar con la pasarela de pago.");
+        }
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        // Aquí iría la lógica para guardar en Supabase
         alert('Datos de facturación guardados (simulación)');
     };
 
     return (
         <div className="bg-white p-8 rounded-lg shadow-sm">
             <h2 className="text-2xl font-bold text-gray-800 mb-6">Facturación y Pagos</h2>
+
+            {/* SECCIÓN DE PLANES DE SUSCRIPCIÓN */}
+            <FormSection title="Plan de Suscripción">
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
+                    {MOCK_PLANS.filter(p => p.estado === 'Activo').map((plan) => (
+                        <div 
+                            key={plan.id} 
+                            className="border-2 rounded-xl p-5 flex flex-col justify-between hover:border-iange-orange transition-all shadow-sm bg-white"
+                        >
+                            <div>
+                                <h4 className="text-lg font-bold text-iange-dark">{plan.nombre}</h4>
+                                <p className="text-3xl font-black text-gray-900 my-2">{plan.precio}</p>
+                                <ul className="text-sm text-gray-600 space-y-2 mb-6">
+                                    <li>✓ {plan.limiteUsuarios} Usuarios</li>
+                                    <li>✓ {plan.limitePropiedades} Propiedades</li>
+                                    <li>✓ Soporte IANGE</li>
+                                </ul>
+                            </div>
+                            <button 
+                                type="button"
+                                onClick={() => handlePayPlan(plan.stripePriceId || '')}
+                                className="w-full py-3 bg-gray-900 text-white font-bold rounded-lg hover:bg-black transition-colors"
+                            >
+                                Seleccionar Plan
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </FormSection>
+
             <form onSubmit={handleSubmit}>
                 <FormSection title="Datos fiscales">
                     <Input label="Razón social" name="razon_social" required placeholder="Asesores y Casas S.A. de C.V." />
                     <Input label="RFC" name="rfc" required placeholder="AAC920101A12" />
                     <Input label="Correo de facturación" name="email_facturacion" type="email" required placeholder="facturacion@asesoresycasas.com.mx" />
-                    {/* Espacio vacío para grid layout */}
                     <div className="hidden md:block"/> 
                     <Textarea label="Dirección fiscal" name="direccion_fiscal" required placeholder="Av. Fundidora #501, Col. Centro, Monterrey, N.L., 64010" />
                 </FormSection>
@@ -108,8 +171,6 @@ const Facturacion: React.FC = () => {
                         <>
                             <Input label="Nombre del titular" name="nombre_titular" placeholder="Ej. Juan Pérez" />
                             <Input label="Banco" name="banco" placeholder="Ej. BBVA" />
-                            
-                            {/* NOTA: Estos campos NO usan CurrencyInput porque son identificadores numéricos */}
                             <Input label="Cuenta bancaria (Número)" name="cuenta_bancaria" placeholder="0123456789" type="text" />
                             <Input label="CLABE Interbancaria" name="clabe" placeholder="012345678901234567" type="text" />
                         </>
@@ -121,7 +182,7 @@ const Facturacion: React.FC = () => {
                     <FileInput label="Identificación oficial (PDF o imagen)" name="identificacion_oficial" accept=".pdf,.jpg,.png" />
                 </FormSection>
 
-                <div className="flex justify-end mt-8">
+                <div className="flex justify-end mt-8 border-t pt-6">
                     <button type="submit" className="bg-iange-orange text-white py-2 px-6 rounded-md hover:bg-orange-600 transition-colors shadow-sm font-medium">
                         Guardar Datos de Facturación
                     </button>

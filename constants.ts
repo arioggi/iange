@@ -171,10 +171,35 @@ export const SUPERADMIN_REPORTS_LIST = [
   { id: 'top-asesores', title: 'Top 5 Asesores con Más Cierres', description: 'Ranking de los asesores más efectivos en todas las empresas.', icon: UsersIcon },
 ];
 
+// --- ACTUALIZACIÓN DE PLANES CON STRIPE IDs ---
 export const MOCK_PLANS: Plan[] = [
-  { id: 1, nombre: 'Starter', precio: '$0', limiteUsuarios: 5, limitePropiedades: 50, estado: 'Activo' },
-  { id: 2, nombre: 'Business', precio: '$99 / mes', limiteUsuarios: 25, limitePropiedades: 500, estado: 'Activo' },
-  { id: 3, nombre: 'Enterprise', precio: '$299 / mes', limiteUsuarios: 100, limitePropiedades: 'Ilimitado', estado: 'Activo' },
+  { 
+    id: 1, 
+    nombre: 'Starter', 
+    precio: '$0', 
+    limiteUsuarios: 5, 
+    limitePropiedades: 50, 
+    estado: 'Activo',
+    stripePriceId: 'price_1Qz8UZJxBv7KwQkghijkZmRzyZTNmmsSr1bf9XkC45kKDJpyQXXMSnIpOvhvaQOl0hGCHdcdyWzBod7USC3s2sS100omn4RyiH' 
+  },
+  { 
+    id: 2, 
+    nombre: 'Business', 
+    precio: '$99 / mes', 
+    limiteUsuarios: 25, 
+    limitePropiedades: 500, 
+    estado: 'Activo',
+    stripePriceId: 'price_1Qz8UZJxBv7KwQkghijkZmRzyZTNmmsSr1bf9XkC45kKDJpyQXXMSnIpOvhvaQOl0hGCHdcdyWzBod7USC3s2sS100omn4RyiH' 
+  },
+  { 
+    id: 3, 
+    nombre: 'Enterprise', 
+    precio: '$299 / mes', 
+    limiteUsuarios: 100, 
+    limitePropiedades: 'Ilimitado', 
+    estado: 'Activo',
+    stripePriceId: ''
+  },
 ];
 
 export const MOCK_LOGS: Log[] = [
@@ -269,7 +294,7 @@ export const initialKycState: KycData = {
     fechaCita: '',
     horaCita: '',
     notasCita: '',
-    asesorId: '', // <--- CAMPO AGREGADO
+    asesorId: '',
 };
 
 export const DEMO_SEED = {
@@ -282,7 +307,7 @@ export const DEMO_SEED = {
 export const MOCK_EMPRESAS = DEMO_SEED.empresas;
 export const USERS = DEMO_SEED.users;
 
-// --- 2. NUEVO ESTADO INICIAL PARA OFERTA ---
+// --- NUEVO ESTADO INICIAL PARA OFERTA ---
 export const initialOfferState: OfferData = {
   compradorId: '', 
   precioOfrecido: '',
