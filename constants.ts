@@ -171,10 +171,35 @@ export const SUPERADMIN_REPORTS_LIST = [
   { id: 'top-asesores', title: 'Top 5 Asesores con Más Cierres', description: 'Ranking de los asesores más efectivos en todas las empresas.', icon: UsersIcon },
 ];
 
+// --- PLANES ACTUALIZADOS CON PRICE IDs EN MXN (PESOS) ---
 export const MOCK_PLANS: Plan[] = [
-  { id: 1, nombre: 'Starter', precio: '$0', limiteUsuarios: 5, limitePropiedades: 50, estado: 'Activo' },
-  { id: 2, nombre: 'Business', precio: '$99 / mes', limiteUsuarios: 25, limitePropiedades: 500, estado: 'Activo' },
-  { id: 3, nombre: 'Enterprise', precio: '$299 / mes', limiteUsuarios: 100, limitePropiedades: 'Ilimitado', estado: 'Activo' },
+  { 
+    id: 1, 
+    nombre: 'Starter', 
+    precio: '$499 MXN', 
+    limiteUsuarios: 5, 
+    limitePropiedades: 50, 
+    estado: 'Activo',
+    stripePriceId: 'price_1Sfl2DJxBv7KwQkgeHBjM8Fj' 
+  },
+  { 
+    id: 2, 
+    nombre: 'Business', 
+    precio: '$1,999 MXN / mes', 
+    limiteUsuarios: 25, 
+    limitePropiedades: 500, 
+    estado: 'Activo',
+    stripePriceId: 'price_1Sfl47JxBv7KwQkgCFgM7oyg' 
+  },
+  { 
+    id: 3, 
+    nombre: 'Enterprise', 
+    precio: '$5,999 MXN / mes', 
+    limiteUsuarios: 100, 
+    limitePropiedades: 'Ilimitado', 
+    estado: 'Activo',
+    stripePriceId: 'price_1Sfl4xJxBv7KwQkgLrvbK4zV'
+  },
 ];
 
 export const MOCK_LOGS: Log[] = [
@@ -269,7 +294,7 @@ export const initialKycState: KycData = {
     fechaCita: '',
     horaCita: '',
     notasCita: '',
-    asesorId: '', // <--- CAMPO AGREGADO
+    asesorId: '',
 };
 
 export const DEMO_SEED = {
@@ -282,7 +307,7 @@ export const DEMO_SEED = {
 export const MOCK_EMPRESAS = DEMO_SEED.empresas;
 export const USERS = DEMO_SEED.users;
 
-// --- 2. NUEVO ESTADO INICIAL PARA OFERTA ---
+// --- NUEVO ESTADO INICIAL PARA OFERTA ---
 export const initialOfferState: OfferData = {
   compradorId: '', 
   precioOfrecido: '',

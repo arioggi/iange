@@ -95,7 +95,7 @@ export interface Visita {
 
 export interface Propiedad {
   id: number;
-  token_publico?: string; // <--- NUEVO CAMPO PARA LINKS PÚBLICOS (GoHighLevel Style)
+  token_publico?: string;
   propietarioId: number;
   compradorId?: number | null;
   asesorId: number | string;
@@ -133,28 +133,18 @@ export interface Propiedad {
   fuente_captacion: string;
   status: 'Validación Pendiente' | 'En Promoción' | 'Separada' | 'Vendida';
   visitas: Visita[];
-
-  // --- CAMPOS DE COMISIÓN (Captación vs Venta) ---
-  // Captación
   comisionCaptacionOficina?: number;
   comisionCaptacionAsesor?: number;
   compartirComisionCaptacion?: boolean; 
-
-  // Venta
   comisionVentaOficina?: number;
   comisionVentaAsesor?: number;
   compartirComisionVenta?: boolean; 
-
-  // Campos Legacy
   comisionOficina?: number;
   comisionAsesor?: number;
   comisionCompartida?: number;
-  
-  // Datos del Tenant (opcional, para renderizar branding en vista pública)
   tenant_id?: string;
 }
 
-// --- INTERFAZ PARA OFERTAS DE COMPRA ---
 export interface OfferData {
   compradorId: string;
   precioOfrecido: string;
@@ -167,7 +157,6 @@ export interface OfferData {
   observaciones?: string;
 }
 
-// --- INTERFAZ PARA EL HISTORIAL DE INTERESES ---
 export interface Interes {
     propiedadId: number;
     tipoRelacion: 'Propuesta de compra' | 'Propiedad Separada' | 'Venta finalizada';
@@ -206,16 +195,10 @@ export interface KycData {
   esPep: boolean;
   pepNombre?: string;
   pepCargo?: string;
-  
-  // --- CAMPOS PARA CITAS ---
   fechaCita?: string; 
   horaCita?: string;  
   notasCita?: string;
-
-  // --- CAMPO ASESOR ---
   asesorId?: number | string; 
-
-  // --- CAMPOS DE VINCULACIÓN ---
   ofertaFormal?: OfferData; 
   intereses?: Interes[]; 
 }
@@ -229,16 +212,15 @@ export interface Comprador extends KycData {
   propiedadId?: number | null;
 }
 
-// --- CONFIGURACIÓN DE LA EMPRESA ---
 export interface CompanySettings {
-  name?: string; // <--- Agregado para soportar el nombre en el frontend
+  name?: string;
   onboarded?: boolean;
   requiereAprobacionPublicar?: boolean;
   requiereAprobacionCerrar?: boolean;
   integracionWhatsapp?: boolean;
   integracionCorreo?: boolean;
   integracionPortales?: boolean;
-  logo_url?: string | null; // <--- CAMPO CLAVE PARA EL LOGO DINÁMICO
+  logo_url?: string | null;
 }
 
 export interface Tenant {
@@ -246,7 +228,7 @@ export interface Tenant {
   nombre: string;
   ownerEmail: string;
   telefono?: string;
-  logo_url?: string; // <--- Agregado para el branding
+  logo_url?: string;
   fechaRegistro: string;
   estado: 'Activo' | 'Suspendido';
 }
@@ -260,7 +242,7 @@ export interface Empresa {
   estado: 'Activo' | 'Suspendido';
   propiedadesRegistradas: number;
   dominio: string;
-  logo_url?: string; // <--- Agregado para el branding
+  logo_url?: string;
   onboarded?: boolean;
   requiereAprobacionPublicar?: boolean;
   requiereAprobacionCerrar?: boolean;
@@ -284,6 +266,7 @@ export interface Plan {
   limiteUsuarios: number | string;
   limitePropiedades: number | string;
   estado: 'Activo' | 'Inactivo';
+  stripePriceId?: string; // <--- ESTO DEBE QUEDAR AQUÍ
 }
 
 export interface Log {

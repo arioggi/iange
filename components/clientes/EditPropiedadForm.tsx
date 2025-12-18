@@ -3,6 +3,8 @@ import { Propiedad, Propietario, User, ChecklistStatus, KycData } from '../../ty
 import { FLUJO_PROGRESO } from '../../constants';
 import KycPldForm from './KycPldForm';
 import PhotoSorter from '../ui/PhotoSorter';
+// [1] IMPORTAMOS EL COMPONENTE CURRENCY INPUT
+import { CurrencyInput } from '../ui/CurrencyInput';
 
 // === COMPONENTES REUSABLES ===
 
@@ -131,8 +133,7 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
 
         const numericFields = [
             'asesorId', 'recamaras', 'banos_completos', 'medios_banos', 'cochera_autos',
-            'comisionCaptacionOficina', 'comisionCaptacionAsesor', 
-            'comisionVentaOficina', 'comisionVentaAsesor'
+            // OJO: 'comisionCaptacionOficina', etc. se manejan en handleCurrencyChange ahora
         ];
 
         if (type === 'checkbox') {
@@ -146,6 +147,18 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
             }
         } else {
             setEditedPropiedad(prev => ({ ...prev, [name]: value }));
+        }
+    };
+
+    // [2] MANEJADOR ESPECIAL PARA INPUTS DE MONEDA
+    const handleCurrencyChange = (fieldName: string, value: string) => {
+        // 'valor_operacion' es string en tu DB, así que lo guardamos tal cual (limpio de comas)
+        if (fieldName === 'valor_operacion') {
+            setEditedPropiedad(prev => ({ ...prev, [fieldName]: value }));
+        } else {
+            // Las comisiones son numéricas, convertimos
+            const numVal = parseFloat(value);
+            setEditedPropiedad(prev => ({ ...prev, [fieldName]: isNaN(numVal) ? 0 : numVal }));
         }
     };
 
@@ -263,12 +276,22 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                         </h4>
                         <div className="space-y-3">
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Comisión Oficina</label>
-                                <input name="comisionCaptacionOficina" type="number" min="0" value={editedPropiedad.comisionCaptacionOficina} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-blue-200 rounded focus:ring-blue-500 focus:border-blue-500" placeholder="0.00" />
+                                <CurrencyInput
+                                    label="Comisión Oficina"
+                                    name="comisionCaptacionOficina"
+                                    value={editedPropiedad.comisionCaptacionOficina || ''}
+                                    onChange={(val) => handleCurrencyChange('comisionCaptacionOficina', val)}
+                                    placeholder="0.00"
+                                />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Comisión Asesor</label>
-                                <input name="comisionCaptacionAsesor" type="number" min="0" value={editedPropiedad.comisionCaptacionAsesor} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-blue-200 rounded focus:ring-blue-500 focus:border-blue-500" placeholder="0.00" />
+                                <CurrencyInput
+                                    label="Comisión Asesor"
+                                    name="comisionCaptacionAsesor"
+                                    value={editedPropiedad.comisionCaptacionAsesor || ''}
+                                    onChange={(val) => handleCurrencyChange('comisionCaptacionAsesor', val)}
+                                    placeholder="0.00"
+                                />
                             </div>
                             <div className="flex items-center pt-2">
                                 <input 
@@ -298,12 +321,22 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                         </h4>
                         <div className="space-y-3">
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Comisión Oficina</label>
-                                <input name="comisionVentaOficina" type="number" min="0" value={editedPropiedad.comisionVentaOficina} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-green-200 rounded focus:ring-green-500 focus:border-green-500" placeholder="0.00" />
+                                <CurrencyInput
+                                    label="Comisión Oficina"
+                                    name="comisionVentaOficina"
+                                    value={editedPropiedad.comisionVentaOficina || ''}
+                                    onChange={(val) => handleCurrencyChange('comisionVentaOficina', val)}
+                                    placeholder="0.00"
+                                />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Comisión Asesor</label>
-                                <input name="comisionVentaAsesor" type="number" min="0" value={editedPropiedad.comisionVentaAsesor} onChange={handlePropiedadChange} className="w-full mt-1 p-2 border border-green-200 rounded focus:ring-green-500 focus:border-green-500" placeholder="0.00" />
+                                <CurrencyInput
+                                    label="Comisión Asesor"
+                                    name="comisionVentaAsesor"
+                                    value={editedPropiedad.comisionVentaAsesor || ''}
+                                    onChange={(val) => handleCurrencyChange('comisionVentaAsesor', val)}
+                                    placeholder="0.00"
+                                />
                             </div>
                             <div className="flex items-center pt-2">
                                 <input 
@@ -347,7 +380,14 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                          <textarea id="descripcion_breve" name="descripcion_breve" value={editedPropiedad.descripcion_breve || ''} onChange={handlePropiedadChange} rows={3} placeholder="Descripción breve..." className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500 focus:ring-iange-orange focus:border-iange-orange sm:text-sm" />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <LabeledInput label="Valor de la operación (MXN)" name="valor_operacion" value={editedPropiedad.valor_operacion || ''} onChange={handlePropiedadChange} placeholder="2,500,000" />
+                        {/* [3] VALOR OPERACIÓN CON CURRENCY INPUT */}
+                        <CurrencyInput
+                            label="Valor de la operación (MXN)"
+                            name="valor_operacion"
+                            value={editedPropiedad.valor_operacion || ''}
+                            onChange={(val) => handleCurrencyChange('valor_operacion', val)}
+                            placeholder="2,500,000"
+                        />
                          <LabeledSelect label="Asesor/a Asignado/a" name="asesorId" value={editedPropiedad.asesorId} onChange={handlePropiedadChange as any}>
                             <option value={0}>Seleccione un asesor</option>
                             {asesores.map(asesor => (

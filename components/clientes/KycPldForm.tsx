@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { KycData, Propiedad, User } from '../../types'; // <--- Importamos User
+import { KycData, Propiedad, User } from '../../types'; 
 
 // --- COMPONENTES INTERNOS ---
 const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -79,7 +79,7 @@ interface KycPldFormProps {
     userType: 'Propietario' | 'Comprador';
     isEmbedded?: boolean;
     propiedades?: Propiedad[];
-    asesores?: User[]; // <--- NUEVA PROP PARA RECIBIR LA LISTA DE ASESORES
+    asesores?: User[]; 
 }
 
 const KycPldForm: React.FC<KycPldFormProps> = ({ 
@@ -90,7 +90,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({
     userType, 
     isEmbedded = false, 
     propiedades,
-    asesores = [] // <--- DEFAULT VACÍO
+    asesores = []
 }) => {
     // Obtenemos el ID actual si estamos editando
     const currentPropId = String((formData as any).propiedadId || '');

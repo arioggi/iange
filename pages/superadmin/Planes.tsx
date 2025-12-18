@@ -15,6 +15,9 @@ const PlanCard: React.FC<{ plan: Plan; onEdit: () => void }> = ({ plan, onEdit }
                     </span>
                 </div>
                 <p className="text-3xl font-bold my-4">{plan.precio}</p>
+                <div className="mb-4">
+                    <p className="text-xs font-mono text-gray-400 truncate">ID Stripe: {plan.stripePriceId || 'No configurado'}</p>
+                </div>
                 <ul className="space-y-2 text-sm text-gray-600">
                     <li>✓ Límite de {plan.limiteUsuarios} usuarios</li>
                     <li>✓ Límite de {plan.limitePropiedades} propiedades</li>
@@ -37,6 +40,7 @@ const AddEditPlanForm: React.FC<{ plan?: Plan, onSave: (planData: Omit<Plan, 'id
         limiteUsuarios: plan?.limiteUsuarios || '',
         limitePropiedades: plan?.limitePropiedades || '',
         estado: plan?.estado || 'Activo',
+        stripePriceId: plan?.stripePriceId || '', // <--- NUEVO CAMPO
     });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -56,17 +60,43 @@ const AddEditPlanForm: React.FC<{ plan?: Plan, onSave: (planData: Omit<Plan, 'id
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            <input name="nombre" value={formData.nombre} onChange={handleChange} placeholder="Nombre del Plan" required className="w-full p-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-            <input name="precio" value={formData.precio} onChange={handleChange} placeholder="Precio (ej. $99 / mes)" required className="w-full p-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-            <input name="limiteUsuarios" value={String(formData.limiteUsuarios)} onChange={handleChange} placeholder="Límite de Usuarios (ej. 25)" required className="w-full p-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-            <input name="limitePropiedades" value={String(formData.limitePropiedades)} onChange={handleChange} placeholder="Límite de Propiedades (ej. 500 o Ilimitado)" required className="w-full p-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
-            <select name="estado" value={formData.estado} onChange={handleChange} className="w-full p-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500">
-                <option value="Activo">Activo</option>
-                <option value="Inactivo">Inactivo</option>
-            </select>
-            <div className="flex justify-end space-x-4 pt-4">
-                <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-800 py-2 px-4 rounded-md">Cancelar</button>
-                <button type="submit" className="bg-iange-orange text-white py-2 px-4 rounded-md">Guardar Plan</button>
+            <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Nombre del Plan</label>
+                <input name="nombre" value={formData.nombre} onChange={handleChange} placeholder="Ej. Plan Pro" required className="w-full p-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+            </div>
+
+            <div>
+                <label className="block text-xs font-medium text-blue-600 mb-1">Stripe Price ID (Debe empezar con price_)</label>
+                <input name="stripePriceId" value={formData.stripePriceId} onChange={handleChange} placeholder="Ej. price_1Qz8UZ..." className="w-full p-2 bg-blue-50 border border-blue-200 rounded-md text-gray-900 placeholder-gray-400 font-mono text-sm" />
+            </div>
+
+            <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Precio Visual</label>
+                <input name="precio" value={formData.precio} onChange={handleChange} placeholder="Ej. $99 / mes" required className="w-full p-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Límite Usuarios</label>
+                    <input name="limiteUsuarios" value={String(formData.limiteUsuarios)} onChange={handleChange} placeholder="Ej. 25" required className="w-full p-2 bg-gray-50 border rounded-md text-gray-900" />
+                </div>
+                <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Límite Propiedades</label>
+                    <input name="limitePropiedades" value={String(formData.limitePropiedades)} onChange={handleChange} placeholder="Ej. 500" required className="w-full p-2 bg-gray-50 border rounded-md text-gray-900" />
+                </div>
+            </div>
+
+            <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Estado</label>
+                <select name="estado" value={formData.estado} onChange={handleChange} className="w-full p-2 bg-gray-50 border rounded-md text-gray-900">
+                    <option value="Activo">Activo</option>
+                    <option value="Inactivo">Inactivo</option>
+                </select>
+            </div>
+
+            <div className="flex justify-end space-x-4 pt-4 border-t">
+                <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300">Cancelar</button>
+                <button type="submit" className="bg-iange-orange text-white py-2 px-4 rounded-md hover:bg-orange-600 font-bold">Guardar Plan</button>
             </div>
         </form>
     )
@@ -90,9 +120,9 @@ const SuperAdminPlanes: React.FC = () => {
     return (
         <div className="bg-white p-8 rounded-lg shadow-sm">
              <div className="flex justify-between items-center mb-8">
-                <h2 className="text-2xl font-bold text-iange-dark">Planes y Facturación</h2>
-                <button onClick={() => { setSelectedPlan(null); setModalOpen(true); }} className="bg-iange-orange text-white py-2 px-4 rounded-md hover:bg-orange-600">
-                    + Crear Plan
+                <h2 className="text-2xl font-bold text-iange-dark">Gestión de Planes (Stripe Integration)</h2>
+                <button onClick={() => { setSelectedPlan(null); setModalOpen(true); }} className="bg-iange-orange text-white py-2 px-4 rounded-md hover:bg-orange-600 font-bold">
+                    + Crear Nuevo Plan
                 </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -102,7 +132,7 @@ const SuperAdminPlanes: React.FC = () => {
             </div>
 
             {isModalOpen && (
-                 <Modal title={selectedPlan ? "Editar Plan" : "Crear Nuevo Plan"} isOpen={isModalOpen} onClose={() => setModalOpen(false)}>
+                 <Modal title={selectedPlan ? "Editar Plan" : "Crear Nuevo Plan"} isOpen={isModalOpen} onClose={() => { setModalOpen(false); setSelectedPlan(null); }}>
                     <AddEditPlanForm 
                         plan={selectedPlan || undefined}
                         onSave={handleSave} 
