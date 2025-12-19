@@ -68,8 +68,6 @@ const Select: React.FC<{ label: string; required?: boolean; name: string; value?
     </div>
 );
 
-// --- COMPONENTE PRINCIPAL ---
-
 const Facturacion: React.FC = () => {
     const { appUser } = useAuth(); 
     const [loading, setLoading] = useState(true);
@@ -107,7 +105,7 @@ const Facturacion: React.FC = () => {
                 }
 
                 if (data) {
-                    // Aseguramos que se lea el plan_id correctamente
+                    // Sincronizamos el plan actual de la base de datos
                     if (data.plan_id) {
                         setPlanActivoId(Number(data.plan_id));
                     }
@@ -131,17 +129,16 @@ const Facturacion: React.FC = () => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    // --- FUNCIÓN CORREGIDA ---
     const handlePayPlan = async (priceId: string, planId: number) => {
         if (!priceId) return alert("Este plan no tiene un ID de Stripe configurado.");
         try {
-            // AQUÍ ESTABA EL ERROR: Faltaba pasar planId como el quinto parámetro
+            // ✅ CORRECCIÓN: Ahora pasamos planId como el 5to parámetro
             await stripeService.createCheckoutSession(
                 priceId,
                 appUser?.tenantId || '',
                 appUser?.email || '',
                 appUser?.id?.toString() || '',
-                planId // <--- AHORA SÍ SE ENVÍA EL DATO
+                planId // <-- Este dato es el que faltaba llegar a Stripe
             );
         } catch (error) {
             console.error("Error Stripe:", error);
@@ -175,7 +172,7 @@ const Facturacion: React.FC = () => {
             {appUser?.subscriptionStatus === 'trialing' && (
                 <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 text-blue-700 rounded-md">
                     <p className="font-bold">✨ Estás en periodo de prueba</p>
-                    <p className="text-sm">Tu acceso actual es cortesía de IANGE. Selecciona un plan abajo para asegurar tu continuidad después del periodo de regalo.</p>
+                    <p className="text-sm">Tu acceso actual es cortesía de IANGE. Selecciona un plan abajo para asegurar tu continuidad después del regalo.</p>
                 </div>
             )}
 
