@@ -9,7 +9,6 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
   httpClient: Stripe.createFetchHttpClient(),
 })
 
-// 1. Creamos el proveedor de criptografía nativo de Deno
 const cryptoProvider = Stripe.createSubtleCryptoProvider();
 
 serve(async (req) => {
@@ -18,7 +17,6 @@ serve(async (req) => {
   try {
     const body = await req.text()
     
-    // 2. USAMOS LA VERSIÓN ASÍNCRONA
     const event = await stripe.webhooks.constructEventAsync(
       body,
       signature!,
@@ -36,28 +34,26 @@ serve(async (req) => {
 
     switch (event.type) {
       case 'checkout.session.completed': {
-        // ✅ CAMBIO 1: Tipado estricto para Session
         const session = event.data.object as Stripe.Checkout.Session;
         
         const tId = session.metadata?.tenantId?.trim();
         const pId = session.metadata?.planId?.trim();
         const subscriptionId = session.subscription as string;
 
-        console.log("📦 [Webhook] Datos de sesión recibidos de Stripe:", { 
-          tenantId: tId, 
-          planId: pId,
-          subscriptionId: subscriptionId 
-        });
+        console.log("📦 [Webhook] Datos de sesión:", { tenantId: tId, planId: pId });
 
         if (!tId) {
-          console.error("❌ [Webhook] Error: No se encontró el tenantId en la metadata.");
+          console.error("❌ [Webhook] Error: No se encontró el tenantId.");
           break;
         }
 
+        // ✅ CORRECCIÓN AQUÍ:
+        // Al iniciar, como damos 30 días, el estado nace como 'trialing'.
+        // Cuando pasen los 30 días, el evento 'invoice.paid' lo pasará a 'active'.
         const { data, error } = await supabaseAdmin
           .from('tenants')
           .update({ 
-            subscription_status: 'active',
+            subscription_status: 'trialing', // <--- CAMBIO CLAVE (Antes era 'active')
             plan_id: pId || null, 
             stripe_subscription_id: subscriptionId,
             current_period_end: new Date().toISOString() 
@@ -70,19 +66,15 @@ serve(async (req) => {
           throw error;
         }
 
-        if (data && data.length > 0) {
-          console.log(`✅ [Webhook] ÉXITO: La empresa ${tId} ahora tiene el Plan ${pId}.`);
-        } else {
-          console.error(`⚠️ [Webhook] ATENCIÓN: No se encontró ninguna empresa con el ID: "${tId}" para actualizar.`);
-        }
+        console.log(`✅ [Webhook] ÉXITO: Tenant ${tId} en modo TRIAL con Plan ${pId}.`);
         break;
       }
 
       case 'invoice.paid': {
-        // ✅ CAMBIO 2: Tipado estricto para Invoice
         const invoice = event.data.object as Stripe.Invoice;
         const subscriptionId = invoice.subscription as string;
 
+        // Cuando se paga una factura (ej. fin del trial), pasa a ACTIVE
         const { error } = await supabaseAdmin
           .from('tenants')
           .update({ 
@@ -96,7 +88,6 @@ serve(async (req) => {
       }
 
       case 'customer.subscription.deleted': {
-        // ✅ CAMBIO 3: Tipado estricto para Subscription
         const subscription = event.data.object as Stripe.Subscription;
         await supabaseAdmin
           .from('tenants')

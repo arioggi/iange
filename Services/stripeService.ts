@@ -10,7 +10,7 @@ export const stripeService = {
     tenantId: string, 
     email: string, 
     userId: string,
-    planId: number // <--- NUEVO: Agregamos el ID numérico del plan
+    planId: number 
   ) => {
     try {
       const { data, error } = await supabase.functions.invoke('payment-sheet', {
@@ -19,9 +19,9 @@ export const stripeService = {
           tenantId, 
           email, 
           userId,
-          planId, // <--- NUEVO: Lo enviamos a la Edge Function
-          // --- NUEVO: Enviamos la instrucción de los 30 días ---
-          trialDays: 30 
+          planId,
+          // 🧹 LIMPIEZA: Ya no enviamos trialDays desde el cliente.
+          // El backend se encarga de forzar los 30 días por seguridad.
         },
       });
 
