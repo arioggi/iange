@@ -1,5 +1,7 @@
+// supabase/functions/stripe-webhook/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import Stripe from 'https://esm.sh/stripe@12.0.0'
+// Usamos una versión optimizada para Deno (?target=deno)
+import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno' 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
@@ -7,17 +9,26 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
   httpClient: Stripe.createFetchHttpClient(),
 })
 
+// 1. Creamos el proveedor de criptografía nativo de Deno
+const cryptoProvider = Stripe.createSubtleCryptoProvider();
+
 serve(async (req) => {
   const signature = req.headers.get('stripe-signature')
 
   try {
     const body = await req.text()
-    const event = stripe.webhooks.constructEvent(
+    
+    // 2. USAMOS LA VERSIÓN ASÍNCRONA (Aquí estaba el error)
+    // constructEventAsync en lugar de constructEvent
+    const event = await stripe.webhooks.constructEventAsync(
       body,
       signature!,
-      Deno.env.get('STRIPE_WEBHOOK_SIGNING_SECRET') ?? ''
+      Deno.env.get('STRIPE_WEBHOOK_SIGNING_SECRET') ?? '',
+      undefined,
+      cryptoProvider // Pasamos el proveedor compatible con Deno
     )
 
+    // --- A PARTIR DE AQUÍ TODO SIGUE IGUAL ---
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -29,49 +40,69 @@ serve(async (req) => {
       case 'checkout.session.completed': {
         const session = event.data.object as any;
         
-        // 1. Extraemos con limpieza (trim) por si acaso
         const tId = session.metadata?.tenantId?.trim();
         const pId = session.metadata?.planId?.trim();
         const subscriptionId = session.subscription as string;
 
-        console.log("📦 [Webhook] Datos extraídos de Stripe:", { 
-          tenantId_recibido: tId, 
-          planId_recibido: pId,
+        console.log("📦 [Webhook] Datos de sesión recibidos de Stripe:", { 
+          tenantId: tId, 
+          planId: pId,
           subscriptionId: subscriptionId 
         });
 
         if (!tId) {
-          console.error("❌ [Webhook] Error: No hay tenantId en los metadatos de Stripe");
+          console.error("❌ [Webhook] Error: No se encontró el tenantId en la metadata.");
           break;
         }
 
-        // 2. Intentamos la actualización y pedimos que nos devuelva la fila (.select())
         const { data, error } = await supabaseAdmin
           .from('tenants')
           .update({ 
             subscription_status: 'active',
-            plan_id: pId ? parseInt(pId, 10) : null, 
+            plan_id: pId || null, 
             stripe_subscription_id: subscriptionId,
             current_period_end: new Date().toISOString() 
           })
           .eq('id', tId)
-          .select(); // <--- IMPORTANTE: Esto nos dirá si encontró la fila
+          .select();
 
         if (error) {
-          console.error("❌ [Webhook] Error de Supabase al actualizar:", error.message);
+          console.error("❌ [Webhook] Error al actualizar Supabase:", error.message);
           throw error;
         }
 
-        // 3. Verificamos si realmente se actualizó algo
         if (data && data.length > 0) {
-          console.log(`✅ [Webhook] ¡ÉXITO! Empresa ${tId} actualizada al Plan ${pId}.`, data[0]);
+          console.log(`✅ [Webhook] ÉXITO: La empresa ${tId} ahora tiene el Plan ${pId}.`);
         } else {
-          console.error(`⚠️ [Webhook] OJO: Se ejecutó el comando pero NO se encontró ninguna empresa con el ID: "${tId}" en la tabla tenants.`);
+          console.error(`⚠️ [Webhook] ATENCIÓN: No se encontró ninguna empresa con el ID: "${tId}" para actualizar.`);
         }
         break;
       }
 
-      // ... resto de casos (invoice.paid, etc) mantener igual
+      case 'invoice.paid': {
+        const invoice = event.data.object as any;
+        const subscriptionId = invoice.subscription as string;
+
+        const { error } = await supabaseAdmin
+          .from('tenants')
+          .update({ 
+            subscription_status: 'active',
+            current_period_end: new Date(invoice.period_end * 1000).toISOString() 
+          })
+          .eq('stripe_subscription_id', subscriptionId);
+
+        if (error) console.error("❌ [Webhook] Error en renovación:", error.message);
+        break;
+      }
+
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object as any;
+        await supabaseAdmin
+          .from('tenants')
+          .update({ subscription_status: 'canceled', plan_id: null })
+          .eq('stripe_subscription_id', subscription.id);
+        break;
+      }
     }
 
     return new Response(JSON.stringify({ received: true }), { status: 200 })

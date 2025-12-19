@@ -1,3 +1,4 @@
+// supabase/functions/payment-sheet/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from 'https://esm.sh/stripe@12.0.0'
 
@@ -23,8 +24,16 @@ serve(async (req) => {
     // Extraemos los datos del cuerpo de la petición
     const { priceId, tenantId, email, trialDays, planId } = body
 
-    // 🔍 LOG DE DIAGNÓSTICO: Esto aparecerá en tu panel de Supabase
+    // ---------------------------------------------------------
+    // 1. CONFIGURACIÓN DINÁMICA DE LA URL (El cambio clave)
+    // ---------------------------------------------------------
+    // Busca la variable 'FRONTEND_URL' en los secretos de Supabase.
+    // Si no la encuentra (ej. en local), usa 'http://localhost:3000' por defecto.
+    const FRONTEND_URL = Deno.env.get('FRONTEND_URL') ?? 'http://localhost:3000';
+
+    // 🔍 LOG DE DIAGNÓSTICO
     console.log("🔔 [Payment-Sheet] Datos recibidos:", { priceId, tenantId, email, trialDays, planId });
+    console.log("🌍 [Payment-Sheet] URL de retorno configurada:", FRONTEND_URL);
 
     // Validaciones de seguridad
     if (!priceId) throw new Error("Falta el priceId (ID del plan de Stripe)");
@@ -42,13 +51,15 @@ serve(async (req) => {
         trial_period_days: trialDays || 30,
       },
 
-      // URLs de retorno
-      success_url: `http://localhost:3000/progreso`, 
-      cancel_url: `http://localhost:3000/configuraciones/facturacion`,
+      // ---------------------------------------------------------
+      // 2. APLICACIÓN DE LA URL DINÁMICA
+      // ---------------------------------------------------------
+      success_url: `${FRONTEND_URL}/progreso`, 
+      cancel_url: `${FRONTEND_URL}/configuraciones/facturacion`,
+      
       customer_email: email || undefined,
       
       // ✅ PASO CRÍTICO: Guardamos los datos en la metadata de Stripe
-      // Stripe los devolverá al Webhook después del pago.
       metadata: { 
         tenantId: tenantId.toString(),
         planId: planId.toString() 
