@@ -18,17 +18,15 @@ serve(async (req) => {
   try {
     const body = await req.text()
     
-    // 2. USAMOS LA VERSIÓN ASÍNCRONA (Aquí estaba el error)
-    // constructEventAsync en lugar de constructEvent
+    // 2. USAMOS LA VERSIÓN ASÍNCRONA
     const event = await stripe.webhooks.constructEventAsync(
       body,
       signature!,
       Deno.env.get('STRIPE_WEBHOOK_SIGNING_SECRET') ?? '',
       undefined,
-      cryptoProvider // Pasamos el proveedor compatible con Deno
+      cryptoProvider 
     )
 
-    // --- A PARTIR DE AQUÍ TODO SIGUE IGUAL ---
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -38,7 +36,8 @@ serve(async (req) => {
 
     switch (event.type) {
       case 'checkout.session.completed': {
-        const session = event.data.object as any;
+        // ✅ CAMBIO 1: Tipado estricto para Session
+        const session = event.data.object as Stripe.Checkout.Session;
         
         const tId = session.metadata?.tenantId?.trim();
         const pId = session.metadata?.planId?.trim();
@@ -80,7 +79,8 @@ serve(async (req) => {
       }
 
       case 'invoice.paid': {
-        const invoice = event.data.object as any;
+        // ✅ CAMBIO 2: Tipado estricto para Invoice
+        const invoice = event.data.object as Stripe.Invoice;
         const subscriptionId = invoice.subscription as string;
 
         const { error } = await supabaseAdmin
@@ -96,7 +96,8 @@ serve(async (req) => {
       }
 
       case 'customer.subscription.deleted': {
-        const subscription = event.data.object as any;
+        // ✅ CAMBIO 3: Tipado estricto para Subscription
+        const subscription = event.data.object as Stripe.Subscription;
         await supabaseAdmin
           .from('tenants')
           .update({ subscription_status: 'canceled', plan_id: null })

@@ -3,6 +3,7 @@ import { useAuth } from '../../authContext';
 import { stripeService } from '../../Services/stripeService';
 import { MOCK_PLANS } from '../../constants';
 import { supabase } from '../../supabaseClient';
+import Toast from '../ui/Toast'; // ✅ IMPORTACIÓN DEL TOAST
 
 // --- COMPONENTES REUTILIZABLES ---
 const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -73,6 +74,9 @@ const Facturacion: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [planActivoId, setPlanActivoId] = useState<number | null>(null);
     
+    // ✅ ESTADO PARA EL TOAST
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    
     const [formData, setFormData] = useState({
         razon_social: '',
         rfc: '',
@@ -105,11 +109,9 @@ const Facturacion: React.FC = () => {
                 }
 
                 if (data) {
-                    // Sincronizamos el plan actual de la base de datos
                     if (data.plan_id) {
                         setPlanActivoId(Number(data.plan_id));
                     }
-
                     if (data.billing_info) {
                         setFormData(prev => ({ ...prev, ...data.billing_info }));
                     }
@@ -124,31 +126,49 @@ const Facturacion: React.FC = () => {
         fetchDatosTenant();
     }, [appUser?.tenantId]);
 
+    // ✅ EFECTO PARA AUTO-CERRAR EL TOAST DESPUÉS DE 3 SEGUNDOS
+    useEffect(() => {
+        if (toast) {
+            const timer = setTimeout(() => {
+                setToast(null);
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [toast]);
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
     const handlePayPlan = async (priceId: string, planId: number) => {
-        if (!priceId) return alert("Este plan no tiene un ID de Stripe configurado.");
+        // 🔄 REEMPLAZO DE ALERT
+        if (!priceId) {
+            setToast({ message: "Este plan no tiene un ID de Stripe configurado.", type: 'error' });
+            return;
+        }
         try {
-            // ✅ CORRECCIÓN: Ahora pasamos planId como el 5to parámetro
             await stripeService.createCheckoutSession(
                 priceId,
                 appUser?.tenantId || '',
                 appUser?.email || '',
                 appUser?.id?.toString() || '',
-                planId // <-- Este dato es el que faltaba llegar a Stripe
+                planId 
             );
         } catch (error) {
             console.error("Error Stripe:", error);
-            alert("Error al conectar con la pasarela de pago.");
+            // 🔄 REEMPLAZO DE ALERT
+            setToast({ message: "Error al conectar con la pasarela de pago.", type: 'error' });
         }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!appUser?.tenantId) return alert("No hay empresa vinculada.");
+        // 🔄 REEMPLAZO DE ALERT
+        if (!appUser?.tenantId) {
+            setToast({ message: "No hay empresa vinculada.", type: 'error' });
+            return;
+        }
 
         try {
             const { error } = await supabase
@@ -157,16 +177,27 @@ const Facturacion: React.FC = () => {
                 .eq('id', appUser.tenantId);
 
             if (error) throw error;
-            alert("¡Datos actualizados con éxito!");
+            // 🔄 REEMPLAZO DE ALERT (Éxito)
+            setToast({ message: "¡Datos actualizados con éxito!", type: 'success' });
         } catch (error: any) {
-            alert("Error al guardar: " + error.message);
+            // 🔄 REEMPLAZO DE ALERT
+            setToast({ message: "Error al guardar: " + error.message, type: 'error' });
         }
     };
 
     if (loading) return <div className="p-10 text-center text-gray-500">Cargando información...</div>;
 
     return (
-        <div className="bg-white p-8 rounded-lg shadow-sm">
+        <div className="bg-white p-8 rounded-lg shadow-sm relative"> 
+            {/* ✅ RENDERIZADO DEL TOAST */}
+            {toast && (
+                <Toast 
+                    message={toast.message} 
+                    type={toast.type} 
+                    onClose={() => setToast(null)} 
+                />
+            )}
+
             <h2 className="text-2xl font-bold text-gray-800 mb-6">Facturación y Planes</h2>
 
             {appUser?.subscriptionStatus === 'trialing' && (

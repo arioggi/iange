@@ -21,18 +21,22 @@ serve(async (req) => {
   try {
     const body = await req.json()
     
-    // Extraemos los datos del cuerpo de la petición
-    const { priceId, tenantId, email, trialDays, planId } = body
+    // 1. EXTRACCIÓN SEGURA: 
+    // Quitamos 'trialDays' de aquí para no leerlo del frontend.
+    const { priceId, tenantId, email, planId } = body
 
     // ---------------------------------------------------------
-    // 1. CONFIGURACIÓN DINÁMICA DE LA URL (El cambio clave)
+    // CONFIGURACIÓN DINÁMICA DE LA URL
     // ---------------------------------------------------------
-    // Busca la variable 'FRONTEND_URL' en los secretos de Supabase.
-    // Si no la encuentra (ej. en local), usa 'http://localhost:3000' por defecto.
     const FRONTEND_URL = Deno.env.get('FRONTEND_URL') ?? 'http://localhost:3000';
 
-    // 🔍 LOG DE DIAGNÓSTICO
-    console.log("🔔 [Payment-Sheet] Datos recibidos:", { priceId, tenantId, email, trialDays, planId });
+    // 2. LOG LIMPIO (PRIVACIDAD):
+    // Solo mostramos IDs, nunca el email ni datos personales.
+    console.log("🔔 [Payment-Sheet] Solicitud de pago iniciada:", { 
+      tenantId, 
+      planId, 
+      priceId 
+    });
     console.log("🌍 [Payment-Sheet] URL de retorno configurada:", FRONTEND_URL);
 
     // Validaciones de seguridad
@@ -46,20 +50,19 @@ serve(async (req) => {
       line_items: [{ price: priceId.trim(), quantity: 1 }], 
       mode: 'subscription',
       
-      // Configuramos los 30 días de regalo
+      // 3. LÓGICA DE NEGOCIO BLINDADA:
+      // Forzamos 30 días aquí. El frontend ya no tiene control sobre esto.
       subscription_data: {
-        trial_period_days: trialDays || 30,
+        trial_period_days: 30, 
       },
 
-      // ---------------------------------------------------------
-      // 2. APLICACIÓN DE LA URL DINÁMICA
-      // ---------------------------------------------------------
+      // URLs de retorno dinámicas
       success_url: `${FRONTEND_URL}/progreso`, 
       cancel_url: `${FRONTEND_URL}/configuraciones/facturacion`,
       
       customer_email: email || undefined,
       
-      // ✅ PASO CRÍTICO: Guardamos los datos en la metadata de Stripe
+      // Guardamos los datos en la metadata de Stripe
       metadata: { 
         tenantId: tenantId.toString(),
         planId: planId.toString() 
