@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Propiedad, User, CompanySettings, Propietario, Comprador, UserPermissions } from '../types';
 import { PRIMARY_DASHBOARD_BUTTONS, ROLES } from '../constants';
 import { BanknotesIcon, BuildingOfficeIcon, SparklesIcon, UsersIcon } from '../components/Icons';
-// IMPORTAMOS EL NUEVO COMPONENTE
 import Avatar from '../components/ui/Avatar'; 
 
 interface OportunidadesDashboardProps {
@@ -43,31 +42,6 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, color, su
     </div>
 );
 
-const WelcomeCard: React.FC = () => {
-    const navigate = useNavigate();
-    return (
-        <div className="bg-white p-8 rounded-lg shadow-md border-2 border-iange-orange text-center animate-fade-in-down">
-            <h2 className="text-2xl font-bold text-iange-dark">¡Bienvenido a IANGE!</h2>
-            <p className="mt-2 text-gray-600">Estás a solo unos pasos de optimizar tu gestión inmobiliaria. Comienza por aquí:</p>
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
-                <button onClick={() => navigate('/configuraciones/personal')} className="flex flex-col items-center p-6 bg-iange-salmon rounded-lg hover:bg-orange-200 transition-colors transform hover:-translate-y-1">
-                    <UsersIcon className="h-10 w-10 text-iange-orange mb-2" />
-                    <span className="font-bold text-iange-dark">1. Añade tu primer usuario</span>
-                </button>
-                 <button onClick={() => navigate('/clientes')} className="flex flex-col items-center p-6 bg-iange-salmon rounded-lg hover:bg-orange-200 transition-colors transform hover:-translate-y-1">
-                    <BuildingOfficeIcon className="h-10 w-10 text-iange-orange mb-2" />
-                    <span className="font-bold text-iange-dark">2. Crea tu primera propiedad</span>
-                </button>
-                 <button onClick={() => navigate('/configuraciones/perfil')} className="flex flex-col items-center p-6 bg-iange-salmon rounded-lg hover:bg-orange-200 transition-colors transform hover:-translate-y-1">
-                    <SparklesIcon className="h-10 w-10 text-iange-orange mb-2" />
-                    <span className="font-bold text-iange-dark">3. Configura tus preferencias</span>
-                </button>
-            </div>
-        </div>
-    );
-};
-
-
 const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-MX', {
         style: 'currency',
@@ -97,6 +71,24 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
   const navigate = useNavigate();
   const [isChartVisible, setIsChartVisible] = useState(false);
 
+  // ✅ 1. LÓGICA DE ACTIVIDAD REAL (El "Candado")
+  const hasRealActivity = useMemo(() => {
+      // Validamos que los arrays existan antes de medir longitud
+      const propsCount = propiedades?.length || 0;
+      const teamCount = asesores?.length || 0;
+      
+      const hasProperties = propsCount > 0;
+      const hasTeam = teamCount > 1; // >1 porque el usuario logueado cuenta como 1
+      
+      // Solo cuenta si hay una URL válida (ignoramos onboarded: true de la BD)
+      const hasLogo = Boolean(companySettings?.logo_url && companySettings.logo_url.trim() !== '');
+      
+      // LOG DE DEPURACIÓN (Míralo en Consola F12 si algo falla)
+      console.log("🔍 [Dashboard Check] Activity:", { hasProperties, hasTeam, hasLogo, propsCount, teamCount, logo: companySettings?.logo_url });
+      
+      return hasProperties || hasTeam || hasLogo;
+  }, [propiedades, asesores, companySettings]);
+
   useEffect(() => {
     const timer = setTimeout(() => {
         setIsChartVisible(true);
@@ -113,13 +105,6 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
       });
   }, [currentUser]);
 
-  const hasRealActivity = useMemo(() => {
-      const hasProperties = propiedades.length > 0;
-      const hasTeam = asesores.length > 1; 
-      const isOnboardedFlag = companySettings?.onboarded === true;
-      return hasProperties || hasTeam || isOnboardedFlag;
-  }, [propiedades, asesores, companySettings]);
-
   if (isLoading) {
       return (
           <div className="flex items-center justify-center min-h-[60vh]">
@@ -128,10 +113,80 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
       );
   }
 
+  // ✅ 2. BLOQUEO DE PANTALLA (SI NO HAY ACTIVIDAD)
+  // Si hasRealActivity es FALSE, retornamos los banners Y NO el dashboard.
   if (!hasRealActivity) {
-      return <WelcomeCard />;
+      
+      // --- ESCENARIO A: NO TIENE PLAN (Banner Naranja) ---
+      if (!currentUser.planId) {
+          return (
+              <div className="flex flex-col items-center justify-center min-h-[70vh] animate-fade-in px-4">
+                  <div className="bg-white p-10 rounded-2xl shadow-xl border-2 border-orange-100 max-w-3xl w-full text-center">
+                      <div className="bg-orange-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
+                         <span className="text-4xl">👋</span>
+                      </div>
+                      <h2 className="text-3xl font-extrabold text-gray-900 mb-4">¡Bienvenido a IANGE!</h2>
+                      <p className="text-lg text-gray-600 mb-8 max-w-lg mx-auto leading-relaxed">
+                          Estás a un paso de digitalizar tu inmobiliaria. Para comenzar a gestionar propiedades y equipo, primero <strong>activa tu cuenta</strong>.
+                          <br/><br/>
+                          <span className="bg-orange-50 text-orange-700 px-3 py-1 rounded-full text-sm font-bold border border-orange-200">
+                             🎁 ¡Te regalamos los primeros 30 días!
+                          </span>
+                      </p>
+                      <button 
+                          onClick={() => navigate('/configuraciones/facturacion')}
+                          className="bg-orange-600 text-white px-10 py-4 rounded-full font-bold text-lg hover:bg-orange-700 transition shadow-lg hover:shadow-orange-500/30 transform hover:-translate-y-1"
+                      >
+                          Ver Planes y Comenzar
+                      </button>
+                  </div>
+              </div>
+          );
+      }
+
+      // --- ESCENARIO B: TIENE PLAN PERO NO ACTIVIDAD (Banner Verde) ---
+      return (
+          <div className="flex flex-col items-center justify-center min-h-[70vh] animate-fade-in px-4">
+               <div className="bg-white p-8 rounded-2xl shadow-xl border-2 border-green-50 max-w-5xl w-full text-center">
+                  <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <SparklesIcon className="h-8 w-8 text-green-600" />
+                  </div>
+                  <h2 className="text-3xl font-extrabold text-gray-900 mb-2">¡Todo listo para arrancar! 🚀</h2>
+                  <p className="text-gray-600 mb-10 max-w-2xl mx-auto text-lg">
+                      Tienes <strong>30 días de regalo</strong>. Completa al menos una de estas acciones para desbloquear tu Dashboard:
+                  </p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <button onClick={() => navigate('/configuraciones/personal')} className="flex flex-col items-center p-6 bg-gray-50 rounded-xl hover:bg-green-50 border-2 border-transparent hover:border-green-200 transition-all group duration-300">
+                          <div className="bg-white p-4 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform">
+                              <UsersIcon className="h-8 w-8 text-green-600" />
+                          </div>
+                          <span className="text-lg font-bold text-gray-800 group-hover:text-green-700">1. Añade tu equipo</span>
+                          <span className="text-sm text-gray-500 mt-1">Invita a tus asesores</span>
+                      </button>
+
+                       <button onClick={() => navigate('/clientes')} className="flex flex-col items-center p-6 bg-gray-50 rounded-xl hover:bg-green-50 border-2 border-transparent hover:border-green-200 transition-all group duration-300">
+                          <div className="bg-white p-4 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform">
+                              <BuildingOfficeIcon className="h-8 w-8 text-green-600" />
+                          </div>
+                          <span className="text-lg font-bold text-gray-800 group-hover:text-green-700">2. Crea una propiedad</span>
+                          <span className="text-sm text-gray-500 mt-1">Sube tu primer inmueble</span>
+                      </button>
+
+                       <button onClick={() => navigate('/configuraciones/perfil')} className="flex flex-col items-center p-6 bg-gray-50 rounded-xl hover:bg-green-50 border-2 border-transparent hover:border-green-200 transition-all group duration-300">
+                          <div className="bg-white p-4 rounded-full shadow-sm mb-4 group-hover:scale-110 transition-transform">
+                              <SparklesIcon className="h-8 w-8 text-green-600" />
+                          </div>
+                          <span className="text-lg font-bold text-gray-800 group-hover:text-green-700">3. Sube tu Logo</span>
+                          <span className="text-sm text-gray-500 mt-1">Personaliza tu marca</span>
+                      </button>
+                  </div>
+              </div>
+          </div>
+      );
   }
 
+  // ✅ 3. DASHBOARD COMPLETO (Solo llega aquí si hasRealActivity es TRUE)
   const propiedadesActivas = propiedades.filter(p => p.status !== 'Vendida');
   const totalActivas = propiedadesActivas.length;
   const valorCarteraActiva = propiedadesActivas.reduce((sum, p) => sum + parseCurrencyString(p.valor_operacion), 0);
@@ -147,7 +202,6 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
 
   const monthData: { key: string, label: string }[] = [];
   const today = new Date();
-
   for (let i = 5; i >= 0; i--) {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -162,18 +216,11 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
       if (p.fecha_captacion) {
           const captacionDate = new Date(p.fecha_captacion);
           const key = `${captacionDate.getFullYear()}-${String(captacionDate.getMonth() + 1).padStart(2, '0')}`;
-          
-          if (counts.has(key)) {
-              counts.set(key, counts.get(key)! + 1);
-          }
+          if (counts.has(key)) counts.set(key, counts.get(key)! + 1);
       }
   });
   
-  const chartData = monthData.map(m => ({
-      month: m.label,
-      count: counts.get(m.key) || 0,
-  }));
-  
+  const chartData = monthData.map(m => ({ month: m.label, count: counts.get(m.key) || 0 }));
   const maxCaptaciones = Math.max(...chartData.map(d => d.count), 1);
 
   const propiedadesRecientes = [...propiedades].sort((a, b) => new Date(b.fecha_captacion).getTime() - new Date(a.fecha_captacion).getTime()).slice(0, 5);
@@ -181,16 +228,10 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
 
   return (
     <div className="space-y-8 animate-fade-in">
-        
-        {/* --- HEADER CON AVATAR REUTILIZABLE --- */}
-        <div className="mb-8 flex items-center space-x-5 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        {/* --- HEADER --- */}
+        <div className="flex items-center space-x-5 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <div className="relative">
-                <Avatar 
-                    src={currentUser.photo} 
-                    name={currentUser.name} 
-                    size="xl" 
-                    border={true} // Borde naranja para destacar
-                />
+                <Avatar src={currentUser.photo} name={currentUser.name} size="xl" border={true} />
                 <div className="absolute bottom-1 right-1 h-5 w-5 bg-green-400 border-2 border-white rounded-full"></div>
             </div>
 
@@ -263,23 +304,20 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
                 {visibleButtons.length === 0 && <p className="text-center text-gray-500 py-4 text-sm">No tienes accesos directos disponibles.</p>}
             </div>
              
-             {/* --- LISTA DE EQUIPO USANDO EL COMPONENTE AVATAR --- */}
              <div className="bg-white p-6 rounded-lg shadow-sm border">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Equipo</h3>
                 <ul className="space-y-3">
                     {asesores.map(asesor => {
-                         // Usamos la foto del usuario actual si coincide, para evitar datos viejos
                          const isMe = String(asesor.id) === String(currentUser.id) || asesor.email === currentUser.email;
                          const realPhoto = isMe ? currentUser.photo : asesor.photo;
 
                          return (
                             <li key={asesor.id} className="flex items-center">
-                                {/* Componente Avatar Reutilizable */}
                                 <Avatar 
                                     src={realPhoto} 
                                     name={asesor.name} 
                                     size="sm" 
-                                    className="w-9 h-9" // Override ligero de tamaño para ajustar a la lista
+                                    className="w-9 h-9" 
                                 />
                                 <div className="ml-3">
                                     <p className="text-sm font-medium text-gray-800">{asesor.name}</p>

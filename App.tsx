@@ -43,40 +43,7 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Toast from './components/ui/Toast';
 
-// --- COMPONENTE DE BIENVENIDA (CUSTOMER JOURNEY) ---
-const WelcomeBanner = ({ user }: { user: User }) => {
-    const navigate = useNavigate();
-    
-    // Caso 1: No ha elegido plan (subscriptionStatus suele ser 'trialing' por defecto o vacío)
-    if (!user.planId) {
-        return (
-            <div className="bg-orange-600 text-white p-4 rounded-lg mb-6 shadow-md flex justify-between items-center animate-pulse">
-                <div>
-                    <p className="font-bold text-lg">¡Bienvenido a IANGE! 👋</p>
-                    <p className="text-sm opacity-90">Para comenzar a gestionar tus propiedades y equipo, primero <strong>escoge un plan</strong>. ¡Te regalamos los primeros 30 días!</p>
-                </div>
-                <button 
-                    onClick={() => navigate('/configuraciones/facturacion')}
-                    className="bg-white text-orange-600 px-6 py-2 rounded-full font-bold hover:bg-gray-100 transition shadow-sm whitespace-nowrap ml-4"
-                >
-                    Ver Planes
-                </button>
-            </div>
-        );
-    }
-
-    // Caso 2: Ya tiene plan (está en trialing o activo)
-    return (
-        <div className="bg-green-600 text-white p-4 rounded-lg mb-6 shadow-md">
-            <p className="font-bold text-lg">¡Plan Activado! 🚀</p>
-            <p className="text-sm opacity-90">
-                Tienes <strong>30 días de regalo</strong> antes de tu primer cobro. Ahora puedes agregar asesores, configurar tu oficina y subir propiedades.
-            </p>
-        </div>
-    );
-};
-
-// --- PROTECTED ROUTE (ACTUALIZADO PARA EL JOURNEY) ---
+// --- PROTECTED ROUTE ---
 const ProtectedRoute = ({ user, permissionKey, children }: { user: User, permissionKey?: keyof UserPermissions, children: React.ReactNode }) => {
     if (!user) return <Navigate to="/login" replace />;
     
@@ -88,9 +55,6 @@ const ProtectedRoute = ({ user, permissionKey, children }: { user: User, permiss
         return <Navigate to="/configuraciones/facturacion" replace />;
     }
 
-    // Nota: No bloqueamos el acceso a las rutas aquí para que puedan "ver" los menús.
-    // El bloqueo de "no poder hacer nada" se maneja deshabilitando botones en los componentes hijos.
-    
     if (permissionKey && !(user.permissions as any)?.[permissionKey]) {
         return <Navigate to="/configuraciones/mi-perfil" replace />;
     }
@@ -115,8 +79,7 @@ const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitIm
           isImpersonating={isImpersonating} onExitImpersonation={onExitImpersonation}
         />
         <div className="mt-8">
-            {/* Banner de Bienvenida inyectado aquí */}
-            {user.role !== ROLES.SUPER_ADMIN && <WelcomeBanner user={user} />}
+            {/* ✅ BANNER ELIMINADO AQUI: Solo el contenido de la página */}
             {children}
         </div>
       </main>
@@ -401,7 +364,12 @@ const App = () => {
                         <Route path="/configuraciones" element={<Configuraciones />}>
                              <Route index element={<Navigate to="mi-perfil" replace />} />
                              <Route path="mi-perfil" element={<MiPerfil user={user} onUserUpdated={handleUpdateUser} />} />
-                             <Route path="perfil" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? <PerfilEmpresa user={user} /> : <Navigate to="/configuraciones/mi-perfil" />} />
+                             
+                             {/* ✅ AQUÍ SE CONECTÓ LA ACTUALIZACIÓN DEL LOGO */}
+                             <Route path="perfil" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? 
+                                 <PerfilEmpresa user={user} onDataChange={refreshAppData} /> : 
+                                 <Navigate to="/configuraciones/mi-perfil" />} 
+                             />
                              
                              <Route path="facturacion" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? <Facturacion /> : <Navigate to="/configuraciones/mi-perfil" />} />
                              
