@@ -1,3 +1,4 @@
+// components/settings/PerfilEmpresa.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../../types';
 import { 
@@ -5,7 +6,6 @@ import {
     updateTenant, 
     uploadCompanyLogo 
 } from '../../Services/api';
-import { useAuth } from '../../authContext'; // Para recargar si es necesario
 
 // Componentes UI (Reutilizamos los mismos estilos que MiPerfil)
 const FormSection: React.FC<{ title: string; children: React.ReactNode, description?: string }> = ({ title, children, description }) => (
@@ -40,11 +40,13 @@ const Input: React.FC<{ label: string; name: string; value: string; onChange: (e
     </div>
 );
 
+// ✅ INTERFAZ ACTUALIZADA
 interface PerfilEmpresaProps {
     user: User;
+    onDataChange?: () => void; // <--- Agregado para actualizar Sidebar
 }
 
-const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user }) => {
+const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user, onDataChange }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [loading, setLoading] = useState(false);
     const [pageLoading, setPageLoading] = useState(true);
@@ -71,7 +73,7 @@ const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user }) => {
                 const data = await getTenantById(user.tenantId);
                 if (data) {
                     setFormData({
-                        nombre: data.name || data.nombre || '', // Soporte para ambos nombres de columna
+                        nombre: data.name || data.nombre || '', 
                         telefono: data.telefono || '',
                         direccion: data.direccion || '',
                         rfc: data.rfc || '',
@@ -110,16 +112,19 @@ const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user }) => {
             // 1. Subir imagen
             const publicUrl = await uploadCompanyLogo(user.tenantId, file);
             
-            // 2. Cache busting (truco para refrescar imagen al instante)
+            // 2. Cache busting
             const timestampedUrl = `${publicUrl}?t=${new Date().getTime()}`;
 
-            // 3. Guardar URL en la base de datos inmediatamente
+            // 3. Guardar URL
             await updateTenant(user.tenantId, { logo_url: timestampedUrl });
 
-            // 4. Actualizar estado local para ver el cambio
+            // 4. Actualizar estado local
             setFormData(prev => ({ ...prev, logo_url: timestampedUrl }));
             
             setMessage({ type: 'success', text: 'Logo actualizado correctamente.' });
+
+            // ✅ NOTIFICAR CAMBIO AL PADRE (APP.TSX)
+            if (onDataChange) onDataChange();
 
         } catch (error: any) {
             console.error("Error subiendo logo:", error);
@@ -130,23 +135,24 @@ const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user }) => {
         }
     };
 
-    // --- NUEVA FUNCIÓN: ELIMINAR LOGO ---
+    // --- ELIMINAR LOGO ---
     const handleDeleteLogo = async () => {
         if (!user.tenantId) return;
         
-        // Confirmación simple
         if (!window.confirm("¿Seguro que quieres eliminar el logo y volver al original?")) return;
 
         setLoading(true);
         setMessage(null);
 
         try {
-            // Enviamos logo_url: null para borrarlo de la base de datos
             await updateTenant(user.tenantId, { logo_url: null } as any); 
             
-            // Actualizamos la vista local inmediatamente
             setFormData(prev => ({ ...prev, logo_url: '' }));
-            setMessage({ type: 'success', text: 'Logo eliminado. Se mostrará el logo por defecto.' });
+            setMessage({ type: 'success', text: 'Logo eliminado.' });
+
+            // ✅ NOTIFICAR CAMBIO AL PADRE
+            if (onDataChange) onDataChange();
+
         } catch (error) {
             console.error("Error eliminando logo:", error);
             setMessage({ type: 'error', text: 'Error al eliminar el logo.' });
@@ -168,10 +174,13 @@ const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user }) => {
                 nombre: formData.nombre,
                 telefono: formData.telefono,
                 direccion: formData.direccion
-                // El RFC usualmente no se edita aquí por seguridad fiscal, pero puedes agregarlo si quieres
             });
 
-            setMessage({ type: 'success', text: 'Información de la empresa guardada.' });
+            setMessage({ type: 'success', text: 'Información guardada.' });
+
+            // ✅ NOTIFICAR CAMBIO AL PADRE (Por si cambió el nombre de la empresa)
+            if (onDataChange) onDataChange();
+
         } catch (error: any) {
             console.error("Error guardando empresa:", error);
             setMessage({ type: 'error', text: 'Error al guardar cambios.' });
@@ -209,9 +218,8 @@ const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user }) => {
             )}
 
             <form onSubmit={handleSubmit}>
-                <FormSection title="Logotipo" description="Este logo aparecerá en tus reportes, fichas técnicas y el panel de tus asesores.">
+                <FormSection title="Logotipo" description="Este logo aparecerá en tus reportes y en el panel.">
                     <div className="flex items-center gap-6">
-                        {/* Contenedor del Logo con fondo sutil para ver transparencias */}
                         <div className="relative group bg-gray-50 rounded-lg p-2 border border-gray-200">
                             {formData.logo_url ? (
                                 <img 
@@ -225,7 +233,6 @@ const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user }) => {
                                 />
                             ) : null}
                             
-                            {/* Fallback si no hay logo (Icono genérico) */}
                             <div className={`h-24 w-24 flex items-center justify-center text-gray-400 ${formData.logo_url ? 'hidden' : ''}`}>
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -233,13 +240,12 @@ const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user }) => {
                             </div>
                         </div>
 
-                        {/* Botones de Acción */}
                         <div className="flex flex-col gap-3">
                             <input 
                                 type="file" 
                                 ref={fileInputRef} 
                                 className="hidden" 
-                                accept="image/png,image/jpeg,image/webp" // Soporte explícito para PNG
+                                accept="image/png,image/jpeg,image/webp"
                                 onChange={handleFileChange}
                             />
                             
@@ -253,7 +259,6 @@ const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user }) => {
                                     {loading ? 'Subiendo...' : 'Subir Logo'}
                                 </button>
 
-                                {/* BOTÓN ELIMINAR (Solo visible si hay logo) */}
                                 {formData.logo_url && (
                                     <button 
                                         type="button" 
@@ -271,14 +276,14 @@ const PerfilEmpresa: React.FC<PerfilEmpresaProps> = ({ user }) => {
                     </div>
                 </FormSection>
 
-                <FormSection title="Datos Generales" description="Información de contacto y fiscal de la inmobiliaria.">
+                <FormSection title="Datos Generales" description="Información de contacto y fiscal.">
                     <div className="grid grid-cols-1 gap-6">
                         <Input label="Nombre de la Inmobiliaria" name="nombre" value={formData.nombre} onChange={handleChange} placeholder="Ej. Inmobiliaria Regia" />
                         <Input label="Teléfono de Contacto" name="telefono" value={formData.telefono} onChange={handleChange} placeholder="Ej. 81 8888 8888" />
                         <Input label="Dirección Física" name="direccion" value={formData.direccion} onChange={handleChange} placeholder="Ej. Av. Siempre Viva 123, Monterrey" />
                         <div className="opacity-75">
                             <Input label="RFC (Identificador Fiscal)" name="rfc" value={formData.rfc} onChange={handleChange} disabled={true} />
-                            <p className="text-xs text-gray-400 mt-1">El RFC no se puede editar directamente. Contacta a soporte.</p>
+                            <p className="text-xs text-gray-400 mt-1">El RFC no se puede editar directamente.</p>
                         </div>
                     </div>
                 </FormSection>
