@@ -169,6 +169,7 @@ export interface Interes {
     fechaInteres: string;
 }
 
+// ✅ INTERFAZ KYC ACTUALIZADA PARA SOPORTAR CAMPOS DESGLOSADOS
 export interface KycData {
   nombreCompleto: string;
   curp: string;
@@ -178,13 +179,27 @@ export interface KycData {
   estadoCivil: string;
   regimenPatrimonial?: string;
   profesion: string;
-  domicilio: string;
-  colonia: string;
-  municipio: string;
-  cp: string;
-  estado: string;
+  
+  // -- CAMPOS DE DIRECCIÓN LEGACY --
+  domicilio: string; 
+  cp: string; 
+  
+  // -- ✅ NUEVOS CAMPOS DE DIRECCIÓN DESGLOSADA (Corrección de errores) --
+  calle?: string;
+  numeroExterior?: string;
+  numeroInterior?: string;
+  colonia: string;       // Ya existía
+  codigoPostal?: string; // Alias para cp
+  municipio: string;     // Ya existía
+  estado: string;        // Ya existía
+  pais?: string;
+
   telefono: string;
   email: string;
+  
+  // -- ✅ NUEVO CAMPO DE OCUPACIÓN --
+  ocupacion?: string; // Alias para profesion
+
   identificacionOficialTipo: string;
   identificacionOficialNumero: string;
   esPersonaMoral: boolean;
