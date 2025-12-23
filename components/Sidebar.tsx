@@ -176,8 +176,28 @@ const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl }) => {
   }
 
   return (
-    <aside className="w-64 bg-white h-screen p-6 flex flex-col justify-between border-r border-gray-200 fixed top-0 left-0 z-30 overflow-y-auto">
-      {renderContent()}
+    // ESTRUCTURA CORREGIDA:
+    // 1. El aside principal mantiene la posición fija y el borde, pero delegamos el layout interno.
+    <aside className="w-64 bg-white h-screen flex flex-col border-r border-gray-200 fixed top-0 left-0 z-30">
+      
+      {/* 2. CONTENEDOR DE CONTENIDO (flex-1):
+          Aquí movemos todas las clases que controlaban el layout original:
+          - p-6: Padding original.
+          - justify-between: Separa logo (arriba) de configuraciones (abajo).
+          - overflow-y-auto: Scroll interno si la pantalla es chica.
+          - flex-1: OBLIGA a este div a ocupar todo el espacio disponible, empujando los items.
+      */}
+      <div className="flex-1 flex flex-col justify-between p-6 overflow-y-auto">
+        {renderContent()}
+      </div>
+
+      {/* 3. VERSIÓN (Footer):
+          Queda fuera del padding y scroll, pegado al borde inferior.
+      */}
+      <div className="pb-2 text-[10px] text-gray-300 font-mono text-center select-none bg-white">
+        v1.0.1
+      </div>
+
     </aside>
   );
 };
