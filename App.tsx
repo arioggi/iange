@@ -23,6 +23,7 @@ import MiPerfil from "./pages/MiPerfil";
 import Configuraciones from "./pages/Configuraciones";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import PublicPropertyPage from "./pages/PublicPropertyPage";
+import PublicCatalogPage from "./pages/PublicCatalogPage"; // <--- NUEVA IMPORTACIÓN
 
 // Settings
 import PerfilEmpresa from "./components/settings/PerfilEmpresa";
@@ -170,7 +171,6 @@ const App = () => {
       }
 
       if (user.tenantId) {
-          // Solo ponemos el loading si NO es silencioso
           if (!silent) setDataLoading(true);
 
           try {
@@ -227,8 +227,6 @@ const App = () => {
       }
   };
 
-  // --- CORRECCIÓN CRÍTICA: Dependencia cambiada de [user] a [user?.tenantId] ---
-  // Esto evita que actualizaciones menores del usuario (refreshUser) disparen la carga completa
   useEffect(() => { 
       refreshAppData(); 
   }, [user?.tenantId]); 
@@ -341,13 +339,17 @@ const App = () => {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       
       <Routes>
+        {/* --- RUTAS PÚBLICAS --- */}
         <Route path="/preview/:token" element={<PublicPropertyPage />} />
         <Route path="/p/:id" element={<PublicPropertyPage />} />
+        {/* ✅ NUEVA RUTA: CATÁLOGO PÚBLICO */}
+        <Route path="/c/:tenantId" element={<PublicCatalogPage />} />
 
         <Route path="/login" element={
             status === 'authenticated' ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />
         } />
 
+        {/* --- RUTAS PRIVADAS (APP) --- */}
         <Route path="/*" element={
             !user ? (
                 <Navigate to="/login" replace />
