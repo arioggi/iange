@@ -79,7 +79,6 @@ const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitIm
           isImpersonating={isImpersonating} onExitImpersonation={onExitImpersonation}
         />
         <div className="mt-8">
-            {/* ✅ BANNER ELIMINADO AQUI: Solo el contenido de la página */}
             {children}
         </div>
       </main>
@@ -141,8 +140,8 @@ const App = () => {
     
     const routes: Record<string, string> = {
       '/': 'Inicio', 
-      '/oportunidades': 'Dashboard', 
-      '/clientes': 'Alta de Clientes',
+      '/inicio': 'Inicio',              
+      '/oportunidades': 'Oportunidades', 
       '/catalogo': 'Catálogo', 
       '/progreso': 'Progreso', 
       '/reportes': 'Reportes',
@@ -152,10 +151,14 @@ const App = () => {
       '/configuraciones/facturacion': 'Facturación'
     };
 
-    return routes[path] || companySettings?.name || 'IANGE';
+    if (routes[path]) return routes[path];
+    if (path.includes('/oportunidades')) return 'Oportunidades'; 
+    if (path.includes('/inicio')) return 'Inicio';
+
+    return companySettings?.name || 'IANGE';
   };
 
-  const refreshAppData = async () => {
+  const refreshAppData = async (silent = false) => {
       if (!user) {
           setDataLoading(false);
           return;
@@ -167,7 +170,8 @@ const App = () => {
       }
 
       if (user.tenantId) {
-          setDataLoading(true);
+          // Solo ponemos el loading si NO es silencioso
+          if (!silent) setDataLoading(true);
 
           try {
               const cachedSettings = adapter.getTenantSettings(user.tenantId);
@@ -223,16 +227,20 @@ const App = () => {
       }
   };
 
-  useEffect(() => { refreshAppData(); }, [user]); 
+  // --- CORRECCIÓN CRÍTICA: Dependencia cambiada de [user] a [user?.tenantId] ---
+  // Esto evita que actualizaciones menores del usuario (refreshUser) disparen la carga completa
+  useEffect(() => { 
+      refreshAppData(); 
+  }, [user?.tenantId]); 
 
   useEffect(() => {
       if (!user?.tenantId) return;
       const channel = supabase.channel('realtime:app-updates')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'propiedades', filter: `tenant_id=eq.${user.tenantId}` }, () => refreshAppData())
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'contactos', filter: `tenant_id=eq.${user.tenantId}` }, () => refreshAppData())
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'propiedades', filter: `tenant_id=eq.${user.tenantId}` }, () => refreshAppData(true))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'contactos', filter: `tenant_id=eq.${user.tenantId}` }, () => refreshAppData(true))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'tenants', filter: `id=eq.${user.tenantId}` }, async () => {
               console.log("🔔 Cambio en Tenant detectado, refrescando datos y usuario...");
-              await refreshAppData();
+              await refreshAppData(true);
               await refreshUser(); 
           })
           .subscribe();
@@ -244,8 +252,8 @@ const App = () => {
   const getInitialRoute = (currentUser: User) => {
       if (currentUser.role === ROLES.SUPER_ADMIN) return '/superadmin';
       const p = currentUser.permissions || {} as UserPermissions;
-      if (p.dashboard) return '/oportunidades';
-      if (p.contactos) return '/clientes';
+      if (p.dashboard) return '/inicio'; 
+      if (p.contactos) return '/oportunidades'; 
       if (p.propiedades) return '/catalogo';
       if (p.progreso) return '/progreso';
       if (p.reportes) return '/reportes';
@@ -270,7 +278,6 @@ const App = () => {
 
   const handleUpdatePropiedad = async (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
     if (!user) return;
-    // Bloqueo manual si no hay plan
     if (!user.planId) {
         showToast('Debes elegir un plan para guardar información.', 'error');
         return;
@@ -280,7 +287,7 @@ const App = () => {
         await updateContact(updatedPropietario.id, updatedPropietario);
         await updateProperty(updatedPropiedad, updatedPropietario.id.toString());
         showToast('Guardado con éxito.', 'success');
-        refreshAppData();
+        refreshAppData(true); 
     } catch (error) {
         showToast('Error al guardar.', 'error');
     }
@@ -291,7 +298,10 @@ const App = () => {
   const handleUpdateUser = () => showToast('Perfil actualizado');
   const handleImpersonate = () => {}; 
   const handleExitImpersonation = () => {}; 
-  const onNavigateAndEdit = (id: number) => { setInitialEditPropId(id); navigate('/clientes'); };
+  const onNavigateAndEdit = (id: number) => { 
+      setInitialEditPropId(id); 
+      navigate('/oportunidades'); 
+  };
 
   if (isLoading) {
     return (
@@ -353,9 +363,10 @@ const App = () => {
                     <Routes>
                         <Route path="/" element={<Navigate to={getInitialRoute(user)} replace />} />
                         
-                        <Route path="/oportunidades" element={<ProtectedRoute user={user} permissionKey="dashboard"><OportunidadesDashboard propiedades={propiedades} asesores={asesores} propietarios={propietarios} compradores={compradores} companySettings={companySettings} isLoading={dataLoading} currentUser={user} /></ProtectedRoute>} />
-                        <Route path="/clientes" element={<ProtectedRoute user={user} permissionKey="contactos"><AltaClientes showToast={showToast} propiedades={propiedades} setPropiedades={setPropiedades} propietarios={propietarios} setPropietarios={setPropietarios} compradores={compradores} setCompradores={setCompradores} handleUpdatePropiedad={handleUpdatePropiedad} handleDeletePropiedad={handleDeletePropiedad} initialEditPropId={initialEditPropId} setInitialEditPropId={setInitialEditPropId} asesores={asesores} currentUser={user} onDataChange={refreshAppData} /></ProtectedRoute>} />
-                        <Route path="/catalogo" element={<ProtectedRoute user={user} permissionKey="propiedades"><Catalogo propiedades={propiedades} propietarios={propietarios} asesores={asesores} onAddVisita={handleAddVisita} handleUpdatePropiedad={handleUpdatePropiedad} showToast={showToast} currentUser={user} compradores={compradores} onDataChange={refreshAppData}/></ProtectedRoute>} />
+                        <Route path="/inicio" element={<ProtectedRoute user={user} permissionKey="dashboard"><OportunidadesDashboard propiedades={propiedades} asesores={asesores} propietarios={propietarios} compradores={compradores} companySettings={companySettings} isLoading={dataLoading} currentUser={user} /></ProtectedRoute>} />
+                        <Route path="/oportunidades" element={<ProtectedRoute user={user} permissionKey="contactos"><AltaClientes showToast={showToast} propiedades={propiedades} setPropiedades={setPropiedades} propietarios={propietarios} setPropietarios={setPropietarios} compradores={compradores} setCompradores={setCompradores} handleUpdatePropiedad={handleUpdatePropiedad} handleDeletePropiedad={handleDeletePropiedad} initialEditPropId={initialEditPropId} setInitialEditPropId={setInitialEditPropId} asesores={asesores} currentUser={user} onDataChange={() => refreshAppData(true)} /></ProtectedRoute>} />
+                        
+                        <Route path="/catalogo" element={<ProtectedRoute user={user} permissionKey="propiedades"><Catalogo propiedades={propiedades} propietarios={propietarios} asesores={asesores} onAddVisita={handleAddVisita} handleUpdatePropiedad={handleUpdatePropiedad} showToast={showToast} currentUser={user} compradores={compradores} onDataChange={() => refreshAppData(true)}/></ProtectedRoute>} />
                         <Route path="/progreso" element={<ProtectedRoute user={user} permissionKey="progreso"><Progreso propiedades={propiedades} propietarios={propietarios} onUpdatePropiedad={handleUpdatePropiedad} onNavigateAndEdit={onNavigateAndEdit} asesores={asesores} /></ProtectedRoute>} />
                         <Route path="/reportes" element={<ProtectedRoute user={user} permissionKey="reportes"><Reportes /></ProtectedRoute>} />
                         <Route path="/reportes/:reportId" element={<ProtectedRoute user={user} permissionKey="reportes"><ReporteDetalle propiedades={propiedades} asesores={asesores} compradores={compradores} /></ProtectedRoute>} />
@@ -365,15 +376,14 @@ const App = () => {
                              <Route index element={<Navigate to="mi-perfil" replace />} />
                              <Route path="mi-perfil" element={<MiPerfil user={user} onUserUpdated={handleUpdateUser} />} />
                              
-                             {/* ✅ AQUÍ SE CONECTÓ LA ACTUALIZACIÓN DEL LOGO */}
                              <Route path="perfil" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? 
-                                 <PerfilEmpresa user={user} onDataChange={refreshAppData} /> : 
+                                 <PerfilEmpresa user={user} onDataChange={() => refreshAppData(true)} /> : 
                                  <Navigate to="/configuraciones/mi-perfil" />} 
                              />
                              
                              <Route path="facturacion" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? <Facturacion /> : <Navigate to="/configuraciones/mi-perfil" />} />
                              
-                             <Route path="personal" element={<ProtectedRoute user={user} permissionKey="equipo"><PersonalEmpresa showToast={showToast} currentUser={user} onDataChange={refreshAppData} /></ProtectedRoute>} />
+                             <Route path="personal" element={<ProtectedRoute user={user} permissionKey="equipo"><PersonalEmpresa showToast={showToast} currentUser={user} onDataChange={() => refreshAppData(true)} /></ProtectedRoute>} />
                         </Route>
 
                         <Route path="/superadmin/*" element={user.role === ROLES.SUPER_ADMIN ? (<Routes><Route path="/" element={<SuperAdminDashboard />} /><Route path="empresas" element={<SuperAdminEmpresas showToast={showToast} onImpersonate={handleImpersonate} />} /><Route path="usuarios-globales" element={<SuperAdminUsuarios showToast={showToast} />} /><Route path="planes" element={<SuperAdminPlanes />} /><Route path="configuracion" element={<SuperAdminConfiguracion showToast={showToast} />} /><Route path="reportes-globales" element={<SuperAdminReportes />} /><Route path="logs" element={<SuperAdminLogs />} /></Routes>) : <Navigate to="/" />} />
