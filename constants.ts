@@ -77,17 +77,17 @@ export const ROLE_MIGRATION_MAP: Record<string, string> = {
   'notaria': ROLES.NOTARIA,
 };
 
+// --- CORRECCIÓN 1: Rutas por defecto apuntan a las NUEVAS direcciones ---
 export const DEFAULT_ROUTES: Record<string, string> = {
   [ROLES.SUPER_ADMIN]: '/superadmin',
   [ROLES.IANGE_ADMIN]: '/iange-admin',
-  [ROLES.CUENTA_EMPRESA]: '/oportunidades',
-  [ROLES.ADMIN_EMPRESA]: '/oportunidades',
+  [ROLES.CUENTA_EMPRESA]: '/inicio', // Ahora apunta a /inicio
+  [ROLES.ADMIN_EMPRESA]: '/inicio',    // Ahora apunta a /inicio
   [ROLES.ASESOR]: '/catalogo',
   [ROLES.GESTOR]: '/progreso',
   [ROLES.NOTARIA]: '/reportes',
 };
 
-// --- CORRECCIÓN CLAVE: Agregamos billing_edit a todos los roles ---
 export const ROLE_DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
   [ROLES.SUPER_ADMIN]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true, billing_edit: true },
   [ROLES.IANGE_ADMIN]: { dashboard: true, contactos: true, propiedades: true, progreso: true, reportes: true, crm: true, equipo: true, billing_edit: true },
@@ -98,19 +98,20 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
   [ROLES.NOTARIA]: { dashboard: false, contactos: false, propiedades: false, progreso: true, reportes: false, crm: false, equipo: false, billing_edit: false },
 };
 
+// --- CORRECCIÓN 2: El mapa de permisos usa las NUEVAS direcciones ---
 export const PERMISSION_PATH_MAP: Record<keyof UserPermissions, string[]> = {
-  dashboard: ['/oportunidades'],
-  contactos: ['/clientes'],
+  dashboard: ['/inicio'],           // Permiso dashboard -> ruta /inicio
+  contactos: ['/oportunidades'],    // Permiso contactos -> ruta /oportunidades
   propiedades: ['/catalogo'],
   progreso: ['/progreso'],
   reportes: ['/reportes'],
   crm: ['/crm'],
   equipo: ['/configuraciones/personal'],
-  billing_edit: ['/configuraciones/facturacion'], // Agregamos el mapeo de ruta
+  billing_edit: ['/configuraciones/facturacion'], 
 };
 
 const ALL_PATHS = [
-  '/', '/oportunidades', '/clientes', '/catalogo', '/progreso', '/reportes', '/crm',
+  '/', '/inicio', '/oportunidades', '/catalogo', '/progreso', '/reportes', '/crm',
   '/configuraciones', '/configuraciones/mi-perfil', '/configuraciones/perfil',
   '/configuraciones/personal', '/configuraciones/facturacion',
   '/superadmin', '/superadmin/empresas', '/superadmin/usuarios-globales',
@@ -134,9 +135,14 @@ interface DashboardButton {
   name: string;
 }
 
+// --- CORRECCIÓN 3: MENÚ CON RUTAS CORRECTAS ---
 export const MENU_ITEMS: MenuItem[] = [
-  { name: 'Dashboard', path: '/oportunidades', permissionKey: 'dashboard', icon: ChartBarIcon },
-  { name: 'Alta de clientes', path: '/clientes', permissionKey: 'contactos', icon: UserGroupIcon },
+  // Inicio ahora lleva a /inicio (Donde está el Dashboard en App.tsx)
+  { name: 'Inicio', path: '/inicio', permissionKey: 'dashboard', icon: ChartBarIcon }, 
+  
+  // Oportunidades ahora lleva a /oportunidades (Donde está AltaClientes en App.tsx)
+  { name: 'Oportunidades', path: '/oportunidades', permissionKey: 'contactos', icon: UserGroupIcon },
+  
   { name: 'Catálogo', path: '/catalogo', permissionKey: 'propiedades', icon: BuildingOfficeIcon },
   { name: 'Progreso', path: '/progreso', permissionKey: 'progreso', icon: PresentationChartLineIcon },
   { name: 'Reportes', path: '/reportes', permissionKey: 'reportes', icon: DocumentTextIcon },
@@ -208,9 +214,10 @@ export const MOCK_LOGS: Log[] = [
   { id: 1, fecha: '2024-10-26 10:00:15', usuario: 'Ariel Poggi', rol: 'superadmin', accion: 'Creó la empresa "Asesores y Casas"', resultado: 'Éxito' },
 ];
 
+// --- CORRECCIÓN 4: BOTONES DASHBOARD (Sincronizados con el menú) ---
 export const PRIMARY_DASHBOARD_BUTTONS: (DashboardButton & { permissionKey?: keyof UserPermissions })[] = [
-  { label: 'Dashboard', path: '/oportunidades', name: 'Dashboard', permissionKey: 'dashboard' },
-  { label: 'Alta de Clientes', path: '/clientes', name: 'Alta de clientes', permissionKey: 'contactos' },
+  { label: 'Inicio', path: '/inicio', name: 'Dashboard', permissionKey: 'dashboard' },
+  { label: 'Oportunidades', path: '/oportunidades', name: 'Oportunidades', permissionKey: 'contactos' },
   { label: 'Catálogo', path: '/catalogo', name: 'Catálogo', permissionKey: 'propiedades' },
   { label: 'Progreso', path: '/progreso', name: 'Progreso', permissionKey: 'progreso' },
   { label: 'Reportes', path: '/reportes', name: 'Reportes', permissionKey: 'reportes' },
@@ -309,7 +316,6 @@ export const DEMO_SEED = {
 export const MOCK_EMPRESAS = DEMO_SEED.empresas;
 export const USERS = DEMO_SEED.users;
 
-// --- NUEVO ESTADO INICIAL PARA OFERTA ---
 export const initialOfferState: OfferData = {
   compradorId: '', 
   precioOfrecido: '',
