@@ -235,7 +235,9 @@ export const uploadPropertyImage = async (file: File) => {
   const cleanName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
   const fileExt = cleanName.split('.').pop();
   const fileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-  const filePath = `${fileName}`;
+  
+  // 1. Definimos el nombre del archivo
+  const filePath = `${fileName}`; 
 
   const { error: uploadError } = await supabase.storage
     .from('propiedades') 
@@ -246,8 +248,9 @@ export const uploadPropertyImage = async (file: File) => {
 
   if (uploadError) throw uploadError;
 
-  const { data } = supabase.storage.from('propiedades').getPublicUrl(filePath);
-  return data.publicUrl;
+  // 2. CAMBIO IMPORTANTE: Devolvemos SOLO el nombre del archivo (Clean Path)
+  // En lugar de devolver data.publicUrl
+  return filePath; 
 };
 
 export const createContact = async (contactData: any, tenantId: string, tipo: 'propietario' | 'comprador') => {
@@ -326,6 +329,15 @@ export const getPropertiesByTenant = async (tenantId: string) => {
     else if (dbStatus === 'en promoción' || dbStatus === 'disponible') uiStatus = 'En Promoción';
     else uiStatus = 'Validación Pendiente';
 
+    // --- AGREGAR ESTA LÓGICA DE HIDRATACIÓN ---
+    // Esto convierte los nombres cortos (foto.jpg) en URLs completas para que el Dashboard las vea bien
+    const rawImages = p.images || [];
+    const hydratedImages = rawImages.map((img: string) => {
+        if (img.startsWith('http')) return img; // Si ya es URL completa, déjala igual
+        // Si es nombre corto, agrégale el dominio de Supabase
+        return supabase.storage.from('propiedades').getPublicUrl(img).data.publicUrl;
+    });
+
     return {
         ...p.features, 
         id: p.id,
@@ -337,7 +349,7 @@ export const getPropertiesByTenant = async (tenantId: string) => {
         status: uiStatus, 
         fecha_venta: p.features?.fecha_venta || p.fecha_venta || null,
         fotos: [], 
-        imageUrls: p.images || [], 
+        imageUrls: hydratedImages, // <--- USA LA VERSIÓN HIDRATADA AQUÍ
         fecha_captacion: p.created_at,
         progreso: p.features?.progreso || 0,
         checklist: p.features?.checklist || {},
