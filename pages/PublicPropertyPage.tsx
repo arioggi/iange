@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
+// CONFIRMADO: Tu bucket se llama 'propiedades'
+const BUCKET_NAME = 'propiedades'; 
+
 const FeatureBadge = ({ icon, label }: { icon: string, label: string }) => (
     <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-100 text-sm font-medium text-gray-700">
         <span className="text-lg">{icon}</span> {label}
@@ -19,7 +22,7 @@ const PublicPropertyPage = () => {
 
     useEffect(() => {
         const fetchData = async () => {
-            // Iniciamos la consulta
+            // Iniciamos la consulta trayendo TODO para evitar errores
             let query = supabase.from('propiedades').select('*');
 
             // Lógica inteligente de búsqueda: Prioridad al Token, si no, usa ID
@@ -45,6 +48,27 @@ const PublicPropertyPage = () => {
                     setEmpresa(tenantData);
                 }
 
+                // --- LÓGICA DE IMÁGENES CORREGIDA ---
+                let rawImages = propData.imagenes || propData.images || propData.features?.images || [];
+                // Aseguramos que sea array
+                if (typeof rawImages === 'string') rawImages = [rawImages];
+                if (!Array.isArray(rawImages)) rawImages = [];
+
+                const cleanImages = rawImages.map((img: string) => {
+                    if (!img) return null;
+                    if (img.startsWith('http')) return img;
+                    
+                    // FIX: Quitamos el nombre del bucket si ya viene en la ruta para evitar duplicados
+                    const cleanPath = img.replace(`${BUCKET_NAME}/`, '');
+                    
+                    return supabase.storage.from(BUCKET_NAME).getPublicUrl(cleanPath).data.publicUrl;
+                }).filter(Boolean);
+
+                // Fallback por si no quedó ninguna imagen válida
+                if (cleanImages.length === 0) {
+                    cleanImages.push('https://via.placeholder.com/800x600?text=Sin+Imagen');
+                }
+
                 // Mapeo seguro de datos para evitar errores si faltan campos
                 const features = propData.features || {};
                 
@@ -52,8 +76,8 @@ const PublicPropertyPage = () => {
                     ...features,
                     id: propData.id,
                     titulo: propData.titulo,
-                    // Si no hay imágenes, ponemos una por defecto
-                    imageUrls: propData.imagenes && propData.imagenes.length > 0 ? propData.imagenes : ['https://via.placeholder.com/800x600?text=Sin+Imagen'],
+                    // Usamos las imágenes limpias
+                    imageUrls: cleanImages,
                     // Formato seguro de moneda MXN
                     valor_operacion: new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(propData.precio || 0),
                     
@@ -97,7 +121,9 @@ const PublicPropertyPage = () => {
     const images = propiedad.imageUrls;
 
     return (
-        <div className="min-h-screen bg-white font-sans">
+        // FLEX COL para Sticky Footer
+        <div className="min-h-screen bg-white font-sans flex flex-col">
+            
             {/* --- HEADER PERSONALIZADO --- */}
             <header className="bg-white border-b sticky top-0 z-50 shadow-sm">
                 <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
@@ -117,7 +143,8 @@ const PublicPropertyPage = () => {
                 </div>
             </header>
 
-            <main className="max-w-6xl mx-auto px-4 py-8">
+            {/* MAIN con flex-grow para empujar el footer */}
+            <main className="max-w-6xl mx-auto px-4 py-8 flex-grow w-full">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
                     
                     {/* GALERÍA DE IMÁGENES */}
@@ -218,6 +245,21 @@ const PublicPropertyPage = () => {
                     </div>
                 </div>
             </main>
+
+            {/* --- FOOTER UNIFICADO --- */}
+            <footer className="bg-white border-t py-8 text-center text-gray-400 text-sm mt-auto">
+                <p>© {new Date().getFullYear()} {empresa?.name || empresa?.nombre || 'Inmobiliaria'}. Todos los derechos reservados.</p>
+                
+                {/* LOGO IANGE */}
+                <div className="mt-4 flex items-center justify-center gap-2 opacity-80 hover:opacity-100 transition-opacity">
+                    <span className="text-xs font-medium text-gray-400">Powered by</span> 
+                    <img 
+                        src="/logo.svg" 
+                        alt="IANGE" 
+                        className="h-5 w-auto object-contain grayscale hover:grayscale-0 transition-all duration-300"
+                    />
+                </div>
+            </footer>
         </div>
     );
 };
