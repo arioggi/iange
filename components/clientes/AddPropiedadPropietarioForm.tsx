@@ -3,10 +3,11 @@ import { Propiedad, Propietario, ChecklistStatus, User } from '../../types';
 import KycPldForm from './KycPldForm';
 import { initialKycState as initialKycPropietarioState } from '../../constants';
 import PhotoSorter from '../ui/PhotoSorter'; 
-// [1] IMPORTAMOS EL COMPONENTE CURRENCY INPUT
 import { CurrencyInput } from '../ui/CurrencyInput';
 
-declare const jspdf: any;
+// [NUEVO] Importamos las herramientas para generar el PDF bonito
+import { pdf } from '@react-pdf/renderer';
+import FichaTecnicaPDF from '../PDF/FichaTecnicaPDF';
 
 const TABS = ['Datos de la Propiedad', 'Datos del Propietario'];
 
@@ -28,7 +29,7 @@ const initialPropiedadState: Omit<Propiedad, 'id' | 'propietarioId' | 'fecha_cap
     asesorId: 0,
     visitas: [],
     
-    // --- CAMPOS NUEVOS DE COMISIÓN ---
+    // Comisiones
     comisionCaptacionOficina: 0,
     comisionCaptacionAsesor: 0,
     compartirComisionCaptacion: false,
@@ -55,133 +56,39 @@ const PhotoIcon = () => (
     </svg>
 );
 
-const fileToDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
-};
+// [IMPORTANTE] Esta función ahora usa React-PDF en lugar de jsPDF manual
+const generatePdf = async (propiedadData: any, fotos: File[]): Promise<string> => {
+    try {
+        // 1. Preparamos las URLs de las fotos
+        const fotoUrls = await Promise.all(fotos.map(file => {
+            return new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target?.result as string);
+                reader.readAsDataURL(file);
+            });
+        }));
 
-const generatePdf = async (propiedad: any, fotos: File[]): Promise<string> => {
-    const { jsPDF } = jspdf;
-    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-    const margin = 15;
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const usableWidth = pageWidth - (margin * 2);
+        // 2. Renderizamos el componente bonito a un Blob
+        // Pasamos los datos formateados como espera el componente
+        const blob = await pdf(
+            <FichaTecnicaPDF 
+                propiedad={propiedadData as Propiedad} 
+                images={fotoUrls} 
+            />
+        ).toBlob();
 
-    const formatCurrency = (value?: string) => {
-        if (!value) return 'N/A';
-        const number = parseFloat(value.replace(/[^0-9.-]+/g,""));
-        if (isNaN(number)) return 'N/A';
-        return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(number);
-    };
+        // 3. Convertimos el Blob a Base64 para guardarlo
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob); 
+        });
 
-    // --- Page 1: Cover Photo ---
-    if (fotos[0]) {
-        const fotoDataUrl = await fileToDataUrl(fotos[0]);
-        const imgProps = doc.getImageProperties(fotoDataUrl);
-        const imgRatio = imgProps.width / imgProps.height;
-        let imgWidth = pageWidth;
-        let imgHeight = imgWidth / imgRatio;
-        
-        if (imgHeight < pageHeight) {
-            imgHeight = pageHeight;
-            imgWidth = imgHeight * imgRatio;
-        }
-        const xOffset = (pageWidth - imgWidth) / 2;
-        const yOffset = (pageHeight - imgHeight) / 2;
-        doc.addImage(fotoDataUrl, 'JPEG', xOffset, yOffset, imgWidth, imgHeight);
-    } else {
-        doc.setFontSize(20);
-        doc.text("Sin Imagen de Portada", pageWidth / 2, pageHeight / 2, { align: 'center' });
+    } catch (error) {
+        console.error("Error generando PDF Bonito:", error);
+        throw error;
     }
-
-    // --- Page 2: Details and Description ---
-    doc.addPage();
-    let y = margin + 5;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`${propiedad.tipo_inmueble} en Venta`.toUpperCase(), margin, y);
-    y += 8;
-    
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(24);
-    doc.setTextColor(30, 30, 30);
-    const addressLines = doc.splitTextToSize(`${propiedad.calle} ${propiedad.numero_exterior}`, usableWidth);
-    doc.text(addressLines, margin, y);
-    y += (addressLines.length * 8);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(14);
-    doc.setTextColor(30, 30, 30);
-    doc.text(`${propiedad.colonia}, ${propiedad.municipio}, ${propiedad.estado}`, margin, y);
-    y += 15;
-    
-    doc.setDrawColor(229, 231, 235);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 15;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(30, 30, 30);
-    doc.text("Detalles de la Propiedad", margin, y);
-    y += 10;
-    
-    const details = [
-        { label: "Valor de Operación", value: formatCurrency(propiedad.valor_operacion) },
-        { label: "Terreno", value: propiedad.terreno_m2 ? `${propiedad.terreno_m2} m²` : 'N/A' },
-        { label: "Construcción", value: propiedad.construccion_m2 ? `${propiedad.construccion_m2} m²` : 'N/A' },
-        { label: "Recámaras", value: propiedad.recamaras || 'N/A' },
-        { label: "Baños Completos", value: propiedad.banos_completos || 'N/A' },
-        { label: "Medios Baños", value: propiedad.medios_banos || 'N/A' },
-        { label: "Cochera", value: propiedad.cochera_autos ? `${propiedad.cochera_autos} autos` : 'N/A' },
-    ];
-
-    const col1X = margin;
-    const col2X = pageWidth / 2;
-    let initialY = y;
-    let currentY = initialY;
-    let col = 1;
-
-    details.forEach(detail => {
-        let x = col === 1 ? col1X : col2X;
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        doc.setTextColor(100, 116, 139);
-        doc.text(detail.label, x, currentY);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(14);
-        doc.setTextColor(30, 30, 30);
-        doc.text(String(detail.value), x, currentY + 7);
-        
-        if (col === 1) { col = 2; } else { col = 1; currentY += 20; }
-    });
-
-    y = currentY > initialY ? currentY : initialY + 20;
-
-    if (propiedad.descripcion_breve) {
-        if (y > pageHeight - 60) {
-             doc.addPage();
-             y = margin;
-        }
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(18);
-        doc.setTextColor(30, 30, 30);
-        doc.text("Descripción", margin, y);
-        y += 10;
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(11);
-        doc.setTextColor(80, 80, 80);
-        const descLines = doc.splitTextToSize(propiedad.descripcion_breve, usableWidth);
-        doc.text(descLines, margin, y);
-    }
-
-    return doc.output('datauristring');
 };
 
 const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = ({ onSave, onCancel, asesores }) => {
@@ -200,7 +107,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
         
         const numericFields = [
             'recamaras', 'banos_completos', 'medios_banos', 'cochera_autos',
-            // OJO: Ya no incluimos las comisiones aquí, las maneja handleCurrencyChange
         ];
 
         if (type === 'checkbox') {
@@ -213,13 +119,10 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
         }
     };
 
-    // [2] MANEJADOR ESPECIAL PARA INPUTS DE MONEDA
     const handleCurrencyChange = (fieldName: string, value: string) => {
-        // 'valor_operacion' es string en tu DB, así que lo guardamos tal cual (limpio de comas)
         if (fieldName === 'valor_operacion') {
              setPropiedadData(prev => ({ ...prev, [fieldName]: value }));
         } else {
-            // Las comisiones son numéricas, convertimos
             const numVal = parseFloat(value);
             setPropiedadData(prev => ({ ...prev, [fieldName]: isNaN(numVal) ? 0 : numVal }));
         }
@@ -249,7 +152,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
         setPhotos(newPhotos as File[]);
     };
 
-    // Cálculo Total Operación
     const comisionTotalOperacion = useMemo(() => {
         return (propiedadData.comisionCaptacionOficina || 0) + 
                (propiedadData.comisionCaptacionAsesor || 0) +
@@ -278,12 +180,15 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
         if (propiedadData.calle && isPropietarioDataComplete) {
             setIsSaving(true);
             try {
+                // GENERAMOS EL PDF USANDO EL COMPONENTE BONITO
                 const pdfDataUrl = await generatePdf(propiedadData, photos);
+                
                 const finalPropiedadData = { ...propiedadData, fotos: photos, fichaTecnicaPdf: pdfDataUrl };
                 onSave(finalPropiedadData, propietarioData);
             } catch (error) {
                 console.error("Error generando PDF:", error);
                 alert("Hubo un error al generar la ficha técnica. La propiedad se guardará sin ella.");
+                // Guardamos igual aunque falle el PDF
                 const finalPropiedadData = { ...propiedadData, fotos: photos, fichaTecnicaPdf: '' };
                 onSave(finalPropiedadData, propietarioData);
             } finally {
@@ -387,13 +292,11 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                             </div>
                         </section>
                         
-                        {/* [3] Sección de Comisión CON CURRENCY INPUT */}
+                        {/* Sección de Comisiones */}
                         <section>
                             <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">Desglose de Comisiones</h3>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                
-                                {/* COLUMNA 1: CAPTACIÓN */}
                                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
                                     <h4 className="font-bold text-blue-800 mb-3 uppercase text-sm flex items-center">
                                         <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">1</span>
@@ -438,7 +341,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                                     </div>
                                 </div>
 
-                                {/* COLUMNA 2: VENTA */}
                                 <div className="bg-green-50 p-4 rounded-lg border border-green-100">
                                     <h4 className="font-bold text-green-800 mb-3 uppercase text-sm flex items-center">
                                         <span className="bg-green-200 text-green-800 rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">2</span>
@@ -484,7 +386,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                                 </div>
                             </div>
 
-                            {/* TOTAL OPERACIÓN */}
                             <div className="mt-4 p-4 bg-gray-100 rounded-lg flex justify-between items-center border border-gray-200">
                                 <div className="text-xs text-gray-500">
                                     * La comisión compartida se restará del ingreso final en reportes.
@@ -507,7 +408,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        {/* [4] VALOR DE OPERACIÓN CON CURRENCY INPUT */}
                                         <CurrencyInput 
                                             label="Valor de la operación (MXN)"
                                             name="valor_operacion" 
@@ -550,14 +450,12 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                             </div>
                         </section>
 
-                        {/* Sección de Fotos con Drag & Drop */}
                         <section>
                             <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Fotografías del Inmueble</h3>
                             <p className="text-sm text-gray-600 my-2">
                                 <strong>Arrastra y suelta</strong> las fotos para cambiar el orden. La foto en la posición #1 será la <strong>PORTADA</strong>.
                             </p>
                             
-                            {/* Input de Carga */}
                             <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md mb-4 hover:bg-gray-50 transition-colors">
                                 <div className="space-y-1 text-center">
                                     <PhotoIcon />
@@ -572,7 +470,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                                 </div>
                             </div>
 
-                            {/* COMPONENTE DRAG & DROP */}
                             <PhotoSorter 
                                 photos={photos} 
                                 onChange={handleReorderPhotos} 
