@@ -1,19 +1,13 @@
 import { supabase } from '../supabaseClient';
 
-// --- TIPOS DE DATOS (Alineados a la Documentación NuFi) ---
+// --- TIPOS DE DATOS ---
 interface InePayload {
-  tipo_identificacion: string; // 'C' | 'D' | 'E' | 'F' | 'G' | 'H'
+  tipo_identificacion: string;
   ocr: string;
   clave_de_elector: string;
   numero_de_emision: string;
   cic?: string; 
   identificador_del_ciudadano?: string; 
-}
-
-interface BiometricsPayload {
-  imagen_rostro: string;
-  credencial_frente: string;
-  credencial_reverso: string;
 }
 
 // --- FUNCIÓN PRINCIPAL (El cartero) ---
@@ -35,14 +29,9 @@ const callNufiProxy = async (
     throw error;
   }
 
-  // Diagnóstico de errores que vienen de NuFi (Status 200 pero logical error)
-  if (data && (data.status === 'error' || data.status === 'failure')) {
+  // Diagnóstico de errores lógicos de Nufi
+  if (data && (data.status === 'error' || data.status === 'failure' || data.code === 400)) {
       console.warn(`⚠️ NuFi Error (${action}):`, data.message);
-      
-      // Si el backend nos mandó debug info, la mostramos
-      if (data._debug_sent_key) {
-        console.log(`🔑 Backend intentó usar la llave: ${data._debug_sent_key}`);
-      }
   }
 
   return data;
@@ -50,19 +39,25 @@ const callNufiProxy = async (
 
 // --- MÉTODOS PÚBLICOS ---
 
-// 1. PLD / LISTAS NEGRAS
+// 1. PLD / LISTAS NEGRAS (CORREGIDO SEGÚN TU CURL)
 export const checkBlacklist = async (nombreCompleto: string, entityId: string, tenantId: string) => {
-  // Estructura para el endpoint /aml
-  const payload = { 
-    nombres: [nombreCompleto], 
-    buscar_en: "todos" 
+  // ⚠️ FIX: Usamos la estructura exacta del CURL que proporcionaste.
+  // La llave obligatoria es "nombre_completo".
+  const payload = {
+    "nombre_completo": nombreCompleto,
+    "primer_nombre": "",
+    "segundo_nombre": "",
+    "apellidos": "",
+    "fecha_nacimiento": "",
+    "lugar_nacimiento": ""
   };
+  
+  console.log("📤 Enviando a PLD:", payload);
   return await callNufiProxy('check-blacklist', payload, tenantId);
 };
 
 // 2. VALIDAR VIGENCIA INE
 export const validateIneData = async (datosIne: InePayload, entityId: string, tenantId: string) => {
-  // Enviamos datos puros, el backend los estructura
   return await callNufiProxy('validate-ine', datosIne, tenantId);
 };
 
@@ -84,20 +79,16 @@ export const verifyBiometrics = async (
   return await callNufiProxy('biometric-match', payload, tenantId);
 };
 
-// 4. OCR (Extracción de Datos) - EL FIX MAESTRO
+// 4. OCR (Extracción de Datos)
 export const extractFromImage = async (
   base64Image: string, 
   side: 'frente' | 'reverso', 
   tenantId: string
 ) => {
-  // 1. Limpieza Local: Aseguramos que no vaya basura
   const cleanBase64 = base64Image.includes(',') ? base64Image.split(',').pop() || base64Image : base64Image;
   
   console.log(`🔍 [${side}] Enviando a Proxy... (${cleanBase64.length} chars)`);
 
-  // 2. Estructura Genérica:
-  // Enviamos 'image_data'. El Backend decidirá si ponerle "base64_credencial_frente"
-  // o "base64_credencial_reverso" basándose en el campo 'side'.
   const payload = {
       side: side,
       image_data: cleanBase64 
