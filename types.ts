@@ -297,3 +297,11 @@ export interface Log {
   accion: string;
   resultado: 'Éxito' | 'Error';
 }
+
+export interface KycData {
+  nombreCompleto: string;
+  ineValidado?: boolean;
+  pldValidado?: boolean;
+  ineValidationId?: number;
+  pldValidationId?: number;
+}
