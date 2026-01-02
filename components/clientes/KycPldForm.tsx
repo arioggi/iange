@@ -3,17 +3,43 @@ import { KycData, Propiedad, User } from '../../types';
 import { checkBlacklist, validateIneData, extractFromImage } from '../../Services/nufiService'; 
 import { useAuth } from '../../authContext';
 
-// --- UTILIDAD: Convertir Archivo a Base64 ---
+// --- UTILIDAD MEJORADA: Resize + Compresión para evitar Error 400 ---
 const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            img.onload = () => {
+                // 1. Redimensionar si es gigante (más de 1200px)
+                const MAX_WIDTH = 1200;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > MAX_WIDTH) {
+                    height = Math.round((height * MAX_WIDTH) / width);
+                    width = MAX_WIDTH;
+                }
+
+                // 2. Dibujar en Canvas para cambiar tamaño
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, width, height);
+
+                // 3. Comprimir a JPEG calidad 0.7 (reduce el peso drásticamente sin perder texto)
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                resolve(dataUrl);
+            };
+            img.onerror = (error) => reject(error);
+        };
+        reader.onerror = (error) => reject(error);
     });
 };
 
-// --- COMPONENTES INTERNOS ---
+// --- COMPONENTES UI ---
 const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
     <section className="mb-6">
         <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">{title}</h3>
@@ -23,10 +49,10 @@ const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ t
     </section>
 );
 
-const Input: React.FC<{ label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; type?: string; fullWidth?: boolean; placeholder?: string; helpText?: string }> = ({ label, name, value, onChange, type = 'text', fullWidth, placeholder, helpText }) => (
+const Input: React.FC<{ label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; type?: string; fullWidth?: boolean; placeholder?: string; helpText?: string; disabled?: boolean }> = ({ label, name, value, onChange, type = 'text', fullWidth, placeholder, helpText, disabled }) => (
     <div className={fullWidth ? 'md:col-span-2' : ''}>
         <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <input type={type} name={name} id={name} value={value} onChange={onChange} placeholder={placeholder} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-iange-orange focus:border-iange-orange sm:text-sm placeholder-gray-500 text-gray-900" />
+        <input type={type} name={name} id={name} value={value} onChange={onChange} placeholder={placeholder} disabled={disabled} className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-iange-orange focus:border-iange-orange sm:text-sm placeholder-gray-500 text-gray-900 ${disabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-gray-50'}`} />
         {helpText && <p className="text-xs text-gray-500 mt-1">{helpText}</p>}
     </div>
 );
@@ -75,23 +101,20 @@ interface KycPldFormProps {
 const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onFormChange, userType, isEmbedded = false, propiedades, asesores = [] }) => {
     const { user } = useAuth();
     
-    // Estados
-    const [loadingPld, setLoadingPld] = useState(false);
-    const [loadingIne, setLoadingIne] = useState(false);
-    
-    // Almacenamos los archivos seleccionados
+    // --- ESTADOS DE FLUJO ---
+    const [statusIne, setStatusIne] = useState<'idle' | 'scanning' | 'validating' | 'success' | 'error'>('idle');
+    const [statusMessage, setStatusMessage] = useState('');
+    const [pldResult, setPldResult] = useState<{ status: 'clean' | 'risk' | null, msg: string }>({ status: null, msg: '' });
+    const [loadingPld, setLoadingPld] = useState(false); // Para búsqueda manual si se necesita
+
+    // Archivos
     const [files, setFiles] = useState<{ front: File | null; back: File | null }>({ front: null, back: null });
 
-    // Estado visual de los datos de la INE
+    // Datos Técnicos INE
     const [ineDetails, setIneDetails] = useState({
         ocr: '', cic: '', claveElector: '', emision: '00', tipo: 'C'
     });
 
-    const handleIneChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        setIneDetails({ ...ineDetails, [e.target.name]: e.target.value });
-    };
-
-    // Al seleccionar archivo, SOLO guardamos en el estado "files" para usarlo después
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, side: 'front' | 'back') => {
         const file = e.target.files?.[0];
         if (file) {
@@ -99,112 +122,171 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         }
     };
 
-    // --- LÓGICA MAESTRA DEL BOTÓN VALIDAR ---
-    const ejecutarValidacionIne = async () => {
-        // 1. Verificar Tenant
+    // --- LA "SUPER TUBERÍA" (VERSIÓN DIAGNÓSTICO) ---
+    const ejecutarValidacionCompleta = async () => {
         const tenantId = user?.user_metadata?.tenant_id || "ID-TEMPORAL-PRUEBAS";
-        console.log("🚀 Iniciando validación con Tenant:", tenantId);
+        let datosParaValidar = { ...ineDetails };
+        let datosExtraidos: Partial<KycData> = {};
+        
+        setPldResult({ status: null, msg: '' });
 
-        setLoadingIne(true);
         try {
-            // Creamos una copia local de los datos para ir llenándola
-            let datosActuales = { ...ineDetails };
-
-            // 2. ¿Faltan datos y tenemos fotos? -> Ejecutar OCR ahora mismo
-            const faltaFrente = !datosActuales.claveElector && files.front;
-            const faltaReverso = !datosActuales.ocr && files.back;
-
+            // --------------------------------------------------------
+            // PASO 1: OCR (Lectura de Imágenes - Endpoints Dinámicos)
+            // --------------------------------------------------------
+            const faltaFrente = !datosParaValidar.claveElector && files.front;
+            const faltaReverso = !datosParaValidar.ocr && files.back;
+            
             if (faltaFrente || faltaReverso) {
-                // alert("📷 Procesando fotos antes de validar..."); // Descomenta si quieres aviso visual
-                
+                setStatusIne('scanning');
+                setStatusMessage("📷 Paso 1/3: Leyendo credencial (OCR)...");
+
+                // --- A) PROCESAR FRENTE (Endpoint: .../ocr/v4/frente) ---
                 if (faltaFrente && files.front) {
                     try {
                         const base64 = await fileToBase64(files.front);
                         const res = await extractFromImage(base64, 'frente', tenantId);
-                        if (res.status === 'success' && res.data?.ocr) {
-                            datosActuales.claveElector = res.data.ocr.clave || datosActuales.claveElector;
-                            datosActuales.emision = res.data.ocr.emision || datosActuales.emision;
-                            datosActuales.tipo = res.data.tipo || datosActuales.tipo;
-                            // Actualizar UI y Formulario Global
-                            onFormChange({
-                                ...formData,
-                                nombreCompleto: `${res.data.ocr.nombre || ''} ${res.data.ocr.apellido_paterno || ''}`.trim(),
-                                curp: res.data.ocr.curp || formData.curp,
-                                identificacionOficialNumero: res.data.ocr.clave || formData.identificacionOficialNumero
-                            });
+                        
+                        // 🔍 DIAGNÓSTICO: Ver respuesta exacta en Consola
+                        console.log("🔍 DEBUG NUFI FRENTE:", res);
+
+                        if (res.status !== 'success') {
+                            alert(`⚠️ Error NuFi (Frente): ${res.message || 'Respuesta fallida. Revisa consola.'}`);
+                        }
+                        
+                        // Ajuste para leer la respuesta de NuFi Frente
+                        const extracted = res.data?.data?.ocr || res.data?.ocr || res.data; 
+
+                        if (res.status === 'success' && extracted) {
+                            // Extraer Datos Técnicos
+                            datosParaValidar.claveElector = extracted.clave || extracted.clave_elector || datosParaValidar.claveElector;
+                            datosParaValidar.emision = extracted.emision || datosParaValidar.emision;
+                            datosParaValidar.tipo = res.data?.data?.tipo || res.data?.tipo || 'C';
+
+                            // Extraer Datos Personales para el Formulario (Auto-Llenado)
+                            const nombre = `${extracted.nombre || ''} ${extracted.apellido_paterno || ''} ${extracted.apellido_materno || ''}`.trim();
+                            if (nombre) datosExtraidos.nombreCompleto = nombre;
+                            if (extracted.curp) datosExtraidos.curp = extracted.curp;
+                            
+                            // Dirección (Manejo de calle_numero)
+                            const calle = extracted.calle_numero || extracted.calle || '';
+                            const col = extracted.colonia || '';
+                            const cp = extracted.codigo_postal || extracted.cp || '';
+                            
+                            if (calle || col) {
+                                datosExtraidos.domicilio = `${calle}, ${col}`.trim();
+                                datosExtraidos.colonia = col;
+                                datosExtraidos.municipio = extracted.municipio || '';
+                                datosExtraidos.estado = extracted.estado || '';
+                                datosExtraidos.cp = cp;
+                                // Compatibilidad con campos legacy
+                                datosExtraidos.codigoPostal = cp;
+                            }
                         }
                     } catch (e) { console.error("Error OCR Frente", e); }
                 }
 
+                // --- B) PROCESAR REVERSO (Endpoint: .../ocr/v4/reverso) ---
                 if (faltaReverso && files.back) {
                     try {
                         const base64 = await fileToBase64(files.back);
                         const res = await extractFromImage(base64, 'reverso', tenantId);
-                        if (res.status === 'success' && res.data?.ocr) {
-                            datosActuales.ocr = res.data.ocr.ocr || res.data.ocr.id_mex || datosActuales.ocr;
-                            datosActuales.cic = res.data.ocr.cic || datosActuales.cic;
+                        
+                        // 🔍 DIAGNÓSTICO: Ver respuesta exacta en Consola
+                        console.log("🔍 DEBUG NUFI REVERSO:", res);
+
+                         if (res.status !== 'success') {
+                            alert(`⚠️ Error NuFi (Reverso): ${res.message || 'Respuesta fallida. Revisa consola.'}`);
+                        }
+
+                        // Ajuste para leer respuesta NuFi Reverso
+                        const extracted = res.data?.data?.ocr || res.data?.ocr;
+                        
+                        if (res.status === 'success' && extracted) {
+                            datosParaValidar.ocr = extracted.ocr || extracted.id_mex || datosParaValidar.ocr;
+                            datosParaValidar.cic = extracted.cic || datosParaValidar.cic;
                         }
                     } catch (e) { console.error("Error OCR Reverso", e); }
                 }
 
-                // Actualizamos el estado visual para que el usuario vea lo que se extrajo
-                setIneDetails(datosActuales);
+                // Actualizamos estados visuales y Formulario
+                setIneDetails(datosParaValidar);
+                if (Object.keys(datosExtraidos).length > 0) {
+                    onFormChange({ ...formData, ...datosExtraidos, identificacionOficialTipo: 'INE', identificacionOficialNumero: datosParaValidar.claveElector });
+                }
             }
 
-            // 3. Revisar si AHORA sí tenemos los datos
-            if (!datosActuales.claveElector || !datosActuales.ocr) {
-                alert(`⚠️ No se puede validar aún.\n\nDatos faltantes:\n${!datosActuales.claveElector ? '- Clave de Elector (Frente)' : ''}\n${!datosActuales.ocr ? '- OCR (Reverso)' : ''}\n\nPor favor intenta subir fotos más claras o escribe los datos manualmente.`);
-                setLoadingIne(false);
+            // --------------------------------------------------------
+            // PASO 2: VALIDACIÓN VIGENCIA (Endpoint: .../validar)
+            // --------------------------------------------------------
+            setStatusIne('validating');
+            setStatusMessage("📡 Paso 2/3: Validando vigencia ante INE...");
+
+            // Verificar si tenemos lo mínimo necesario
+            if (!datosParaValidar.claveElector || (!datosParaValidar.ocr && !datosParaValidar.cic)) {
+                // Si faltan datos, pausamos y pedimos manual, pero no borramos lo avanzado
+                setStatusIne('error');
+                alert("⚠️ La IA no pudo leer todos los códigos de seguridad (CIC/OCR).\nPor favor, abre la consola (F12) para ver por qué falló NuFi, o ingresa los datos manualmente.");
                 return;
             }
 
-            // 4. Mandar a Validar Vigencia (Supabase -> NuFi)
             const payloadIne: any = {
-                tipo_identificacion: datosActuales.tipo as any,
-                ocr: datosActuales.ocr,
-                clave_de_elector: datosActuales.claveElector,
-                numero_de_emision: datosActuales.emision
+                tipo_identificacion: datosParaValidar.tipo as any,
+                ocr: datosParaValidar.ocr,
+                clave_de_elector: datosParaValidar.claveElector,
+                numero_de_emision: datosParaValidar.emision
             };
+
+            if (['E', 'F', 'G', 'H'].includes(datosParaValidar.tipo)) {
+                payloadIne.cic = datosParaValidar.cic;
+                payloadIne.identificador_del_ciudadano = datosParaValidar.cic;
+            }
+
+            const resVigencia = await validateIneData(payloadIne, "TEMP-ID", tenantId);
+            const dataVigencia = resVigencia.data?.[0];
+            const esVigente = resVigencia.status === 'Success' && dataVigencia?.activa;
+
+            if (!esVigente) {
+                setStatusIne('error');
+                alert(`❌ ALERTA: La INE no es vigente.\nMotivo: ${dataVigencia?.estado || 'Desconocido'}\n${dataVigencia?.information || ''}`);
+                return; // Cortamos aquí si la INE es inválida
+            }
+
+            // --------------------------------------------------------
+            // PASO 3: VALIDACIÓN PLD (Endpoint: .../aml)
+            // --------------------------------------------------------
+            setStatusMessage("👮 Paso 3/3: Buscando antecedentes (PLD)...");
             
-            // Ajustes para modelos nuevos
-            if (['E', 'F', 'G', 'H'].includes(datosActuales.tipo)) {
-                payloadIne.cic = datosActuales.cic;
-                payloadIne.identificador_del_ciudadano = datosActuales.cic;
+            const nombreParaBuscar = datosExtraidos.nombreCompleto || formData.nombreCompleto;
+            
+            if (nombreParaBuscar) {
+                const resPld = await checkBlacklist(nombreParaBuscar, "TEMP-ID", tenantId);
+                const hayRiesgo = resPld.data?.has_sanction_match || resPld.data?.has_crimelist_match;
+
+                if (hayRiesgo) {
+                    setPldResult({ status: 'risk', msg: 'Aparece en listas de riesgo' });
+                    alert(`⚠️ ADVERTENCIA PLD: ${nombreParaBuscar} tiene coincidencias en listas de riesgo.`);
+                } else {
+                    setPldResult({ status: 'clean', msg: 'Sin antecedentes detectados' });
+                }
             }
 
-            const resultado = await validateIneData(payloadIne, "TEMP-ID", tenantId);
-            const dataRes = resultado.data?.[0];
-
-            if (resultado.status === 'Success' && dataRes?.activa) {
-                alert("✅ INE VIGENTE y ACTIVA en lista nominal.");
-                // Aseguramos que el dato clave quede guardado
-                onFormChange({ ...formData, identificacionOficialNumero: datosActuales.claveElector });
-            } else {
-                alert(`❌ INE NO VÁLIDA: ${dataRes?.estado || 'No encontrada o datos incorrectos.'}`);
-            }
+            // --------------------------------------------------------
+            // FINAL: ÉXITO TOTAL
+            // --------------------------------------------------------
+            setStatusIne('success');
+            setStatusMessage("✅ Identidad Verificada y Segura");
 
         } catch (error: any) {
-            console.error("Error completo:", error);
-            alert(`Error en el proceso: ${error.message || "Revisa tu conexión o el backend"}`);
+            console.error("Error en flujo de identidad:", error);
+            setStatusIne('error');
+            alert(`Error en el proceso: ${error.message}`);
         } finally {
-            setLoadingIne(false);
+            if (statusIne !== 'success' && statusIne !== 'error') setStatusIne('idle');
         }
     };
 
-    // --- VALIDACIÓN LISTAS NEGRAS ---
-    const ejecutarValidacionListas = async () => {
-        if (!formData.nombreCompleto || formData.nombreCompleto.length < 3) { alert("Ingresa nombre completo."); return; }
-        setLoadingPld(true);
-        try {
-            const tenantId = user?.user_metadata?.tenant_id || "ID-TEMPORAL-PRUEBAS";
-            const resultado = await checkBlacklist(formData.nombreCompleto, "TEMP-ID", tenantId);
-            const hayRiesgo = resultado.data?.has_sanction_match || resultado.data?.has_crimelist_match;
-            if (hayRiesgo) alert(`⚠️ ALERTA: ${formData.nombreCompleto} aparece en listas de riesgo.`);
-            else alert(`✅ APROBADO: ${formData.nombreCompleto} no está en listas negras.`);
-        } catch (error) { console.error(error); alert("Error PLD."); } finally { setLoadingPld(false); }
-    };
-
-    // --- ESTADOS ORIGINALES ---
+    // --- MANEJO DE OTROS CAMPOS ---
     const currentPropId = String((formData as any).propiedadId || '');
     const [selectedPropiedadId, setSelectedPropiedadId] = useState(currentPropId);
     const [tipoRelacion, setTipoRelacion] = useState((formData as any).tipoRelacion || 'Propuesta de compra');
@@ -237,8 +319,21 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         onSave(selectedPropiedadId ? Number(selectedPropiedadId) : undefined, selectedPropiedadId ? tipoRelacion : undefined);
     };
 
+    const ejecutarValidacionListasManual = async () => {
+        if (!formData.nombreCompleto || formData.nombreCompleto.length < 3) { alert("Ingresa nombre completo."); return; }
+        setLoadingPld(true);
+        try {
+            const tenantId = user?.user_metadata?.tenant_id || "ID-TEMPORAL-PRUEBAS";
+            const resultado = await checkBlacklist(formData.nombreCompleto, "TEMP-ID", tenantId);
+            const hayRiesgo = resultado.data?.has_sanction_match || resultado.data?.has_crimelist_match;
+            if (hayRiesgo) alert(`⚠️ ALERTA: ${formData.nombreCompleto} aparece en listas de riesgo.`);
+            else alert(`✅ APROBADO: ${formData.nombreCompleto} no está en listas negras.`);
+        } catch (error) { console.error(error); alert("Error PLD."); } finally { setLoadingPld(false); }
+    };
+
     return (
         <form onSubmit={handleSubmit}>
+            {/* 1. SELECCIÓN DE PROPIEDAD (Solo Compradores) */}
             {userType === 'Comprador' && (
                 <FormSection title="Vincular a Propiedad">
                     <div className="md:col-span-2 space-y-4">
@@ -267,18 +362,75 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 </FormSection>
             )}
 
-            {userType === 'Comprador' && (
-                <div className="bg-blue-50 p-4 rounded-md border border-blue-200 mb-6">
-                    <h3 className="text-blue-800 font-bold text-sm uppercase mb-3">📅 Agendar Visita / Cita</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Input label="Fecha" name="fechaCita" type="date" value={formData.fechaCita || ''} onChange={handleChange} />
-                        <Input label="Hora" name="horaCita" type="time" value={formData.horaCita || ''} onChange={handleChange} />
-                        <Input label="Notas" name="notasCita" value={formData.notasCita || ''} onChange={handleChange} placeholder="Ej. Interesado..." />
+            {/* 2. ZONA DE VALIDACIÓN INTELIGENTE (INE) */}
+            <div className="mb-8 border-2 border-dashed border-indigo-200 rounded-xl p-6 bg-indigo-50/50">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                    <div>
+                        <h3 className="text-lg font-bold text-indigo-900 flex items-center gap-2">
+                            🪪 Paso 1: Carga de Identificación (INE)
+                        </h3>
+                        <p className="text-sm text-indigo-600">Sube las fotos y nosotros llenaremos el formulario por ti.</p>
+                    </div>
+                    
+                    <button 
+                        type="button" 
+                        onClick={ejecutarValidacionCompleta} 
+                        disabled={statusIne === 'scanning' || statusIne === 'validating'} 
+                        className={`
+                            px-4 py-2 rounded-lg font-medium text-white transition-all shadow-md flex items-center gap-2 text-sm
+                            ${statusIne === 'success' ? 'bg-green-600 cursor-default ring-2 ring-green-200' : 
+                              statusIne === 'error' ? 'bg-red-500 hover:bg-red-600' :
+                              (statusIne === 'scanning' || statusIne === 'validating') ? 'bg-indigo-400 cursor-wait' : 
+                              'bg-indigo-600 hover:bg-indigo-700 hover:scale-105'}
+                        `}
+                    >
+                        {statusIne === 'scanning' && '📷 Procesando...'}
+                        {statusIne === 'validating' && '📡 Validando...'}
+                        {statusIne === 'success' && '✅ Verificado y Cargado'}
+                        {statusIne === 'idle' && '🚀 Procesar y Validar Ahora'}
+                        {statusIne === 'error' && '⚠️ Reintentar'}
+                    </button>
+                </div>
+
+                {/* Mensaje de progreso */}
+                {(statusIne === 'scanning' || statusIne === 'validating') && (
+                    <div className="mb-4 bg-white px-3 py-2 rounded border border-indigo-100 text-xs text-indigo-600 font-mono animate-pulse">
+                        {statusMessage}
+                    </div>
+                )}
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-sm">
+                        <label className="block text-sm font-bold text-gray-700 mb-2">1. Frente de la INE</label>
+                        <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'front')} className="block w-full text-xs text-slate-500 file:mr-2 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                    </div>
+                    <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-sm">
+                        <label className="block text-sm font-bold text-gray-700 mb-2">2. Reverso de la INE</label>
+                        <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'back')} className="block w-full text-xs text-slate-500 file:mr-2 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
                     </div>
                 </div>
-            )}
-            
-            <FormSection title={`Datos de Identificación del ${userType}`}>
+
+                {/* Resultados Técnicos (Colapsables) */}
+                <div className={`mt-4 overflow-hidden transition-all duration-300 ${statusIne === 'idle' ? 'max-h-0' : 'max-h-96'}`}>
+                    <div className="flex justify-between items-center mb-1">
+                        <p className="text-xs text-gray-400 uppercase font-bold">Datos Técnicos:</p>
+                        {pldResult.status && (
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${pldResult.status === 'clean' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {pldResult.status === 'clean' ? '🛡️ PLD: Limpio' : '⚠️ PLD: Riesgo'}
+                            </span>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 opacity-75">
+                        <input type="text" disabled value={ineDetails.tipo} className="text-xs bg-gray-100 border-none rounded p-1 text-center" title="Modelo"/>
+                        <input type="text" disabled value={ineDetails.claveElector} className="col-span-2 text-xs bg-gray-100 border-none rounded p-1" placeholder="Clave Elector"/>
+                        <input type="text" disabled value={ineDetails.ocr} className="text-xs bg-gray-100 border-none rounded p-1" placeholder="OCR"/>
+                        <input type="text" disabled value={ineDetails.cic} className="text-xs bg-gray-100 border-none rounded p-1" placeholder="CIC"/>
+                    </div>
+                </div>
+            </div>
+
+            {/* 3. DATOS PERSONALES (AUTO-COMPLETADO) */}
+            <FormSection title={`Paso 2: Datos del ${userType} (Autocompletado)`}>
                 {asesores.length > 0 && (
                     <div className="md:col-span-2 bg-yellow-50 p-3 rounded border border-yellow-200 mb-2">
                         <label className="block text-sm font-bold text-yellow-800 mb-1">Asesor Responsable</label>
@@ -290,78 +442,48 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 )}
 
                 <div className="md:col-span-2">
-                    <Input label="Nombre completo" name="nombreCompleto" value={formData.nombreCompleto} onChange={handleChange} fullWidth placeholder="Se llenará auto. al validar INE" />
-                    <button type="button" onClick={ejecutarValidacionListas} disabled={loadingPld || !formData.nombreCompleto} className="text-xs text-indigo-600 underline mt-1 hover:text-indigo-800">
-                        {loadingPld ? 'Consultando...' : '🔍 Verificar en Listas Negras'}
+                    <Input label="Nombre completo" name="nombreCompleto" value={formData.nombreCompleto} onChange={handleChange} fullWidth placeholder="Se llenará automáticamente al escanear" />
+                    <button type="button" onClick={ejecutarValidacionListasManual} className="text-xs text-indigo-600 underline mt-1 hover:text-indigo-800">
+                        {loadingPld ? 'Consultando...' : '🔍 Verificar manualmente en Listas Negras'}
                     </button>
                 </div>
 
-                <Input label="CURP" name="curp" value={formData.curp} onChange={handleChange} />
+                <Input label="CURP" name="curp" value={formData.curp} onChange={handleChange} placeholder="Se llena auto." />
                 <Input label="RFC" name="rfc" value={formData.rfc} onChange={handleChange} />
                 <Input label="Fecha nacimiento" name="fechaNacimiento" value={formData.fechaNacimiento} onChange={handleChange} type="date" />
                 <Input label="Nacionalidad" name="nacionalidad" value={formData.nacionalidad} onChange={handleChange} />
+                
+                {/* Campos de Dirección Desglosados */}
+                <Input label="Domicilio (Calle y Num)" name="domicilio" value={formData.domicilio} onChange={handleChange} placeholder="Calle y Número..." />
+                <Input label="Colonia" name="colonia" value={formData.colonia} onChange={handleChange} />
+                <Input label="Municipio / Alcaldía" name="municipio" value={formData.municipio} onChange={handleChange} />
+                <Input label="Estado" name="estado" value={formData.estado} onChange={handleChange} />
+                <Input label="Código Postal" name="cp" value={formData.cp || formData.codigoPostal || ''} onChange={handleChange} />
+
                 <Input label="Teléfono" name="telefono" value={formData.telefono} onChange={handleChange} type="tel"/>
                 <Input label="Email" name="email" value={formData.email} onChange={handleChange} type="email" />
                 
-                <Select label="Identificación Oficial" name="identificacionOficialTipo" value={formData.identificacionOficialTipo} onChange={handleChange}>
+                <Select label="Tipo Identificación" name="identificacionOficialTipo" value={formData.identificacionOficialTipo} onChange={handleChange}>
                     <option>INE</option><option>Pasaporte</option><option>Cédula Profesional</option>
                 </Select>
-                <Input label="Número de Identificación" name="identificacionOficialNumero" value={formData.identificacionOficialNumero} onChange={handleChange} />
+                <Input label="Número de ID" name="identificacionOficialNumero" value={formData.identificacionOficialNumero} onChange={handleChange} placeholder="Clave Elector / Pasaporte" />
             </FormSection>
 
-            {/* --- SECCIÓN VALIDACIÓN INE (CON FLUJO UNIFICADO) --- */}
-            <div className="mb-8 border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-sm font-bold text-gray-700 uppercase flex items-center gap-2">
-                        🪪 Herramienta de Validación INE (OCR + Vigencia)
-                    </h3>
-                    {loadingIne && <span className="text-xs font-bold text-indigo-600 animate-pulse">🔄 Procesando imágenes y validando...</span>}
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">1. Cargar Frente INE</label>
-                        <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'front')} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gray-200 hover:file:bg-gray-300"/>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">2. Cargar Reverso INE</label>
-                        <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'back')} className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-gray-200 hover:file:bg-gray-300"/>
+            {/* SECCIÓN VISITAS (Solo Compradores) */}
+            {userType === 'Comprador' && (
+                <div className="bg-blue-50 p-4 rounded-md border border-blue-200 mb-6">
+                    <h3 className="text-blue-800 font-bold text-sm uppercase mb-3">📅 Agendar Visita / Cita</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Input label="Fecha" name="fechaCita" type="date" value={formData.fechaCita || ''} onChange={handleChange} />
+                        <Input label="Hora" name="horaCita" type="time" value={formData.horaCita || ''} onChange={handleChange} />
+                        <Input label="Notas" name="notasCita" value={formData.notasCita || ''} onChange={handleChange} placeholder="Ej. Interesado..." />
                     </div>
                 </div>
+            )}
 
-                <div className="bg-white p-3 rounded border border-gray-200">
-                    <p className="text-xs text-gray-500 mb-2">Datos extraídos / manuales:</p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                        <div>
-                            <select name="tipo" value={ineDetails.tipo} onChange={handleIneChange} className="w-full text-xs border-gray-300 rounded">
-                                <option value="C">Modelo C</option><option value="D">Modelo D</option><option value="E">Modelo E</option><option value="F">Modelo F</option><option value="G">Modelo G</option><option value="H">Modelo H</option>
-                            </select>
-                        </div>
-                        <div className="md:col-span-2">
-                            <input type="text" name="claveElector" value={ineDetails.claveElector} onChange={handleIneChange} className="w-full text-xs border-gray-300 rounded uppercase" placeholder="Clave Elector (18 carac.)"/>
-                        </div>
-                        <div>
-                            <input type="text" name="ocr" value={ineDetails.ocr} onChange={handleIneChange} className="w-full text-xs border-gray-300 rounded" placeholder="OCR (13 dígitos)"/>
-                        </div>
-                        <div>
-                            <input type="text" name="cic" value={ineDetails.cic} onChange={handleIneChange} className="w-full text-xs border-gray-300 rounded" placeholder="CIC (9 dígitos)"/>
-                        </div>
-                        <div>
-                            <input type="text" name="emision" value={ineDetails.emision} onChange={handleIneChange} className="w-full text-xs border-gray-300 rounded" placeholder="Emisión (00)"/>
-                        </div>
-                    </div>
-                    <div className="mt-2 flex justify-end">
-                        <button type="button" onClick={ejecutarValidacionIne} disabled={loadingIne} className={`text-xs px-4 py-2 rounded font-medium text-white transition-colors ${loadingIne ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700 shadow-sm'}`}>
-                            {loadingIne ? '🔄 Procesando y Validando...' : '✅ Validar Vigencia'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <FormSection title="Otros Datos">
-                <Input label="Origen Recursos" name="origenRecursos" value={formData.origenRecursos} onChange={handleChange} />
-                <Checkbox label="¿Es PEP?" name="esPep" checked={formData.esPep} onChange={handleChange} />
-                {formData.esPep && <Input label="Nombre PEP" name="pepNombre" value={formData.pepNombre || ''} onChange={handleChange} />}
+            <FormSection title="Otros Datos (PLD)">
+                <Input label="Origen Recursos" name="origenRecursos" value={formData.origenRecursos} onChange={handleChange} placeholder="Ej. Ahorros, Crédito..." />
+                <Input label="Destino Recursos" name="destinoRecursos" value={formData.destinoRecursos} onChange={handleChange} placeholder="Ej. Compra de vivienda..." />
             </FormSection>
 
             <FormSection title={`Beneficiario Final`}>
@@ -369,11 +491,6 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 {!formData.actuaPorCuentaPropia && (
                     <Input label="Nombre completo del Beneficiario Final" name="beneficiarioFinalNombre" value={formData.beneficiarioFinalNombre || ''} onChange={handleChange} fullWidth />
                 )}
-            </FormSection>
-
-            <FormSection title={`Origen y Destino de los Recursos`}>
-                <Input label="Origen (salario/ahorros/crédito/otro)" name="origenRecursos" value={formData.origenRecursos} onChange={handleChange} />
-                <Input label="Destino de los recursos (uso previsto)" name="destinoRecursos" value={formData.destinoRecursos} onChange={handleChange} />
             </FormSection>
 
             <FormSection title={`Declaración PEP (Persona Políticamente Expuesta)`}>
@@ -387,7 +504,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             {!isEmbedded && (
                  <div className="flex justify-end mt-8 pt-4 border-t space-x-4">
                     <button type="button" onClick={onCancel} className="bg-gray-200 py-2 px-6 rounded hover:bg-gray-300">Cancelar</button>
-                    <button type="submit" className="bg-iange-orange text-white py-2 px-6 rounded hover:bg-orange-600">Guardar</button>
+                    <button type="submit" className="bg-iange-orange text-white py-2 px-6 rounded hover:bg-orange-600">Guardar Expediente</button>
                 </div>
             )}
         </form>

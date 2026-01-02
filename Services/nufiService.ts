@@ -1,10 +1,9 @@
 import { supabase } from '../supabaseClient';
 
-// --- TIPOS DE DATOS (Para que TypeScript te ayude) ---
-
+// --- TIPOS DE DATOS ---
 interface InePayload {
   tipo_identificacion: 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
-  ocr: string; // Los 13 dígitos verticales
+  ocr: string;
   clave_de_elector?: string;
   numero_de_emision?: string;
   cic?: string; 
@@ -12,58 +11,50 @@ interface InePayload {
 }
 
 interface BiometricsPayload {
-  imagen_rostro: string;      // Base64 limpia
-  credencial_frente: string;  // Base64 limpia
-  credencial_reverso: string; // Base64 limpia
+  imagen_rostro: string;
+  credencial_frente: string;
+  credencial_reverso: string;
 }
 
-// --- FUNCIÓN PRINCIPAL (El cartero) ---
+// --- FUNCIÓN PRINCIPAL ---
 const callNufiProxy = async (
-  // Agregamos 'extract-ocr' a las acciones permitidas
   action: 'check-blacklist' | 'validate-ine' | 'biometric-match' | 'extract-ocr', 
   payload: any, 
-  entityId: string, 
-  entityType: 'propietario' | 'comprador', 
   tenantId: string
 ) => {
-  console.log(`📡 Solicitando servicio NuFi: ${action}...`);
-  
   const { data, error } = await supabase.functions.invoke('nufi-proxy', {
     body: {
       action,
       payload,
-      tenant_id: tenantId,
-      entity_id: entityId,
-      entity_type: entityType
+      tenant_id: tenantId
     }
   });
 
   if (error) {
-    console.error("❌ Error en Edge Function:", error);
+    console.error("❌ Error CRÍTICO Edge Function:", error);
     throw error;
+  }
+
+  if (data && (data.status === 'error' || data.status === 'failure')) {
+      console.warn(`⚠️ NuFi Error (${action}):`, data.message);
+      // Esto nos ayudará a ver si el error es del Proxy o de NuFi
+      if (data.message.includes('Proxy:')) alert(data.message); 
   }
 
   return data;
 };
 
-// --- MÉTODOS PÚBLICOS (Lo que usarás en tus botones) ---
+// --- MÉTODOS PÚBLICOS ---
 
-// 1. Validar Listas Negras (PLD) - REAL
 export const checkBlacklist = async (nombreCompleto: string, entityId: string, tenantId: string) => {
-  const payload = {
-    nombre_completo: nombreCompleto,
-    fuzzy_enabled: true // Permite encontrar coincidencias aunque haya errores de dedo leves
-  };
-  // Asumimos 'comprador' por defecto
-  return await callNufiProxy('check-blacklist', payload, entityId, 'comprador', tenantId);
+  const payload = { nombres: [nombreCompleto], buscar_en: "todos" };
+  return await callNufiProxy('check-blacklist', payload, tenantId);
 };
 
-// 2. Validar INE ante Gobierno (Datos OCR) - REAL
 export const validateIneData = async (datosIne: InePayload, entityId: string, tenantId: string) => {
-  return await callNufiProxy('validate-ine', datosIne, entityId, 'propietario', tenantId);
+  return await callNufiProxy('validate-ine', datosIne, tenantId);
 };
 
-// 3. Biometría (Selfie vs INE) - REAL
 export const verifyBiometrics = async (
   selfieBase64: string, 
   ineFrenteBase64: string, 
@@ -71,36 +62,32 @@ export const verifyBiometrics = async (
   entityId: string, 
   tenantId: string
 ) => {
-  // Función auxiliar para quitar el prefijo "data:image/jpg;base64," si existe
-  const clean = (str: string) => str.replace(/^data:image\/[a-z]+;base64,/, "");
-
-  const payload: BiometricsPayload = {
-    imagen_rostro: clean(selfieBase64),
-    credencial_frente: clean(ineFrenteBase64),
-    credencial_reverso: clean(ineReversoBase64)
+  const clean = (str: string) => str.includes(',') ? str.split(',').pop() || str : str;
+  const payload = {
+      imagen_rostro: clean(selfieBase64),
+      credencial_frente: clean(ineFrenteBase64),
+      credencial_reverso: clean(ineReversoBase64)
   };
-  
-  return await callNufiProxy('biometric-match', payload, entityId, 'propietario', tenantId);
+  return await callNufiProxy('biometric-match', payload, tenantId);
 };
 
-// 4. NUEVO: OCR Automático (Extraer datos de la foto)
+// --- OCR FIX FINAL ---
 export const extractFromImage = async (
   base64Image: string, 
   side: 'frente' | 'reverso', 
   tenantId: string
 ) => {
-  // Limpiamos el base64
-  const cleanBase64 = base64Image.replace(/^data:image\/[a-z]+;base64,/, "");
+  // 1. Limpieza
+  const cleanBase64 = base64Image.includes(',') ? base64Image.split(',').pop() || base64Image : base64Image;
   
-  // Enviamos al proxy
-  return await callNufiProxy(
-    'extract-ocr', 
-    { 
-      side, 
-      body: { imagen: cleanBase64 } // Estructura que pide NuFi OCR v4
-    }, 
-    'OCR-TEMP', // ID temporal ya que es solo lectura
-    'propietario', 
-    tenantId
-  );
+  console.log(`🔍 [${side}] Enviando... (${cleanBase64.length} chars)`);
+
+  // 2. Estructura Simple
+  // El backend v3 es inteligente y buscará 'image_data'
+  const payload = {
+      side: side,
+      image_data: cleanBase64 
+  };
+  
+  return await callNufiProxy('extract-ocr', payload, tenantId);
 };
