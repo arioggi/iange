@@ -4,7 +4,7 @@ import { checkBlacklist, validateIneData, extractFromImage } from '../../Service
 import { useAuth } from '../../authContext';
 import { supabase } from '../../supabaseClient'; 
 import DeleteConfirmationModal from '../ui/DeleteConfirmationModal'; 
-// Added icons for the new section
+// Iconos
 import { 
     ShieldCheckIcon, 
     ShareIcon, 
@@ -24,7 +24,6 @@ const cleanNameForNufi = (text: string): string => {
         .trim();
 };
 
-// 📅 FIX FECHA: Convierte DD/MM/YYYY a YYYY-MM-DD
 const formatDateForInput = (dateStr?: string): string => {
     if (!dateStr) return "";
     const clean = dateStr.trim().replace(/-/g, '/');
@@ -142,6 +141,9 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
     const [statusMessage, setStatusMessage] = useState('');
     const [pldResult, setPldResult] = useState<{ status: 'clean' | 'risk' | null, msg: string }>({ status: null, msg: '' });
     const [loadingPld, setLoadingPld] = useState(false); 
+    
+    // ✅ ESTADO LOCAL PARA EL TOKEN (Solución al bug de visualización)
+    const [localToken, setLocalToken] = useState<string | null>((formData as any).verification_token || null);
 
     // Estados para Eliminar
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -151,7 +153,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
     const [files, setFiles] = useState<{ front: File | null; back: File | null }>({ front: null, back: null });
     const [ineDetails, setIneDetails] = useState({ ocr: '', cic: '', claveElector: '', emision: '00', tipo: 'C' });
 
-    // --- 1. RESTAURAR ESTADO AL MONTAR ---
+    // --- 1. RESTAURAR ESTADO AL MONTAR Y RECUPERAR TOKEN SI FALTA ---
     useEffect(() => {
         if (formData.ineValidado) {
             setStatusIne('success');
@@ -161,10 +163,11 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             setPldResult({ status: 'clean', msg: 'Sin antecedentes' });
         }
 
-        const fetchValidations = async () => {
+        const fetchExtraData = async () => {
             const entityId = (formData as any).id; 
             if (!entityId) return;
 
+            // 1.1 Recuperar Validaciones (Historial)
             try {
                 const { data, error } = await supabase
                     .from('kyc_validations')
@@ -173,9 +176,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                     .eq('entity_type', userType)
                     .order('created_at', { ascending: false });
 
-                if (error) throw error;
-
-                if (data) {
+                if (!error && data) {
                     const lastIne = data.find(v => v.validation_type === 'INE_CHECK' && v.status === 'success');
                     if (lastIne && !formData.ineValidado) {
                         setStatusIne('success');
@@ -191,12 +192,27 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                         }
                     }
                 }
-            } catch (err) {
-                console.error("Error al cargar validaciones:", err);
+            } catch (err) { console.error("Error validaciones:", err); }
+
+            // 1.2 Recuperar TOKEN SECRETO si falta (con backup local)
+            if (!(formData as any).verification_token && !localToken) {
+                try {
+                    const { data: contactData } = await supabase
+                        .from('contactos')
+                        .select('verification_token')
+                        .eq('id', entityId)
+                        .single();
+                    
+                    if (contactData && contactData.verification_token) {
+                        console.log("🔄 Token recuperado:", contactData.verification_token);
+                        setLocalToken(contactData.verification_token); // Actualizamos estado local
+                        onFormChange({ ...formData, verification_token: contactData.verification_token } as any); // Y global
+                    }
+                } catch (err) { console.error("Error recuperando token:", err); }
             }
         };
 
-        fetchValidations();
+        fetchExtraData();
     }, [(formData as any).id, userType]); 
 
 
@@ -571,6 +587,8 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         }
     };
 
+    const tokenToUse = (formData as any).verification_token || localToken;
+
     return (
         <>
             <DeleteConfirmationModal 
@@ -611,6 +629,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                     </FormSection>
                 )}
 
+                {/* --- SECCIÓN INE (OCR y Vigencia) --- */}
                 <div className={`mb-8 border-2 border-dashed rounded-xl p-6 ${statusIne === 'success' ? 'border-green-300 bg-green-50' : 'border-indigo-200 bg-indigo-50/50'}`}>
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
                         <div>
@@ -648,82 +667,6 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                                 </button>
                             )}
                         </div>
-                    </div>
-
-                    {/* NEW SECTION: BIOMETRIC VERIFICATION LINK */}
-                    {/* Only show this section if we have an ID for the contact, meaning they are saved */}
-                    <div className="mb-6 bg-orange-50 border border-orange-200 rounded-lg p-5">
-                        <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
-                            <ShieldCheckIcon className="h-5 w-5 text-iange-orange" />
-                            Verificación Biométrica (INE vs Selfie)
-                        </h3>
-                        
-                        {!(formData as any).verification_token ? (
-                            <div className="text-sm text-orange-800 bg-orange-100 p-3 rounded">
-                                ⚠️ <strong>Guarda el contacto</strong> para generar su enlace de verificación seguro.
-                            </div>
-                        ) : (
-                            <div>
-                                <p className="text-sm text-gray-600 mb-4">
-                                    Comparte este enlace seguro con el cliente para que realice la prueba de vida.
-                                </p>
-                                
-                                {/* Current Status */}
-                                <div className="flex items-center gap-4 mb-4 text-sm">
-                                    <div className={`px-3 py-1 rounded-full font-medium border ${
-                                        (formData as any).biometricStatus === 'Verificado' 
-                                            ? 'bg-green-100 text-green-800 border-green-200' 
-                                            : (formData as any).biometricStatus === 'Rechazado'
-                                            ? 'bg-red-100 text-red-800 border-red-200'
-                                            : 'bg-gray-100 text-gray-600 border-gray-200'
-                                    }`}>
-                                        Estado: {(formData as any).biometricStatus || 'Pendiente'}
-                                    </div>
-                                    {(formData as any).biometricScore && (
-                                        <span className="text-gray-500">Certeza: {((formData as any).biometricScore * 100).toFixed(1)}%</span>
-                                    )}
-                                </div>
-
-                                <div className="flex gap-2">
-                                    <div className="flex-1 relative">
-                                        <input 
-                                            readOnly 
-                                            value={`${window.location.origin}/verificar-identidad/${(formData as any).verification_token}`} 
-                                            className="w-full pl-3 pr-10 py-2 border rounded-md bg-white text-gray-500 text-sm truncate"
-                                        />
-                                        <button 
-                                            type="button"
-                                            onClick={() => {
-                                                navigator.clipboard.writeText(`${window.location.origin}/verificar-identidad/${(formData as any).verification_token}`);
-                                                alert("Enlace copiado");
-                                            }}
-                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-iange-orange"
-                                            title="Copiar enlace"
-                                        >
-                                            <ClipboardDocumentCheckIcon className="h-5 w-5" />
-                                        </button>
-                                    </div>
-                                    
-                                    {/* WhatsApp Button */}
-                                    <button 
-                                        type="button"
-                                        onClick={() => {
-                                            const link = `${window.location.origin}/verificar-identidad/${(formData as any).verification_token}`;
-                                            const phone = formData.telefono ? formData.telefono.replace(/[^0-9]/g, '') : '';
-                                            const text = `Hola ${formData.nombreCompleto ? formData.nombreCompleto.split(' ')[0] : ''}, por seguridad necesitamos validar tu identidad. Por favor entra aquí para tomarte una foto rápida: ${link}`;
-                                            if (phone) {
-                                                window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
-                                            } else {
-                                                alert("No hay teléfono registrado para enviar WhatsApp.");
-                                            }
-                                        }}
-                                        className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md flex items-center gap-2 font-medium transition-colors"
-                                    >
-                                        <ShareIcon className="h-4 w-4" /> WhatsApp
-                                    </button>
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     {(statusIne === 'scanning' || statusIne === 'validating') && (
@@ -764,6 +707,82 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                             <input type="text" disabled value={ineDetails.cic} className="text-xs bg-gray-100 border-none rounded p-1" placeholder="CIC"/>
                         </div>
                     </div>
+                </div>
+
+                {/* --- SECCIÓN NUEVA: VERIFICACIÓN BIOMÉTRICA (INE vs Selfie) --- */}
+                <div className="mb-6 bg-orange-50 border border-orange-200 rounded-lg p-5">
+                    <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
+                        <ShieldCheckIcon className="h-5 w-5 text-iange-orange" />
+                        Verificación Biométrica (INE vs Selfie)
+                    </h3>
+                    
+                    {/* ✅ FIX: Usamos tokenToUse (localToken || formData.token) */}
+                    {!tokenToUse ? (
+                        <div className="text-sm text-orange-800 bg-orange-100 p-3 rounded">
+                            ⚠️ <strong>Guarda el contacto</strong> para generar su enlace de verificación seguro.
+                        </div>
+                    ) : (
+                        <div>
+                            <p className="text-sm text-gray-600 mb-4">
+                                Comparte este enlace seguro con el cliente para que realice la prueba de vida.
+                            </p>
+                            
+                            {/* Estatus Actual */}
+                            <div className="flex items-center gap-4 mb-4 text-sm">
+                                <div className={`px-3 py-1 rounded-full font-medium border ${
+                                    (formData as any).biometricStatus === 'Verificado' 
+                                        ? 'bg-green-100 text-green-800 border-green-200' 
+                                        : (formData as any).biometricStatus === 'Rechazado'
+                                        ? 'bg-red-100 text-red-800 border-red-200'
+                                        : 'bg-gray-100 text-gray-600 border-gray-200'
+                                }`}>
+                                    Estado: {(formData as any).biometricStatus || 'Pendiente'}
+                                </div>
+                                {(formData as any).biometricScore && (
+                                    <span className="text-gray-500">Certeza: {((formData as any).biometricScore * 100).toFixed(1)}%</span>
+                                )}
+                            </div>
+
+                            <div className="flex gap-2">
+                                <div className="flex-1 relative">
+                                    <input 
+                                        readOnly 
+                                        value={`${window.location.origin}/verificar-identidad/${tokenToUse}`} 
+                                        className="w-full pl-3 pr-10 py-2 border rounded-md bg-white text-gray-500 text-sm truncate"
+                                    />
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(`${window.location.origin}/verificar-identidad/${tokenToUse}`);
+                                            alert("Enlace copiado");
+                                        }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-iange-orange"
+                                        title="Copiar enlace"
+                                    >
+                                        <ClipboardDocumentCheckIcon className="h-5 w-5" />
+                                    </button>
+                                </div>
+                                
+                                {/* WhatsApp Button */}
+                                <button 
+                                    type="button"
+                                    onClick={() => {
+                                        const link = `${window.location.origin}/verificar-identidad/${tokenToUse}`;
+                                        const phone = formData.telefono ? formData.telefono.replace(/[^0-9]/g, '') : '';
+                                        const text = `Hola ${formData.nombreCompleto ? formData.nombreCompleto.split(' ')[0] : ''}, por seguridad necesitamos validar tu identidad. Por favor entra aquí para tomarte una foto rápida: ${link}`;
+                                        if (phone) {
+                                            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+                                        } else {
+                                            alert("No hay teléfono registrado para enviar WhatsApp.");
+                                        }
+                                    }}
+                                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md flex items-center gap-2 font-medium transition-colors"
+                                >
+                                    <ShareIcon className="h-4 w-4" /> WhatsApp
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <FormSection title={`Paso 2: Datos del ${userType} (Autocompletado)`}>
