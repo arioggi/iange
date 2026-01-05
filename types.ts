@@ -170,7 +170,7 @@ export interface Interes {
     fechaInteres: string;
 }
 
-// ✅ INTERFAZ KYC ACTUALIZADA PARA SOPORTAR CAMPOS DESGLOSADOS
+// ✅ INTERFAZ KYC UNIFICADA Y ACTUALIZADA
 export interface KycData {
   nombreCompleto: string;
   curp: string;
@@ -185,21 +185,21 @@ export interface KycData {
   domicilio: string; 
   cp: string; 
   
-  // -- ✅ NUEVOS CAMPOS DE DIRECCIÓN DESGLOSADA (Corrección de errores) --
+  // -- ✅ NUEVOS CAMPOS DE DIRECCIÓN DESGLOSADA --
   calle?: string;
   numeroExterior?: string;
   numeroInterior?: string;
-  colonia: string;       // Ya existía
-  codigoPostal?: string; // Alias para cp
-  municipio: string;     // Ya existía
-  estado: string;        // Ya existía
+  colonia: string;       
+  codigoPostal?: string; 
+  municipio: string;     
+  estado: string;        
   pais?: string;
 
   telefono: string;
   email: string;
   
   // -- ✅ NUEVO CAMPO DE OCUPACIÓN --
-  ocupacion?: string; // Alias para profesion
+  ocupacion?: string; 
 
   identificacionOficialTipo: string;
   identificacionOficialNumero: string;
@@ -222,6 +222,21 @@ export interface KycData {
   asesorId?: number | string; 
   ofertaFormal?: OfferData; 
   intereses?: Interes[]; 
+
+  // -- ✅ CAMPOS DE VALIDACIÓN Y BIOMETRÍA --
+  verification_token?: string;
+  ineValidado?: boolean;
+  pldValidado?: boolean;
+  ineValidationId?: number;
+  pldValidationId?: number;
+  
+  biometricStatus?: 'Verificado' | 'Rechazado' | 'Pendiente';
+  biometricScore?: number;
+  biometricDate?: string;
+  ineVerificationData?: {
+      tipoFrente?: string;
+      tipoReverso?: string;
+  };
 }
 
 export interface Propietario extends KycData {
@@ -297,12 +312,4 @@ export interface Log {
   rol: string;
   accion: string;
   resultado: 'Éxito' | 'Error';
-}
-
-export interface KycData {
-  nombreCompleto: string;
-  ineValidado?: boolean;
-  pldValidado?: boolean;
-  ineValidationId?: number;
-  pldValidationId?: number;
 }
