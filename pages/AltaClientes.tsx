@@ -19,7 +19,7 @@ import {
     unassignBuyerFromProperty 
 } from '../Services/api';
 
-const TABS = ['Propiedades y Propietarios', 'Clientes'];
+const TABS = ['Propiedades y Propietarios', 'Compradores'];
 
 const totalChecklistItems = FLUJO_PROGRESO.reduce((acc, etapa) => acc + etapa.items.length, 0);
 
@@ -51,7 +51,7 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
     propiedades, 
     propietarios, 
     compradores, 
-    handleUpdatePropiedad,
+    handleUpdatePropiedad, 
     handleDeletePropiedad, 
     initialEditPropId,
     setInitialEditPropId,
@@ -295,7 +295,7 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                         <PropiedadesTable propiedades={filteredPropiedades} propietarios={propietarios} onEdit={handleEditClick} onDelete={handleDeleteClick}/>
                     </div>
                 );
-            case 'Clientes':
+            case 'Compradores':
                  return (
                     <div>
                         <div className="flex justify-between items-center mb-4">
@@ -328,7 +328,6 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
 
     return (
         <div className="bg-white p-8 rounded-lg shadow-sm">
-            <h2 className="text-2xl font-bold text-iange-dark mb-6">Alta de Clientes</h2>
             <div className="border-b border-gray-200 mb-6">
                 <nav className="-mb-px flex space-x-8" aria-label="Tabs">
                     {TABS.map((tab) => (

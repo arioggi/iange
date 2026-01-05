@@ -24,16 +24,17 @@ interface StatCardProps {
   subValue?: string;
 }
 
+// 1. STAT CARD UNIFICADA: Sin border, solo shadow-sm
 const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, color, subTitle, subValue }) => (
-    <div className="bg-white p-6 rounded-lg shadow-sm border flex items-start">
-        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${color} flex-shrink-0`}>
+    <div className="bg-white p-6 rounded-lg shadow-sm flex items-start transition-shadow hover:shadow-md">
+        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${color} flex-shrink-0 shadow-sm`}>
             <Icon className="h-6 w-6 text-white" />
         </div>
         <div className="ml-4 flex-grow">
             <p className="text-sm font-medium text-gray-500">{title}</p>
-            <p className="text-2xl font-bold text-gray-800">{value}</p>
+            <p className="text-2xl font-bold text-gray-900">{value}</p>
             {subTitle && subValue && (
-                <div className="mt-2 pt-2 border-t border-gray-200">
+                <div className="mt-2 pt-2 border-t border-gray-100">
                     <p className="text-xs font-medium text-gray-500">{subTitle}</p>
                     <p className="text-lg font-semibold text-gray-700">{subValue}</p>
                 </div>
@@ -114,7 +115,6 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
   }
 
   // ✅ 2. BLOQUEO DE PANTALLA (SI NO HAY ACTIVIDAD)
-  // Si hasRealActivity es FALSE, retornamos los banners Y NO el dashboard.
   if (!hasRealActivity) {
       
       // --- ESCENARIO A: NO TIENE PLAN (Banner Naranja) ---
@@ -228,8 +228,9 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
 
   return (
     <div className="space-y-8 animate-fade-in">
-        {/* --- HEADER --- */}
-        <div className="flex items-center space-x-5 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        
+        {/* --- HEADER: UNIFICADO (bg-white shadow-sm sin border) --- */}
+        <div className="flex items-center space-x-5 bg-white p-6 rounded-lg shadow-sm">
             <div className="relative">
                 <Avatar src={currentUser.photo} name={currentUser.name} size="xl" border={true} />
                 <div className="absolute bottom-1 right-1 h-5 w-5 bg-green-400 border-2 border-white rounded-full"></div>
@@ -252,9 +253,11 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-sm border space-y-6">
+        
+        {/* TARJETA PRINCIPAL: bg-white shadow-sm (SIN BORDER) */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-sm space-y-6">
             <h3 className="text-lg font-bold text-gray-800">Captaciones por Mes (Últimos 6 meses)</h3>
-            <div className="flex items-end justify-around h-64 border-l border-b border-gray-200 pl-4 pb-4">
+            <div className="flex items-end justify-around h-64 border-l border-b border-gray-100 pl-4 pb-4">
                 {chartData.map(item => (
                     <div key={item.month} className="flex flex-col items-center w-1/12">
                         <div className="text-sm font-bold text-gray-800">{item.count}</div>
@@ -263,7 +266,7 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
                     </div>
                 ))}
             </div>
-             <h3 className="text-lg font-bold text-gray-800 pt-4 border-t">Actividad Reciente</h3>
+             <h3 className="text-lg font-bold text-gray-800 pt-4 border-t border-gray-100">Actividad Reciente</h3>
               <div className="overflow-x-auto">
                     <table className="min-w-full">
                         <thead className="bg-gray-50">
@@ -274,7 +277,7 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
                                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Valor</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200">
+                        <tbody className="divide-y divide-gray-100">
                             {propiedadesRecientes.map(p => (
                                 <tr key={p.id}>
                                     <td className="px-4 py-3 text-sm font-medium text-gray-800">{`${p.calle} ${p.numero_exterior}`}</td>
@@ -292,7 +295,9 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
         </div>
 
         <div className="space-y-6">
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
+            
+            {/* TARJETA ACCESOS RÁPIDOS: bg-white shadow-sm (SIN BORDER) */}
+            <div className="bg-white p-6 rounded-lg shadow-sm">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Accesos Rápidos</h3>
                 <div className="grid grid-cols-2 gap-4">
                     {visibleButtons.map((button) => (
@@ -304,7 +309,8 @@ const OportunidadesDashboard: React.FC<OportunidadesDashboardProps> = ({
                 {visibleButtons.length === 0 && <p className="text-center text-gray-500 py-4 text-sm">No tienes accesos directos disponibles.</p>}
             </div>
              
-             <div className="bg-white p-6 rounded-lg shadow-sm border">
+             {/* TARJETA EQUIPO: bg-white shadow-sm (SIN BORDER) */}
+             <div className="bg-white p-6 rounded-lg shadow-sm">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Equipo</h3>
                 <ul className="space-y-3">
                     {asesores.map(asesor => {
