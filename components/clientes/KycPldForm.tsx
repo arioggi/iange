@@ -4,6 +4,13 @@ import { checkBlacklist, validateIneData, extractFromImage } from '../../Service
 import { useAuth } from '../../authContext';
 import { supabase } from '../../supabaseClient'; 
 import DeleteConfirmationModal from '../ui/DeleteConfirmationModal'; 
+// Added icons for the new section
+import { 
+    ShieldCheckIcon, 
+    ShareIcon, 
+    ClipboardDocumentCheckIcon, 
+    CheckCircleIcon 
+} from '../Icons';
 
 // --- UTILIDADES ---
 const cleanNameForNufi = (text: string): string => {
@@ -641,6 +648,82 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                                 </button>
                             )}
                         </div>
+                    </div>
+
+                    {/* NEW SECTION: BIOMETRIC VERIFICATION LINK */}
+                    {/* Only show this section if we have an ID for the contact, meaning they are saved */}
+                    <div className="mb-6 bg-orange-50 border border-orange-200 rounded-lg p-5">
+                        <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
+                            <ShieldCheckIcon className="h-5 w-5 text-iange-orange" />
+                            Verificación Biométrica (INE vs Selfie)
+                        </h3>
+                        
+                        {!(formData as any).verification_token ? (
+                            <div className="text-sm text-orange-800 bg-orange-100 p-3 rounded">
+                                ⚠️ <strong>Guarda el contacto</strong> para generar su enlace de verificación seguro.
+                            </div>
+                        ) : (
+                            <div>
+                                <p className="text-sm text-gray-600 mb-4">
+                                    Comparte este enlace seguro con el cliente para que realice la prueba de vida.
+                                </p>
+                                
+                                {/* Current Status */}
+                                <div className="flex items-center gap-4 mb-4 text-sm">
+                                    <div className={`px-3 py-1 rounded-full font-medium border ${
+                                        (formData as any).biometricStatus === 'Verificado' 
+                                            ? 'bg-green-100 text-green-800 border-green-200' 
+                                            : (formData as any).biometricStatus === 'Rechazado'
+                                            ? 'bg-red-100 text-red-800 border-red-200'
+                                            : 'bg-gray-100 text-gray-600 border-gray-200'
+                                    }`}>
+                                        Estado: {(formData as any).biometricStatus || 'Pendiente'}
+                                    </div>
+                                    {(formData as any).biometricScore && (
+                                        <span className="text-gray-500">Certeza: {((formData as any).biometricScore * 100).toFixed(1)}%</span>
+                                    )}
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <div className="flex-1 relative">
+                                        <input 
+                                            readOnly 
+                                            value={`${window.location.origin}/verificar-identidad/${(formData as any).verification_token}`} 
+                                            className="w-full pl-3 pr-10 py-2 border rounded-md bg-white text-gray-500 text-sm truncate"
+                                        />
+                                        <button 
+                                            type="button"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(`${window.location.origin}/verificar-identidad/${(formData as any).verification_token}`);
+                                                alert("Enlace copiado");
+                                            }}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-iange-orange"
+                                            title="Copiar enlace"
+                                        >
+                                            <ClipboardDocumentCheckIcon className="h-5 w-5" />
+                                        </button>
+                                    </div>
+                                    
+                                    {/* WhatsApp Button */}
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            const link = `${window.location.origin}/verificar-identidad/${(formData as any).verification_token}`;
+                                            const phone = formData.telefono ? formData.telefono.replace(/[^0-9]/g, '') : '';
+                                            const text = `Hola ${formData.nombreCompleto ? formData.nombreCompleto.split(' ')[0] : ''}, por seguridad necesitamos validar tu identidad. Por favor entra aquí para tomarte una foto rápida: ${link}`;
+                                            if (phone) {
+                                                window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+                                            } else {
+                                                alert("No hay teléfono registrado para enviar WhatsApp.");
+                                            }
+                                        }}
+                                        className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md flex items-center gap-2 font-medium transition-colors"
+                                    >
+                                        <ShareIcon className="h-4 w-4" /> WhatsApp
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {(statusIne === 'scanning' || statusIne === 'validating') && (

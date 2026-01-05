@@ -23,7 +23,8 @@ import MiPerfil from "./pages/MiPerfil";
 import Configuraciones from "./pages/Configuraciones";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import PublicPropertyPage from "./pages/PublicPropertyPage";
-import PublicCatalogPage from "./pages/PublicCatalogPage"; // <--- NUEVA IMPORTACIÓN
+import PublicCatalogPage from "./pages/PublicCatalogPage"; 
+import PublicVerification from "./pages/PublicVerification"; // <--- NUEVA IMPORTACIÓN
 
 // Settings
 import PerfilEmpresa from "./components/settings/PerfilEmpresa";
@@ -342,8 +343,8 @@ const App = () => {
         {/* --- RUTAS PÚBLICAS --- */}
         <Route path="/preview/:token" element={<PublicPropertyPage />} />
         <Route path="/p/:id" element={<PublicPropertyPage />} />
-        {/* ✅ NUEVA RUTA: CATÁLOGO PÚBLICO */}
         <Route path="/c/:tenantId" element={<PublicCatalogPage />} />
+        <Route path="/verificar-identidad/:token" element={<PublicVerification />} /> {/* ✅ NUEVA RUTA */}
 
         <Route path="/login" element={
             status === 'authenticated' ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />
