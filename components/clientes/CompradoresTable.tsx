@@ -13,12 +13,82 @@ interface CompradoresTableProps {
 
 const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit, onDelete, propiedades, asesores }) => {
     
-    // ... (LA LÓGICA DE DESCARGA SE MANTIENE EXACTAMENTE IGUAL) ...
+    // ✅ LÓGICA RESTAURADA: Generación de Documentos
     const handleDescargarKitLegal = async (comprador: Comprador) => {
-        // (Tu lógica de descarga aquí, la omito para enfocarme en el diseño)
         const propiedad = propiedades.find(p => p.id === comprador.propiedadId);
-        // ... rest of logic
-        alert("Generando documentos..."); // Placeholder para la lógica real
+
+        const datosParaDocumentos: DatosLegales = {
+            cliente: {
+                nombre: comprador.nombreCompleto,
+                rfc: comprador.rfc || 'XAXX010101000', 
+                curp: comprador.curp || '', 
+                nacionalidad: comprador.nacionalidad || 'Mexicana',
+                fecha_nacimiento: comprador.fechaNacimiento || '', 
+                pais_nacimiento: 'México',
+                estado_civil: comprador.estadoCivil || '',
+                ocupacion: comprador.ocupacion || 'Empleado/Empresario', 
+                telefono: comprador.telefono || '',
+                email: comprador.email || '',
+                calle: comprador.calle || '',
+                numero_exterior: comprador.numeroExterior || '',
+                numero_interior: comprador.numeroInterior || '', 
+                colonia: comprador.colonia || '',
+                cp: comprador.codigoPostal || '', 
+                ciudad: comprador.municipio || '',
+                municipio: comprador.municipio || '',
+                estado: comprador.estado || 'Nuevo León', 
+                pais: 'México'
+            },
+            representante: { nombre: '', rfc: '', telefono: '' },
+            inmueble: {
+                calle: propiedad?.calle || '',
+                numero_exterior: propiedad?.numero_exterior || '',
+                colonia: propiedad?.colonia || '',
+                municipio: propiedad?.municipio || '',
+                estado: propiedad?.estado || 'Nuevo León',
+                cp: propiedad?.codigo_postal || '' 
+            },
+            transaccion: {
+                monto_operacion: new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(propiedad?.valor_operacion?.replace(/,/g, '') || 0)),
+                fecha_operacion: new Date().toLocaleDateString('es-MX'),
+                metodo_pago: 'Transferencia Electrónica',
+                banco_origen: '',
+                cuenta_origen: ''
+            },
+            beneficiario: undefined 
+        };
+
+        alert("⏳ Iniciando descargas para el Comprador... Revisa los bloqueos de ventana emergente.");
+
+        try {
+            console.log("⬇️ Descargando Entrevista...");
+            await documentGenerator.generarWord(
+                '/templates/001_FORMATO_ENTREVISTA.docx', 
+                `001_Entrevista_${comprador.nombreCompleto}`, 
+                datosParaDocumentos
+            );
+        } catch (e) { console.error("❌ Fallo 001:", e); }
+        
+        setTimeout(async () => {
+            try {
+                const rfcLimpio = (comprador.rfc || '').trim();
+                const esMoral = rfcLimpio.length === 12;
+                const plantillaKYC = esMoral ? '/templates/002_KYC_MORAL.docx' : '/templates/002_KYC_FISICA.docx'; 
+                console.log(`⬇️ Descargando KYC...`);
+                await documentGenerator.generarWord(plantillaKYC, `002_KYC_${esMoral ? 'Moral' : 'Fisica'}_${comprador.nombreCompleto}`, datosParaDocumentos);
+            } catch (e) { console.error("❌ Fallo 002:", e); }
+        }, 1000);
+        
+        setTimeout(async () => {
+            try {
+                console.log("⬇️ Descargando Aviso PLD...");
+                await documentGenerator.generarWord(
+                    '/templates/003_AVISO_PLD.docx', 
+                    `003_Aviso_PLD_${comprador.nombreCompleto}`, 
+                    datosParaDocumentos
+                );
+            } catch (e) { console.error("❌ Fallo 003:", e); }
+        }, 2000);
     };
 
     // --- HELPERS ---
@@ -50,10 +120,8 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
     };
 
     return (
-        // 1. CONTENEDOR UNIFICADO: Mismos estilos que PropiedadesTable
         <div className="overflow-hidden border border-gray-200 rounded-lg shadow-sm bg-white">
             <table className="min-w-full divide-y divide-gray-200">
-                {/* 2. HEADER UNIFICADO: Mismos estilos exactos */}
                 <thead className="bg-gray-50">
                     <tr>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Cliente / Comprador</th>
@@ -70,14 +138,12 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                         const asesorNombre = getAsesorName(comprador.asesorId);
                         const isValidado = comprador.ineValidado && comprador.pldValidado;
 
-                        // 3. FILA UNIFICADA
                         return (
                             <tr key={comprador.id} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-6 py-4 align-middle">
                                     <div className="flex flex-col">
                                         <span className="text-sm font-bold text-gray-900">{comprador.nombreCompleto}</span>
                                         
-                                        {/* BADGE VERIFICADO IDENTICO */}
                                         {isValidado && (
                                             <span className="text-[10px] text-green-600 font-bold flex items-center gap-1 mt-0.5 bg-green-50 px-1.5 py-0.5 rounded-md w-fit">
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>

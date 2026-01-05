@@ -12,22 +12,87 @@ interface PropiedadesTableProps {
 
 const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propietarios, onEdit, onDelete }) => {
     
-    // ... (LA LÓGICA DE DESCARGA SE MANTIENE EXACTAMENTE IGUAL) ...
-    // Para ahorrar espacio en el chat, asumo que dejas la función handleDescargarKitLegal 
-    // y los helpers (formatCurrency, getThumbnail, etc) intactos aquí.
-    // Solo cambiaré el RETURN (el renderizado).
-
-    // --- REPEATING LOGIC FOR CONTEXT (Copy logic from previous version if needed) ---
+    // ✅ LÓGICA RESTAURADA: Generación de Documentos
     const handleDescargarKitLegal = async (propiedad: Propiedad) => {
         const propietario = propietarios.find(p => p.id === propiedad.propietarioId);
-        if (!propietario) { alert("Datos no encontrados"); return; }
-        // ... (Lógica original de generación de documentos) ...
-        // (Simplemente mantén tu lógica de descarga aquí)
-    };
 
-    const getPropietarioName = (propietarioId: number) => {
-        const propietario = propietarios.find(p => p.id === propietarioId);
-        return propietario ? propietario.nombreCompleto : 'N/A';
+        if (!propietario) {
+            alert("⚠️ No se encontraron los datos del propietario.");
+            return;
+        }
+
+        const datosParaDocumentos: DatosLegales = {
+            cliente: {
+                nombre: propietario.nombreCompleto,
+                rfc: propietario.rfc || 'XAXX010101000', 
+                curp: propietario.curp || '', 
+                nacionalidad: propietario.nacionalidad || 'Mexicana',
+                fecha_nacimiento: propietario.fechaNacimiento || '', 
+                pais_nacimiento: 'México',
+                estado_civil: propietario.estadoCivil || '',
+                ocupacion: propietario.ocupacion || 'Empresario', 
+                telefono: propietario.telefono || '',
+                email: propietario.email || '',
+                calle: propietario.calle || '',
+                numero_exterior: propietario.numeroExterior || '',
+                numero_interior: '', 
+                colonia: propietario.colonia || '',
+                cp: propietario.codigoPostal || '', 
+                ciudad: propietario.municipio || '',
+                municipio: propietario.municipio || '',
+                estado: propietario.estado || 'Nuevo León', 
+                pais: 'México'
+            },
+            representante: { nombre: '', rfc: '', telefono: '' },
+            inmueble: {
+                calle: propiedad.calle || '',
+                numero_exterior: propiedad.numero_exterior || '',
+                colonia: propiedad.colonia || '',
+                municipio: propiedad.municipio || '',
+                estado: propiedad.estado || 'Nuevo León',
+                cp: propiedad.codigo_postal || '' 
+            },
+            transaccion: {
+                monto_operacion: new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(propiedad.valor_operacion?.replace(/,/g, '') || 0)),
+                fecha_operacion: new Date().toLocaleDateString('es-MX'),
+                metodo_pago: 'Transferencia Electrónica',
+                banco_origen: '',
+                cuenta_origen: ''
+            },
+            beneficiario: undefined 
+        };
+
+        alert("⏳ Iniciando descargas... Revisa si el navegador bloqueó las ventanas emergentes.");
+
+        try {
+            console.log("⬇️ Descargando 001_FORMATO_ENTREVISTA.docx");
+            await documentGenerator.generarWord(
+                '/templates/001_FORMATO_ENTREVISTA.docx', 
+                `001_Entrevista_${propietario.nombreCompleto}`, 
+                datosParaDocumentos
+            );
+        } catch (e) { console.error("❌ Fallo 001:", e); }
+        
+        setTimeout(async () => {
+            try {
+                const rfcLimpio = (propietario.rfc || '').trim();
+                const esMoral = rfcLimpio.length === 12;
+                const plantillaKYC = esMoral ? '/templates/002_KYC_MORAL.docx' : '/templates/002_KYC_FISICA.docx'; 
+                console.log(`⬇️ Descargando KYC: ${plantillaKYC}`);
+                await documentGenerator.generarWord(plantillaKYC, `002_KYC_${esMoral ? 'Moral' : 'Fisica'}_${propietario.nombreCompleto}`, datosParaDocumentos);
+            } catch (e) { console.error("❌ Fallo 002:", e); }
+        }, 1000);
+        
+        setTimeout(async () => {
+            try {
+                console.log("⬇️ Descargando 003_AVISO_PLD.docx");
+                await documentGenerator.generarWord(
+                    '/templates/003_AVISO_PLD.docx', 
+                    `003_Aviso_PLD_${propietario.nombreCompleto}`, 
+                    datosParaDocumentos
+                );
+            } catch (e) { console.error("❌ Fallo 003:", e); }
+        }, 2000);
     };
 
     const renderPropietarioCell = (propietarioId: number) => {
@@ -60,10 +125,8 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
     };
     
     return (
-        // 1. CONTENEDOR UNIFICADO: Borde gris, sombra suave, fondo blanco
         <div className="overflow-hidden border border-gray-200 rounded-lg shadow-sm bg-white">
             <table className="min-w-full divide-y divide-gray-200">
-                {/* 2. HEADER UNIFICADO: Fondo gris suave, texto gris medio, mayúsculas, fuente semibold */}
                 <thead className="bg-gray-50">
                     <tr>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Portada</th>
@@ -76,7 +139,6 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                     {propiedades.map(propiedad => (
-                        // 3. FILA UNIFICADA: Hover suave
                         <tr key={propiedad.id} className="hover:bg-gray-50 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap align-middle">
                                 <img src={getThumbnail(propiedad)} alt="Propiedad" className="h-12 w-16 object-cover rounded border border-gray-200 shadow-sm"/>
