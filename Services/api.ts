@@ -277,6 +277,7 @@ export const createProperty = async (propertyData: any, tenantId: string, ownerI
     fotos, 
     imageUrls, 
     fichaTecnicaPdf, 
+    tipoOperacion, // <--- EXTRACCIÓN EXPLÍCITA EN CREATE
     ...restDetails 
   } = propertyData;
 
@@ -292,6 +293,7 @@ export const createProperty = async (propertyData: any, tenantId: string, ownerI
     estatus: 'disponible', 
     features: { 
         ...restDetails, 
+        tipoOperacion: tipoOperacion || 'Venta', // <--- DEFAULT EN DB
         calle: propertyData.calle, 
         numero_exterior: propertyData.numero_exterior,
         colonia: propertyData.colonia,
@@ -354,6 +356,7 @@ export const getPropertiesByTenant = async (tenantId: string) => {
         progreso: p.features?.progreso || 0,
         checklist: p.features?.checklist || {},
         visitas: p.features?.visitas || [],
+        tipoOperacion: p.features?.tipoOperacion || 'Venta', // <--- DEFAULT AL LEER
     };
   });
 };
@@ -370,6 +373,7 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
         imageUrls, 
         fecha_venta, 
         fotos, 
+        tipoOperacion, // <--- AQUÍ ESTÁ EL CAMBIO CLAVE
         ...restDetails 
     } = propertyData;
 
@@ -382,6 +386,7 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
 
     const featuresPayload = {
         ...restDetails,
+        tipoOperacion: tipoOperacion || 'Venta', // <--- FORZAMOS EL DEFAULT SI NO VIENE
         fecha_venta: fecha_venta || null,
     };
     

@@ -20,7 +20,9 @@ const initialChecklist: ChecklistStatus = {
 
 const initialPropiedadState: Omit<Propiedad, 'id' | 'propietarioId' | 'fecha_captacion' | 'fichaTecnicaPdf' | 'status' | 'fecha_venta'> = {
     calle: '', numero_exterior: '', colonia: '', municipio: '', estado: '', codigo_postal: '', pais: 'México',
-    tipo_inmueble: 'Casa', valor_operacion: '', fotos: [],
+    tipo_inmueble: 'Casa', 
+    tipoOperacion: 'Venta', // ✅ CAMPO NUEVO AGREGADO
+    valor_operacion: '', fotos: [],
     terreno_m2: '', construccion_m2: '', recamaras: 0, banos_completos: 0, medios_banos: 0, cochera_autos: 0,
     descripcion_breve: '',
     progreso: 0,
@@ -426,7 +428,23 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                                         </select>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                
+                                {/* ✅ GRID DE 3 COLUMNAS: TIPO OPERACIÓN, TIPO INMUEBLE Y ASESOR */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label htmlFor="tipoOperacion" className="block text-sm font-medium text-gray-700 mb-1">Tipo de Operación</label>
+                                        <select 
+                                            id="tipoOperacion" 
+                                            name="tipoOperacion" 
+                                            value={(propiedadData as any).tipoOperacion} 
+                                            onChange={handlePropiedadChange} 
+                                            className="w-full px-3 py-2 bg-gray-50 border rounded-md"
+                                        >
+                                            <option value="Venta">Venta</option>
+                                            <option value="Renta">Renta</option>
+                                        </select>
+                                    </div>
+
                                     <div>
                                         <label htmlFor="tipo_inmueble" className="block text-sm font-medium text-gray-700 mb-1">Tipo de Inmueble</label>
                                         <select id="tipo_inmueble" name="tipo_inmueble" value={propiedadData.tipo_inmueble} onChange={handlePropiedadChange} className="w-full px-3 py-2 bg-gray-50 border rounded-md">
