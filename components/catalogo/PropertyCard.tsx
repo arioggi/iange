@@ -51,7 +51,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario, onV
     };
 
     return (
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden transform transition-all duration-300 hover:shadow-lg hover:-translate-y-1 relative group">
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden transform transition-all duration-300 hover:shadow-lg hover:-translate-y-1 relative group h-full flex flex-col">
             
             {/* Badges de Estatus */}
             {propiedad.status === 'Vendida' && (
@@ -107,19 +107,22 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ propiedad, propietario, onV
 
             {/* Imagen */}
             <div 
-                className={`h-48 bg-cover bg-center ${propiedad.status === 'Vendida' ? 'grayscale opacity-80' : ''}`} 
+                className={`h-48 bg-cover bg-center flex-shrink-0 ${propiedad.status === 'Vendida' ? 'grayscale opacity-80' : ''}`} 
                 style={{ backgroundImage: `url(${imageUrl})` }}
             ></div>
             
             {/* Contenido de texto */}
-            <div className="p-4">
+            <div className="p-4 flex flex-col flex-grow">
                 <p className="text-sm font-semibold text-iange-orange">{propiedad.tipo_inmueble} en Venta</p>
                 <h3 className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(propiedad.valor_operacion)}</h3>
-                <p className="text-sm text-gray-600 mt-2 h-10 overflow-hidden">
+                <p className="text-sm text-gray-600 mt-2 line-clamp-2 min-h-[2.5rem]" title={`${propiedad.calle} ${propiedad.numero_exterior}, ${propiedad.colonia}, ${propiedad.municipio}`}>
                     {`${propiedad.calle} ${propiedad.numero_exterior}, ${propiedad.colonia}, ${propiedad.municipio}`}
                 </p>
-                 <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500">
-                    <p>Propietario: <span className="font-medium text-gray-700">{propietario?.nombreCompleto || 'No asignado'}</span></p>
+                 <div className="mt-auto pt-4 border-t border-gray-200 text-xs text-gray-500">
+                    {/* AQUI ESTA EL CAMBIO: TRUNCATE */}
+                    <p className="truncate w-full" title={propietario?.nombreCompleto}>
+                        Propietario: <span className="font-medium text-gray-700">{propietario?.nombreCompleto || 'No asignado'}</span>
+                    </p>
                     <p className="mt-1">
                         Fecha de alta: <span className="font-medium text-gray-700">{formatDate(propiedad.fecha_captacion)}</span>
                     </p>

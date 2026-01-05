@@ -7,7 +7,7 @@ import EditPropiedadForm from '../components/clientes/EditPropiedadForm';
 import KycPldForm from '../components/clientes/KycPldForm';
 import OfferForm from '../components/clientes/OfferForm';
 import Modal from '../components/ui/Modal';
-import { ShareIcon } from '../components/Icons'; // Quitamos PlusIcon, ya no se usa
+import { ShareIcon } from '../components/Icons'; 
 import { initialKycState, initialOfferState } from '../constants';
 import { createContact, assignBuyerToProperty } from '../Services/api';
 
@@ -299,8 +299,8 @@ const Catalogo: React.FC<CatalogoProps> = ({
             {filteredAndSortedPropiedades.length > 0 ? (
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {filteredAndSortedPropiedades.map(propiedad => (
-                        <div key={propiedad.id} className="relative group">
-                            <div onClick={() => handleCardClick(propiedad)} className="cursor-pointer">
+                        <div key={propiedad.id} className="relative group flex flex-col h-full"> 
+                            <div onClick={() => handleCardClick(propiedad)} className="cursor-pointer h-full">
                                 <PropertyCard
                                     propiedad={propiedad}
                                     propietario={propietarios.find(p => p.id === propiedad.propietarioId)}
