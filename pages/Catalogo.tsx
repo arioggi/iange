@@ -136,7 +136,6 @@ const Catalogo: React.FC<CatalogoProps> = ({
 
     // --- ACCIONES ---
 
-    // 1. Compartir Propiedad Individual
     const handleShareProperty = (propiedad: Propiedad) => {
         const publicUrl = `${window.location.origin}/p/${propiedad.id}`;
         navigator.clipboard.writeText(publicUrl).then(() => {
@@ -144,7 +143,6 @@ const Catalogo: React.FC<CatalogoProps> = ({
         }).catch(() => showToast('Error al copiar', 'error'));
     };
 
-    // 2. Compartir Catálogo Completo (NUEVO)
     const handleShareCatalog = () => {
         if (!currentUser.tenantId) {
             showToast('No se identificó la empresa.', 'error');
@@ -246,27 +244,23 @@ const Catalogo: React.FC<CatalogoProps> = ({
     const selectedPropietario = selectedPropiedad ? propietarios.find(p => p.id === selectedPropiedad.propietarioId) : undefined;
      
     return (
-        <div className="space-y-6">
+        // 1. APLICAMOS EL ESTILO TARJETA BLANCA (Igual que en Clientes)
+        <div className="bg-white p-8 rounded-lg shadow-sm space-y-6">
             
-            {/* --- HEADER: Título y Botón Compartir Catálogo --- */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Catálogo de Propiedades</h1>
-                  <p className="text-gray-500 text-sm mt-1">Comparte y administra tu inventario público.</p>
-                </div>
-                
-                {/* BOTÓN NUEVO: Compartir Catálogo */}
+            {/* 2. HEADER UNIFICADO: Solo botón a la derecha (Título eliminado como pediste) */}
+            <div className="flex justify-end items-center">
+                {/* BOTÓN: Color Naranja Unificado */}
                 <button 
                   onClick={handleShareCatalog}
-                  className="bg-gray-900 hover:bg-black text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-colors shadow-sm"
+                  className="bg-iange-orange hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-colors shadow-sm"
                 >
                   <ShareIcon className="h-5 w-5" />
                   Compartir Catálogo
                 </button>
             </div>
 
-            {/* --- BARRA DE FILTROS --- */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
+            {/* --- BARRA DE FILTROS (Sin recuadro gris extra, para que se integre al blanco principal) --- */}
+            <div className="flex flex-col md:flex-row gap-4 items-center">
                 <div className="relative flex-1 w-full">
                     <input
                         type="text"
@@ -278,16 +272,16 @@ const Catalogo: React.FC<CatalogoProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
-                   <button onClick={() => setFilterStatus('todos')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${filterStatus === 'todos' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>Todas</button>
-                   <button onClick={() => setFilterStatus('venta')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${filterStatus === 'venta' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white border border-gray-200'}`}>Venta</button>
-                   <button onClick={() => setFilterStatus('renta')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${filterStatus === 'renta' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-white border border-gray-200'}`}>Renta</button>
+                   <button onClick={() => setFilterStatus('todos')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${filterStatus === 'todos' ? 'bg-iange-orange text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Todas</button>
+                   <button onClick={() => setFilterStatus('venta')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${filterStatus === 'venta' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-white border border-gray-200 hover:bg-gray-50'}`}>Venta</button>
+                   <button onClick={() => setFilterStatus('renta')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${filterStatus === 'renta' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-white border border-gray-200 hover:bg-gray-50'}`}>Renta</button>
                 </div>
 
                 <div className="flex items-center space-x-2">
                     <select
                         value={sortOrder}
                         onChange={e => setSortOrder(e.target.value as 'desc' | 'asc')}
-                        className="p-2 bg-gray-50 border rounded-md text-sm focus:ring-2 focus:ring-iange-orange text-gray-900"
+                        className="p-2 bg-gray-50 border rounded-md text-sm focus:ring-2 focus:ring-iange-orange text-gray-900 cursor-pointer"
                     >
                         <option value="desc">Mayor Precio</option>
                         <option value="asc">Menor Precio</option>
@@ -316,8 +310,8 @@ const Catalogo: React.FC<CatalogoProps> = ({
                     ))}
                 </div>
             ) : (
-                <div className="text-center py-16 bg-white rounded-lg shadow-sm border-dashed border-2">
-                    <h3 className="text-xl font-semibold text-gray-700">No se encontraron propiedades</h3>
+                <div className="text-center py-16 bg-gray-50 rounded-lg border-dashed border-2">
+                    <h3 className="text-xl font-semibold text-gray-500">No se encontraron propiedades</h3>
                 </div>
             )}
              

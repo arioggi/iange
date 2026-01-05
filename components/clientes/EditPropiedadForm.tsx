@@ -395,7 +395,19 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                             ))}
                         </LabeledSelect>
                     </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    {/* ✅ GRID DE 3 COLUMNAS: TIPO OPERACIÓN, TIPO INMUEBLE Y FUENTE */}
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <LabeledSelect 
+                            label="Tipo de Operación" 
+                            name="tipoOperacion" 
+                            value={editedPropiedad.tipoOperacion || 'Venta'} 
+                            onChange={handlePropiedadChange as any}
+                        >
+                            <option value="Venta">Venta</option>
+                            <option value="Renta">Renta</option>
+                        </LabeledSelect>
+
                          <LabeledSelect label="Tipo de Inmueble" name="tipo_inmueble" value={editedPropiedad.tipo_inmueble} onChange={handlePropiedadChange as any}>
                             <option>Casa</option>
                             <option>Departamento</option>

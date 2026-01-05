@@ -113,6 +113,7 @@ export interface Propiedad {
   codigo_postal: string;
   pais: string;
   tipo_inmueble: string; 
+  tipoOperacion?: 'Venta' | 'Renta'; // ✅ CAMPO AGREGADO
   valor_operacion: string;
   terreno_m2?: string;
   construccion_m2?: string;
