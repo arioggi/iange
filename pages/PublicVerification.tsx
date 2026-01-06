@@ -50,35 +50,46 @@ const PublicVerification: React.FC = () => {
         fetchClient();
     }, [token]);
 
-    // --- CÁMARA & FOTOS ---
+    // --- CÁMARA & FOTOS (CORREGIDO) ---
     const startCamera = async () => {
         try {
             if (step === 'expired' || step === 'error') return;
+            // Pedimos HD (1280x720) para no saturar memoria
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: 'user' },
+                video: { 
+                    facingMode: 'user',
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
                 audio: false 
             });
             if (videoRef.current) videoRef.current.srcObject = stream;
         } catch (err) {
             console.error(err);
+            setErrorMsg('No se pudo acceder a la cámara.');
+            setStep('error');
         }
     };
 
     const captureSelfie = () => {
         if (videoRef.current && canvasRef.current) {
             const context = canvasRef.current.getContext('2d');
+            const video = videoRef.current; // Referencia local
+
             if (context) {
-                canvasRef.current.width = videoRef.current.videoWidth;
-                canvasRef.current.height = videoRef.current.videoHeight;
-                context.save();
-                context.scale(-1, 1);
-                context.drawImage(videoRef.current, -canvasRef.current.width, 0);
-                context.restore();
+                canvasRef.current.width = video.videoWidth;
+                canvasRef.current.height = video.videoHeight;
                 
-                const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.8);
+                // --- FIX: NO USAR SCALE(-1, 1) AQUÍ ---
+                // Dibujamos la imagen original. El usuario se ve en espejo por CSS, 
+                // pero enviamos la cara "real" para que la IA no falle.
+                context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+                
+                // Calidad 0.7 para reducir peso y evitar timeout
+                const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.7);
                 setImages(prev => ({ ...prev, rostro: dataUrl }));
                 
-                const stream = videoRef.current.srcObject as MediaStream;
+                const stream = video.srcObject as MediaStream;
                 stream?.getTracks().forEach(track => track.stop());
                 
                 setStep('ine_front');
@@ -86,16 +97,43 @@ const PublicVerification: React.FC = () => {
         }
     };
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'ineFrente' | 'ineReverso') => {
+    // --- NUEVO: FUNCIÓN PARA COMPRIMIR IMÁGENES ---
+    // Esto evita enviar 10MB de foto y causar Error 500
+    const resizeImage = (file: File): Promise<string> => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target?.result as string;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const maxWidth = 1500; // Suficiente para leer datos
+                    const scaleSize = maxWidth / img.width;
+                    const width = (img.width > maxWidth) ? maxWidth : img.width;
+                    const height = (img.width > maxWidth) ? img.height * scaleSize : img.height;
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx?.drawImage(img, 0, 0, width, height);
+                    
+                    resolve(canvas.toDataURL('image/jpeg', 0.7)); // Retorna Base64 ligero
+                };
+            };
+        });
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'ineFrente' | 'ineReverso') => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setImages(prev => ({ ...prev, [type]: reader.result as string }));
-                if (type === 'ineFrente') setStep('ine_back');
-                if (type === 'ineReverso') setStep('confirmation'); 
-            };
-            reader.readAsDataURL(file);
+            
+            // Usamos la nueva función de resize
+            const resizedBase64 = await resizeImage(file);
+            
+            setImages(prev => ({ ...prev, [type]: resizedBase64 }));
+            if (type === 'ineFrente') setStep('ine_back');
+            if (type === 'ineReverso') setStep('confirmation'); 
         }
     };
 
@@ -164,7 +202,7 @@ const PublicVerification: React.FC = () => {
                 .eq('verification_token', token)
                 .single();
 
-            // ✅ 4. INSERTAR LOG EN `kyc_validations`
+            // 4. INSERTAR LOG
             if (currentContact) {
                 const isApiSuccess = data && data.status === 'success';
                 
@@ -172,8 +210,7 @@ const PublicVerification: React.FC = () => {
                     tenant_id: currentContact.tenant_id,
                     entity_type: currentContact.tipo === 'propietario' ? 'Propietario' : 'Comprador',
                     entity_id: currentContact.id,
-                    validation_type: 'BIOMETRIC_CHECK', // <--- ¡AQUÍ ESTÁ EL CAMBIO A MAYÚSCULAS! ✅
-                    
+                    validation_type: 'BIOMETRIC_CHECK',
                     status: isApiSuccess ? 'success' : 'error',
                     nufi_transaction_id: data?.uuid || null, 
                     api_response: data || { error: 'No data returned' }, 
@@ -283,6 +320,7 @@ const PublicVerification: React.FC = () => {
                             <p className="text-gray-500 mt-2">Centra tu rostro para la selfie</p>
                         </div>
                         <div className="relative w-full aspect-[3/4] bg-black rounded-3xl overflow-hidden shadow-2xl mb-6 ring-4 ring-gray-100">
+                            {/* NOTA: Aquí mantenemos scale-x-[-1] solo para efecto VISUAL, el canvas manda la foto real */}
                             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover transform scale-x-[-1]"></video>
                             <div className="absolute inset-0 border-2 border-white/30 rounded-3xl pointer-events-none m-6"></div>
                         </div>
