@@ -16,38 +16,50 @@ serve(async (req: Request) => {
     const body = await req.json()
     const { action, payload } = body
     
-    const KEY_GENERAL = Deno.env.get('NUFI_KEY_GENERAL') || ''
-    const KEY_BLACKLIST = Deno.env.get('NUFI_KEY_BLACKLIST') || ''
+    // 1. OBTENER LLAVES
+    const keysString = Deno.env.get('NUFI_API_KEYS') || Deno.env.get('NUFI_KEY_GENERAL') || '';
+    const generalKeys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0);
+    const blacklistKey = Deno.env.get('NUFI_KEY_BLACKLIST') || '';
 
     let nufiUrl = ''
-    
-    // Definimos el tipo para headers
-    const nufiHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
-    
-    // CORRECCIÓN 1: Usamos 'Record<string, unknown>' en lugar de 'any'
-    // Esto le dice a TypeScript: "Es un objeto con claves string y valores desconocidos"
     let nufiBody: Record<string, unknown> = {}
+    let headerKeyName = 'NUFI-API-KEY'; 
+    let keysToUse = generalKeys; 
 
+    // --- FUNCIONES DE LIMPIEZA ---
+    const cleanStr = (s: unknown) => s ? String(s).trim().toUpperCase() : '';
+    const cleanNum = (s: unknown) => s ? String(s).replace(/\D/g, '') : '';
+
+    // 2. PREPARAR LA PETICIÓN SEGÚN EL CASO
     switch (action) {
       // --- 1. VALIDAR INE ---
-      case 'validate-ine':
+      case 'validate-ine': {  // <--- ¡AQUÍ AGREGUÉ LA LLAVE DE APERTURA!
         nufiUrl = 'https://nufi.azure-api.net/v1/lista_nominal/validar'
-        nufiHeaders['Ocp-Apim-Subscription-Key'] = KEY_GENERAL 
+        headerKeyName = 'Ocp-Apim-Subscription-Key' 
         
+        // Creamos el body base limpio
         nufiBody = {
-            tipo_identificacion: payload.tipo_identificacion,
-            ocr: payload.ocr,
-            clave_de_elector: payload.clave_de_elector,
-            numero_de_emision: payload.numero_de_emision || "00"
+            tipo_identificacion: cleanStr(payload.tipo_identificacion),
+            clave_de_elector: cleanStr(payload.clave_de_elector),
+            numero_de_emision: cleanNum(payload.numero_de_emision) || "00"
         }
-        if (payload.cic) nufiBody["cic"] = payload.cic;
-        if (payload.identificador_del_ciudadano) nufiBody["identificador_del_ciudadano"] = payload.identificador_del_ciudadano;
+
+        // Solo agregamos campos opcionales si tienen contenido real
+        const ocrLimpio = cleanNum(payload.ocr);
+        if (ocrLimpio.length > 0) nufiBody["ocr"] = ocrLimpio;
+
+        const cicLimpio = cleanNum(payload.cic);
+        if (cicLimpio.length > 0) nufiBody["cic"] = cicLimpio;
+        
+        const idCiudadanoLimpio = cleanNum(payload.identificador_del_ciudadano);
+        if (idCiudadanoLimpio.length > 0) nufiBody["identificador_del_ciudadano"] = idCiudadanoLimpio;
+        
         break;
+      } // <--- ¡AQUÍ LA CERRÉ!
 
       // --- 2. OCR (FRENTE Y REVERSO) ---
       case 'extract-ocr': { 
         nufiUrl = `https://nufi.azure-api.net/ocr/v4/${payload.side}`
-        nufiHeaders['NUFI-API-KEY'] = KEY_GENERAL
         
         let rawImg = payload.image_data || '';
         if (rawImg.includes(',')) rawImg = rawImg.split(',').pop();
@@ -65,14 +77,13 @@ serve(async (req: Request) => {
       // --- 3. BLACKLIST (PLD) ---
       case 'check-blacklist':
         nufiUrl = 'https://nufi.azure-api.net/perfilamiento/v1/aml'
-        nufiHeaders['NUFI-API-KEY'] = KEY_BLACKLIST
+        keysToUse = [blacklistKey]; 
         nufiBody = payload.body || payload
         break;
 
       // --- 4. BIOMETRÍA (INE vs SELFIE) ---
       case 'biometric-match':
         nufiUrl = 'https://nufi.azure-api.net/biometrico/v2/ine_vs_selfie'
-        nufiHeaders['NUFI-API-KEY'] = KEY_GENERAL
         nufiBody = payload.body || payload
         break;
 
@@ -80,29 +91,77 @@ serve(async (req: Request) => {
         throw new Error(`Acción desconocida: ${action}`)
     }
 
-    console.log(`🚀 [Proxy] Enviando a NuFi: ${action}`)
+    console.log(`🚀 [Proxy] Iniciando ${action}. Keys disponibles: ${keysToUse.length}`)
 
-    const nufiResponse = await fetch(nufiUrl, {
-      method: 'POST',
-      headers: nufiHeaders,
-      body: JSON.stringify(nufiBody)
-    })
+    // 3. BUCLE DE ROTACIÓN (Failover Logic)
+    let finalResponse = null;
+    let success = false;
+    let usedKeyIndex = -1; 
 
-    const nufiData = await nufiResponse.json()
+    for (let i = 0; i < keysToUse.length; i++) {
+        const currentKey = keysToUse[i];
+        
+        const currentHeaders: Record<string, string> = { 
+            'Content-Type': 'application/json',
+            [headerKeyName]: currentKey 
+        };
 
-    return new Response(JSON.stringify(nufiData), {
+        try {
+            const response = await fetch(nufiUrl, {
+                method: 'POST',
+                headers: currentHeaders,
+                body: JSON.stringify(nufiBody)
+            });
+
+            const data = await response.json();
+
+            // Lógica de fallo por Quota/Forbidden
+            if (response.status === 403 || response.status === 401 || response.status === 402 || data.code === 403) {
+                console.warn(`⚠️ Key #${i + 1} falló (Status ${response.status}). Rotando...`);
+                continue; 
+            }
+
+            finalResponse = data;
+            usedKeyIndex = i + 1; 
+            success = true;
+            break; 
+
+        } catch (err) {
+            console.error(`Error de red con Key #${i + 1}:`, err);
+            if (i === keysToUse.length - 1) throw err;
+        }
+    }
+
+    if (!success || !finalResponse) {
+        return new Response(JSON.stringify({ 
+            status: 'error', 
+            message: 'Todas las API Keys se han agotado o fallado.' 
+        }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 403, 
+        });
+    }
+
+    // 4. INYECCIÓN DEL CHIVATO
+    if (typeof finalResponse === 'object' && finalResponse !== null) {
+        if (action !== 'check-blacklist') {
+            // deno-lint-ignore no-explicit-any
+            (finalResponse as any)._meta_usage = {
+                key_used: usedKeyIndex,
+                timestamp: new Date().toISOString()
+            };
+        }
+    }
+
+    return new Response(JSON.stringify(finalResponse), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     })
 
-  } catch (error: unknown) { // CORRECCIÓN 2: Usamos 'unknown' y validamos el tipo
+  } catch (error: unknown) {
     let msg = 'Error desconocido del servidor';
-    
-    if (error instanceof Error) {
-        msg = error.message;
-    } else if (typeof error === 'string') {
-        msg = error;
-    }
+    if (error instanceof Error) msg = error.message;
+    else if (typeof error === 'string') msg = error;
 
     return new Response(JSON.stringify({ status: 'error', message: msg }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
