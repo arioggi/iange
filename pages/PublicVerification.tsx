@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { CameraIcon, CheckCircleIcon, XCircleIcon, DocumentTextIcon, ArrowUpTrayIcon } from '../components/Icons';
+import { CameraIcon, CheckCircleIcon, XCircleIcon, DocumentTextIcon, ArrowUpTrayIcon, ShieldCheckIcon } from '../components/Icons';
 
 const PublicVerification: React.FC = () => {
     const { token } = useParams<{ token: string }>(); 
@@ -9,8 +9,8 @@ const PublicVerification: React.FC = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     
-    // Estados visuales
-    const [step, setStep] = useState('loading'); // loading, selfie, ine_front, ine_back, confirmation, processing, success, error
+    // Estados visuales: Añadimos 'expired' para enlaces ya usados
+    const [step, setStep] = useState('loading'); // loading, selfie, ine_front, ine_back, confirmation, processing, success, error, expired
     const [clientName, setClientName] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
     
@@ -21,20 +21,31 @@ const PublicVerification: React.FC = () => {
         ineReverso: ''
     });
 
-    // 1. Cargar datos del cliente usando el TOKEN seguro
+    // 1. Cargar datos del cliente y verificar validez del enlace
     useEffect(() => {
         const fetchClient = async () => {
             if (!token) return;
+            // Solicitamos 'datos_kyc' para verificar el estado actual
             const { data, error } = await supabase
                 .from('contactos')
-                .select('nombre') 
-                .eq('verification_token', token) // <--- Búsqueda segura por UUID
+                .select('nombre, datos_kyc') 
+                .eq('verification_token', token) 
                 .single();
 
             if (error || !data) {
                 setStep('error');
                 setErrorMsg('El enlace no es válido o ha expirado.');
             } else {
+                // ✅ VALIDACIÓN DE ENLACE VENCIDO
+                // Si ya está verificado, bloqueamos el acceso
+                const kyc = data.datos_kyc || {};
+                if (kyc.biometricStatus === 'Verificado') {
+                    setClientName(data.nombre);
+                    setStep('expired'); 
+                    return;
+                }
+
+                // Si no está verificado, procedemos
                 setClientName(data.nombre);
                 setStep('selfie'); // Arrancamos directo en la selfie
                 startCamera();
@@ -46,6 +57,9 @@ const PublicVerification: React.FC = () => {
     // --- CÁMARA & FOTOS ---
     const startCamera = async () => {
         try {
+            // Solo intentamos acceder a la cámara si NO estamos en estado expirado/error
+            if (step === 'expired' || step === 'error') return;
+
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: 'user' },
                 audio: false 
@@ -53,7 +67,8 @@ const PublicVerification: React.FC = () => {
             if (videoRef.current) videoRef.current.srcObject = stream;
         } catch (err) {
             console.error(err);
-            setErrorMsg('Por favor permite el acceso a la cámara para continuar.');
+            // No mostramos error bloqueante aquí para no interrumpir si el usuario prefiere subir foto después
+            // setErrorMsg('Por favor permite el acceso a la cámara para continuar.'); 
         }
     };
 
@@ -72,7 +87,7 @@ const PublicVerification: React.FC = () => {
                 const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.8);
                 setImages(prev => ({ ...prev, rostro: dataUrl }));
                 
-                // Detener video
+                // Detener video para ahorrar recursos
                 const stream = videoRef.current.srcObject as MediaStream;
                 stream?.getTracks().forEach(track => track.stop());
                 
@@ -100,36 +115,45 @@ const PublicVerification: React.FC = () => {
         try {
             const cleanBase64 = (str: string) => str.split(',')[1];
 
-            // Preparamos payload para NUFI
+            // Payload para NUFI
             const nufiPayload = {
                 imagen_rostro: cleanBase64(images.rostro),
                 credencial_frente: cleanBase64(images.ineFrente),
                 credencial_reverso: cleanBase64(images.ineReverso)
             };
 
-            // Llamada a la Edge Function 'nufi-proxy'
+            // Llamada a la Edge Function
             const { data, error } = await supabase.functions.invoke('nufi-proxy', {
                 body: {
-                    action: 'biometric-match', // Acción específica para biometría
+                    action: 'biometric-match', 
                     payload: nufiPayload
                 }
             });
 
             if (error) throw new Error(error.message);
 
-            // Analizar respuesta de NUFI
+            // Analizar respuesta
             if (data && data.status === 'success' && data.data) {
                 const nufiResult = data.data;
                 const isMatch = nufiResult.resultado_verificacion_rostro === "True";
                 const score = parseFloat(nufiResult.certeza_verificacion_rostro);
                 
-                // Guardar resultado en Supabase usando el TOKEN
+                // 1. Obtener datos actuales para hacer merge (no sobrescribir)
+                const { data: currentContact } = await supabase
+                    .from('contactos')
+                    .select('datos_kyc')
+                    .eq('verification_token', token)
+                    .single();
+
+                const currentKyc = currentContact?.datos_kyc || {};
+
+                // 2. Guardar resultado
                 await supabase.from('contactos').update({ 
                     datos_kyc: { 
+                        ...currentKyc, // Mantenemos datos previos (INE validado, PLD, etc.)
                         biometricStatus: isMatch ? 'Verificado' : 'Rechazado',
                         biometricScore: score,
                         biometricDate: new Date().toISOString(),
-                        // Guardamos datos extra de la credencial
                         ineVerificationData: {
                             tipoFrente: nufiResult.tipo_credencial_frente,
                             tipoReverso: nufiResult.tipo_credencial_reverso
@@ -193,7 +217,23 @@ const PublicVerification: React.FC = () => {
                     </div>
                 )}
 
-                {/* 3. SELFIE (Cámara) */}
+                {/* 3. ENLACE EXPIRADO (NUEVA PANTALLA) */}
+                {step === 'expired' && (
+                    <div className="text-center w-full animate-fade-in-up">
+                        <div className="h-24 w-24 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 border border-green-100 shadow-sm">
+                            <ShieldCheckIcon className="h-12 w-12" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Enlace Vencido</h2>
+                        <p className="text-gray-600 mb-6 leading-relaxed">
+                            Hola <strong>{clientName.split(' ')[0]}</strong>, tu identidad ya ha sido verificada exitosamente. Por motivos de seguridad, este enlace ya no es válido.
+                        </p>
+                        <div className="p-4 bg-gray-50 rounded-xl text-sm text-gray-500 border border-gray-100">
+                            Si crees que esto es un error o necesitas realizar el proceso nuevamente, por favor contacta a tu asesor.
+                        </div>
+                    </div>
+                )}
+
+                {/* 4. SELFIE (Cámara) */}
                 {step === 'selfie' && (
                     <div className="w-full flex flex-col h-full justify-between animate-fade-in">
                         <div className="text-center mb-6">
@@ -213,7 +253,7 @@ const PublicVerification: React.FC = () => {
                     </div>
                 )}
 
-                {/* 4. INE (Upload/Capture) */}
+                {/* 5. INE (Upload/Capture) */}
                 {(step === 'ine_front' || step === 'ine_back') && (
                     <div className="w-full text-center animate-fade-in-up">
                         <div className="mb-8">
@@ -249,7 +289,7 @@ const PublicVerification: React.FC = () => {
                     </div>
                 )}
 
-                {/* 5. CONFIRMACIÓN */}
+                {/* 6. CONFIRMACIÓN */}
                 {step === 'confirmation' && (
                     <div className="w-full animate-fade-in-up">
                         <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">Revisa tus fotos</h2>
@@ -290,7 +330,7 @@ const PublicVerification: React.FC = () => {
                     </div>
                 )}
 
-                {/* 6. PROCESANDO */}
+                {/* 7. PROCESANDO */}
                 {step === 'processing' && (
                     <div className="text-center animate-fade-in">
                         <div className="relative h-24 w-24 mx-auto mb-6">
@@ -302,7 +342,7 @@ const PublicVerification: React.FC = () => {
                     </div>
                 )}
 
-                {/* 7. ÉXITO */}
+                {/* 8. ÉXITO */}
                 {step === 'success' && (
                     <div className="text-center animate-bounce-short">
                         <div className="h-24 w-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">

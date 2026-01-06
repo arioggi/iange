@@ -95,19 +95,48 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
         }, 2000);
     };
 
+    // ✅ NUEVA LÓGICA DE BADGES (DISEÑO PETITE / CÁPSULA)
+    const renderVerificationBadge = (propietario: Propietario) => {
+        const inePldOk = propietario.ineValidado && propietario.pldValidado;
+        const biometriaOk = propietario.biometricStatus === 'Verificado';
+
+        // 1. TODO CORRECTO (VERDE SUAVE & REDONDO)
+        if (inePldOk && biometriaOk) {
+            return (
+                <span className="text-[9px] text-emerald-600 font-semibold flex items-center gap-1 mt-0.5 bg-emerald-50 px-2 py-0.5 rounded-full w-fit border border-emerald-100 shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                    VERIFICADO
+                </span>
+            );
+        }
+
+        // 2. FALTA BIOMETRÍA (NARANJA SUAVE & REDONDO)
+        if (inePldOk && !biometriaOk) {
+            return (
+                <span className="text-[9px] text-orange-600 font-semibold flex items-center gap-1 mt-0.5 bg-orange-50 px-2 py-0.5 rounded-full w-fit border border-orange-100" title="El propietario debe completar la selfie">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 14a6 6 0 110-12 6 6 0 010 12zm-1-5a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1zm0-3a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
+                    FALTA SELFIE
+                </span>
+            );
+        }
+
+        // 3. PENDIENTE (GRIS MINIMALISTA)
+        return (
+            <span className="text-[9px] text-gray-400 font-medium flex items-center gap-1 mt-0.5 bg-gray-50 px-2 py-0.5 rounded-full w-fit border border-gray-100">
+                PENDIENTE
+            </span>
+        );
+    };
+
     const renderPropietarioCell = (propietarioId: number) => {
         const propietario = propietarios.find(p => p.id === propietarioId);
         if (!propietario) return <span className="text-gray-400 italic">No asignado</span>;
-        const isValidado = propietario.ineValidado && propietario.pldValidado;
+        
         return (
             <div className="flex flex-col">
                 <span className="text-gray-900 font-medium">{propietario.nombreCompleto}</span>
-                {isValidado && (
-                    <span className="text-[10px] text-green-600 font-bold flex items-center gap-1 mt-0.5 bg-green-50 px-1.5 py-0.5 rounded-md w-fit">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                        VERIFICADO
-                    </span>
-                )}
+                {/* Usamos la nueva función de badges aquí */}
+                {renderVerificationBadge(propietario)}
             </div>
         );
     };

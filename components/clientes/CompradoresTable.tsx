@@ -13,7 +13,7 @@ interface CompradoresTableProps {
 
 const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit, onDelete, propiedades, asesores }) => {
     
-    // ✅ LÓGICA RESTAURADA: Generación de Documentos
+    // ✅ LÓGICA DE GENERACIÓN DE DOCUMENTOS (MANTENIDA)
     const handleDescargarKitLegal = async (comprador: Comprador) => {
         const propiedad = propiedades.find(p => p.id === comprador.propiedadId);
 
@@ -103,11 +103,15 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
         return asesor ? asesor.name : null;
     };
 
+    // ✨ DISEÑO PETITE (Más limpio y pequeño)
     const getStatusBadge = (tipo: string) => {
         switch(tipo) {
-            case 'Venta finalizada': return <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full bg-green-100 text-green-800 border border-green-200">VENTA</span>;
-            case 'Propiedad Separada': return <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">SEPARADA</span>;
-            default: return <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full bg-blue-50 text-blue-700 border border-blue-200">PROPUESTA</span>;
+            case 'Venta finalizada': 
+                return <span className="px-2 py-0.5 inline-flex text-[9px] font-semibold rounded-full bg-green-50 text-green-700 border border-green-100 tracking-wide">VENTA</span>;
+            case 'Propiedad Separada': 
+                return <span className="px-2 py-0.5 inline-flex text-[9px] font-semibold rounded-full bg-yellow-50 text-yellow-700 border border-yellow-100 tracking-wide">SEPARADA</span>;
+            default: 
+                return <span className="px-2 py-0.5 inline-flex text-[9px] font-semibold rounded-full bg-blue-50 text-blue-600 border border-blue-100 tracking-wide">PROPUESTA</span>;
         }
     };
 
@@ -117,6 +121,39 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
         return new Date(Number(year), Number(month) - 1, Number(day)).toLocaleDateString('es-MX', {
             day: '2-digit', month: 'short', year: 'numeric'
         });
+    };
+
+    // ✨ NUEVA LÓGICA DE ESTADOS DE VERIFICACIÓN (DISEÑO PETITE)
+    const renderVerificationBadge = (comprador: Comprador) => {
+        const inePldOk = comprador.ineValidado && comprador.pldValidado;
+        const biometriaOk = comprador.biometricStatus === 'Verificado';
+
+        // 1. TODO CORRECTO (VERDE SUAVE & REDONDO)
+        if (inePldOk && biometriaOk) {
+            return (
+                <span className="text-[9px] text-emerald-600 font-semibold flex items-center gap-1 mt-1 bg-emerald-50 px-2 py-0.5 rounded-full w-fit border border-emerald-100 shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                    VERIFICADO
+                </span>
+            );
+        }
+
+        // 2. FALTA BIOMETRÍA (NARANJA SUAVE & REDONDO)
+        if (inePldOk && !biometriaOk) {
+            return (
+                <span className="text-[9px] text-orange-600 font-semibold flex items-center gap-1 mt-1 bg-orange-50 px-2 py-0.5 rounded-full w-fit border border-orange-100" title="El cliente debe completar la selfie">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 14a6 6 0 110-12 6 6 0 010 12zm-1-5a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1zm0-3a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
+                    FALTA SELFIE
+                </span>
+            );
+        }
+
+        // 3. FALTA INE/PLD (GRIS MINIMALISTA)
+        return (
+            <span className="text-[9px] text-gray-400 font-medium flex items-center gap-1 mt-1 bg-gray-50 px-2 py-0.5 rounded-full w-fit border border-gray-100">
+                PENDIENTE
+            </span>
+        );
     };
 
     return (
@@ -136,7 +173,6 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                         const prop = getPropertyDetails(comprador.propiedadId);
                         const tipoRelacion = (comprador as any).tipoRelacion || 'Propuesta de compra';
                         const asesorNombre = getAsesorName(comprador.asesorId);
-                        const isValidado = comprador.ineValidado && comprador.pldValidado;
 
                         return (
                             <tr key={comprador.id} className="hover:bg-gray-50 transition-colors">
@@ -144,12 +180,8 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                                     <div className="flex flex-col">
                                         <span className="text-sm font-bold text-gray-900">{comprador.nombreCompleto}</span>
                                         
-                                        {isValidado && (
-                                            <span className="text-[10px] text-green-600 font-bold flex items-center gap-1 mt-0.5 bg-green-50 px-1.5 py-0.5 rounded-md w-fit">
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                                                VERIFICADO
-                                            </span>
-                                        )}
+                                        {/* ✅ AQUÍ USAMOS LA NUEVA FUNCIÓN PETITE */}
+                                        {renderVerificationBadge(comprador)}
 
                                         {asesorNombre && (
                                             <div className="text-xs text-gray-400 mt-1 flex items-center gap-1">
