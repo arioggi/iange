@@ -35,7 +35,7 @@ const formatDateForInput = (dateStr?: string): string => {
     return dateStr;
 };
 
-// Optimizada para evitar payloads gigantes
+// Optimizada: Calidad media para OCR rápido y evitar timeouts
 const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -44,7 +44,7 @@ const fileToBase64 = (file: File): Promise<string> => {
             const img = new Image();
             img.src = event.target?.result as string;
             img.onload = () => {
-                const MAX_WIDTH = 1500; // Calidad suficiente para OCR
+                const MAX_WIDTH = 1200; // Bajamos un poco para agilizar subida
                 let width = img.width;
                 let height = img.height;
                 if (width > MAX_WIDTH) {
@@ -56,8 +56,7 @@ const fileToBase64 = (file: File): Promise<string> => {
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 ctx?.drawImage(img, 0, 0, width, height);
-                // Calidad 0.7 para buen balance peso/calidad
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
                 resolve(dataUrl);
             };
             img.onerror = (error) => reject(error);
@@ -69,6 +68,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 const parseMrz = (fullText: string) => {
     if (!fullText) return null;
     const cleanText = fullText.toUpperCase();
+    // Intenta buscar patrones IDMEX
     const match = cleanText.match(/IDMEX(\d+)<+(\d+)/);
     if (match) {
         return {
@@ -399,58 +399,53 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 return;
             }
 
-            // DETERMINAR MODELO (Lógica Robusta)
-            let tipoFinal = datosParaValidar.tipo || 'C'; // Default a C si no se detectó
+            // DETERMINAR MODELO (Por si acaso, pero ya no filtramos con esto)
+            let tipoFinal = datosParaValidar.tipo || 'C'; 
             const anioEmision = parseInt(datosParaValidar.emision || "0");
-            
-            // Upgrade de modelo basado en fecha (para no mandar 'C' a credenciales 'H')
             if (anioEmision >= 2019) tipoFinal = 'H'; 
             else if (anioEmision >= 2014) tipoFinal = 'E'; 
 
-            // --- CONSTRUCCIÓN DEL PAYLOAD SEGURA (EVITA ERROR 500) ---
+            // =========================================================================
+            // 🛑 AQUÍ ESTÁ EL CAMBIO CLAVE PARA ARREGLAR EL ERROR 500
+            // =========================================================================
+            // Implicamos la lógica "Payload Goloso": Mandamos TODO lo que tengamos,
+            // igual que en tu CURL que sí funciona.
+
             const payloadIne: any = {
                 tipo_identificacion: tipoFinal,
                 clave_de_elector: datosParaValidar.claveElector.toUpperCase().trim(),
                 numero_de_emision: datosParaValidar.emision || "00"
             };
 
-            const rawOcr = datosParaValidar.ocr ? datosParaValidar.ocr.replace(/\D/g, '') : '';
-            const rawCic = datosParaValidar.cic ? datosParaValidar.cic.replace(/\D/g, '') : '';
+            const cleanDigits = (s: string) => s ? s.replace(/\D/g, '') : '';
+            const rawOcr = cleanDigits(datosParaValidar.ocr);
+            const rawCic = cleanDigits(datosParaValidar.cic);
 
-            if (['E', 'F', 'G', 'H'].includes(tipoFinal)) {
-                // MODELOS NUEVOS: Requieren CIC.
-                // NO mandamos 'ocr' de 13 dígitos porque eso es para modelos viejos y truena la API.
-                
-                let cicFinal = rawCic;
-                
-                // Si no tenemos CIC pero tenemos un MRZ (IDMEX), lo sacamos de ahí
-                if (!cicFinal && datosParaValidar.ocr && datosParaValidar.ocr.includes('IDMEX')) {
-                     const mrzData = parseMrz(datosParaValidar.ocr);
-                     if (mrzData) cicFinal = mrzData.cic;
-                }
-                // Si el usuario puso el CIC en el campo OCR por error (9 dígitos)
-                if (!cicFinal && rawOcr.length === 9) {
-                    cicFinal = rawOcr;
-                }
-
-                if (!cicFinal) {
-                    // Fallback extremo: Si falló el OCR del reverso, pedimos al usuario revisar.
-                    throw new Error(`Para el modelo ${tipoFinal} necesitamos el CIC (número pequeño tras la INE). El OCR no lo detectó.`);
-                }
-
-                payloadIne.cic = cicFinal;
-                payloadIne.identificador_del_ciudadano = cicFinal; // Enviamos lo mismo para asegurar match
-            } else {
-                // MODELO C (Clásico): Requiere OCR vertical de 13 dígitos
-                if (rawOcr.length === 13) {
-                    payloadIne.ocr = rawOcr;
-                } else if (rawCic.length === 13) {
-                    // A veces el OCR lo pone en el campo CIC
-                    payloadIne.ocr = rawCic;
-                } else {
-                     throw new Error("Para Modelo C, se requiere el OCR vertical de 13 dígitos.");
-                }
+            // 1. SIEMPRE mandamos OCR si lo tenemos (Nufi Azure lo agradece)
+            if (rawOcr.length > 0) {
+                payloadIne.ocr = rawOcr;
             }
+
+            // 2. Definimos el ID de Ciudadano (CIC)
+            let idCiudadano = rawCic;
+
+            // Si no tenemos CIC directo, tratamos de sacarlo del MRZ/OCR
+            if (!idCiudadano && rawOcr.length > 0) {
+                 const mrzData = parseMrz(datosParaValidar.ocr); 
+                 if (mrzData) idCiudadano = mrzData.cic;
+            }
+
+            // 3. Mandamos CIC y Identificador (Azure pide ambos a veces)
+            if (idCiudadano) {
+                payloadIne.cic = idCiudadano;
+                payloadIne.identificador_del_ciudadano = idCiudadano; 
+            } else if (rawOcr.length === 9) {
+                // Caso raro: usuario puso CIC en campo OCR
+                payloadIne.cic = rawOcr;
+                payloadIne.identificador_del_ciudadano = rawOcr;
+            }
+
+            // =========================================================================
 
             // --- EJECUCIÓN PARALELA (INE + PLD) ---
             const inePromise = validateIneData(payloadIne, entityIdForDb, tenantId);
@@ -520,9 +515,8 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         } catch (error: any) {
             console.error("Error validación:", error);
             setStatusIne('error');
-            // Si es el error 500 famoso, damos un mensaje más útil
             if (error.message && error.message.includes("CustomException")) {
-                alert("Error de Formato (500): Los datos extraídos (OCR/CIC) no coinciden con el tipo de credencial seleccionado. Intenta escanear nuevamente o verifica que la credencial no esté muy desgastada.");
+                alert("Error 500: Nufi rechazó los datos. Intenta capturar manualmente el CIC y OCR si el escaneo falló, o intenta con otra identificación.");
             } else {
                 alert(`Error: ${error.message}`);
             }
