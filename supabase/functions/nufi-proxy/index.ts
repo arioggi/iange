@@ -17,35 +17,45 @@ serve(async (req: Request) => {
     const { action, payload } = body
     
     // 1. OBTENER LLAVES
-    // Lista de rotación para operaciones generales (OCR, INE, Biometría)
     const keysString = Deno.env.get('NUFI_API_KEYS') || Deno.env.get('NUFI_KEY_GENERAL') || '';
     const generalKeys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0);
-
-    // Llave específica para Blacklist (si es única, la dejamos aparte)
     const blacklistKey = Deno.env.get('NUFI_KEY_BLACKLIST') || '';
 
-    // Variables de configuración para la petición
     let nufiUrl = ''
     let nufiBody: Record<string, unknown> = {}
     let headerKeyName = 'NUFI-API-KEY'; 
     let keysToUse = generalKeys; 
 
+    // --- FUNCIONES DE LIMPIEZA ---
+    const cleanStr = (s: unknown) => s ? String(s).trim().toUpperCase() : '';
+    const cleanNum = (s: unknown) => s ? String(s).replace(/\D/g, '') : '';
+
     // 2. PREPARAR LA PETICIÓN SEGÚN EL CASO
     switch (action) {
       // --- 1. VALIDAR INE ---
-      case 'validate-ine':
+      case 'validate-ine': {  // <--- ¡AQUÍ AGREGUÉ LA LLAVE DE APERTURA!
         nufiUrl = 'https://nufi.azure-api.net/v1/lista_nominal/validar'
         headerKeyName = 'Ocp-Apim-Subscription-Key' 
         
+        // Creamos el body base limpio
         nufiBody = {
-            tipo_identificacion: payload.tipo_identificacion,
-            ocr: payload.ocr,
-            clave_de_elector: payload.clave_de_elector,
-            numero_de_emision: payload.numero_de_emision || "00"
+            tipo_identificacion: cleanStr(payload.tipo_identificacion),
+            clave_de_elector: cleanStr(payload.clave_de_elector),
+            numero_de_emision: cleanNum(payload.numero_de_emision) || "00"
         }
-        if (payload.cic) nufiBody["cic"] = payload.cic;
-        if (payload.identificador_del_ciudadano) nufiBody["identificador_del_ciudadano"] = payload.identificador_del_ciudadano;
+
+        // Solo agregamos campos opcionales si tienen contenido real
+        const ocrLimpio = cleanNum(payload.ocr);
+        if (ocrLimpio.length > 0) nufiBody["ocr"] = ocrLimpio;
+
+        const cicLimpio = cleanNum(payload.cic);
+        if (cicLimpio.length > 0) nufiBody["cic"] = cicLimpio;
+        
+        const idCiudadanoLimpio = cleanNum(payload.identificador_del_ciudadano);
+        if (idCiudadanoLimpio.length > 0) nufiBody["identificador_del_ciudadano"] = idCiudadanoLimpio;
+        
         break;
+      } // <--- ¡AQUÍ LA CERRÉ!
 
       // --- 2. OCR (FRENTE Y REVERSO) ---
       case 'extract-ocr': { 
@@ -86,12 +96,11 @@ serve(async (req: Request) => {
     // 3. BUCLE DE ROTACIÓN (Failover Logic)
     let finalResponse = null;
     let success = false;
-    let usedKeyIndex = -1; // Para el chivato
+    let usedKeyIndex = -1; 
 
     for (let i = 0; i < keysToUse.length; i++) {
         const currentKey = keysToUse[i];
         
-        // Preparamos headers dinámicos
         const currentHeaders: Record<string, string> = { 
             'Content-Type': 'application/json',
             [headerKeyName]: currentKey 
@@ -109,14 +118,13 @@ serve(async (req: Request) => {
             // Lógica de fallo por Quota/Forbidden
             if (response.status === 403 || response.status === 401 || response.status === 402 || data.code === 403) {
                 console.warn(`⚠️ Key #${i + 1} falló (Status ${response.status}). Rotando...`);
-                continue; // Intentar siguiente llave
+                continue; 
             }
 
-            // Si llegamos aquí, la petición técnica funcionó
             finalResponse = data;
-            usedKeyIndex = i + 1; // Guardamos índice (basado en 1)
+            usedKeyIndex = i + 1; 
             success = true;
-            break; // Salimos del bucle
+            break; 
 
         } catch (err) {
             console.error(`Error de red con Key #${i + 1}:`, err);
@@ -134,9 +142,8 @@ serve(async (req: Request) => {
         });
     }
 
-    // 4. INYECCIÓN DEL CHIVATO (Para el Trigger de Supabase)
+    // 4. INYECCIÓN DEL CHIVATO
     if (typeof finalResponse === 'object' && finalResponse !== null) {
-        // Solo inyectamos si usamos la lista general
         if (action !== 'check-blacklist') {
             // deno-lint-ignore no-explicit-any
             (finalResponse as any)._meta_usage = {
