@@ -134,7 +134,7 @@ const PublicVerification: React.FC = () => {
         setUploadProgress('Subiendo evidencias...');
 
         try {
-            // 1. Subir Fotos a Storage (ESTO OCURRE PRIMERO, ASÍ QUE YA TENEMOS EVIDENCIA)
+            // 1. Subir Fotos a Storage
             const [urlSelfie, urlFrente, urlReverso] = await Promise.all([
                 uploadImageToSupabase(images.rostro, 'selfie_viva.jpg'),
                 uploadImageToSupabase(images.ineFrente, 'ine_frente.jpg'),
@@ -157,15 +157,14 @@ const PublicVerification: React.FC = () => {
 
             if (error) throw new Error(error.message);
 
-            // 3. Obtener contacto actual (Necesario para el ID)
+            // 3. Obtener contacto actual
             const { data: currentContact } = await supabase
                 .from('contactos')
                 .select('id, tenant_id, tipo, datos_kyc') 
                 .eq('verification_token', token)
                 .single();
 
-            // ✅ 4. INSERTAR LOG EN `kyc_validations` SIEMPRE (Sea éxito o error de API)
-            // Esto asegura que incluso si sale 403 Forbidden, quede registrado en la tabla.
+            // ✅ 4. INSERTAR LOG EN `kyc_validations`
             if (currentContact) {
                 const isApiSuccess = data && data.status === 'success';
                 
@@ -173,17 +172,11 @@ const PublicVerification: React.FC = () => {
                     tenant_id: currentContact.tenant_id,
                     entity_type: currentContact.tipo === 'propietario' ? 'Propietario' : 'Comprador',
                     entity_id: currentContact.id,
-                    validation_type: 'biometric_check',
+                    validation_type: 'BIOMETRIC_CHECK', // <--- ¡AQUÍ ESTÁ EL CAMBIO A MAYÚSCULAS! ✅
                     
-                    // Si la API dice success, es success. Si no, es error (ej. 403, 402)
                     status: isApiSuccess ? 'success' : 'error',
-                    
                     nufi_transaction_id: data?.uuid || null, 
-                    
-                    // Guardamos la respuesta COMPLETA (incluso si es error 403)
                     api_response: data || { error: 'No data returned' }, 
-                    
-                    // Guardamos las fotos SIEMPRE
                     validation_evidence: {          
                         selfie: urlSelfie, 
                         frente: urlFrente, 
@@ -192,7 +185,7 @@ const PublicVerification: React.FC = () => {
                 });
             }
 
-            // 5. MANEJO DE RESPUESTA (Éxito vs Error)
+            // 5. MANEJO DE RESPUESTA
             if (data && data.status === 'success' && data.data) {
                 const nufiResult = data.data; 
                 const isMatch = nufiResult.resultado_verificacion_rostro === "True";
@@ -200,7 +193,6 @@ const PublicVerification: React.FC = () => {
                 
                 const currentKyc = currentContact?.datos_kyc || {};
 
-                // Solo actualizamos el contacto si fue un éxito técnico de la API
                 await supabase.from('contactos').update({ 
                     datos_kyc: { 
                         ...currentKyc, 
@@ -224,8 +216,6 @@ const PublicVerification: React.FC = () => {
                     setStep('error');
                 }
             } else {
-                // Si la API falló (ej. 403 Forbidden), lanzamos error para mostrarlo en pantalla
-                // PERO YA SE GUARDÓ EN LA BASE DE DATOS ARRIBA ⬆️
                 throw new Error(data.message || 'No se pudo validar (Error de API).');
             }
         } catch (err: any) {
