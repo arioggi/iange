@@ -109,7 +109,6 @@ const PublicVerification: React.FC = () => {
                 byteArrays.push(byteCharacters.charCodeAt(i));
             }
             const blob = new Blob([new Uint8Array(byteArrays)], { type: 'image/jpeg' });
-
             const path = `kyc/public_${token}/${Date.now()}_${fileName}`;
 
             const { error } = await supabase.storage
@@ -135,7 +134,7 @@ const PublicVerification: React.FC = () => {
         setUploadProgress('Subiendo evidencias...');
 
         try {
-            // 1. Subir Fotos a Storage
+            // 1. Subir Fotos a Storage (ESTO OCURRE PRIMERO, ASÍ QUE YA TENEMOS EVIDENCIA)
             const [urlSelfie, urlFrente, urlReverso] = await Promise.all([
                 uploadImageToSupabase(images.rostro, 'selfie_viva.jpg'),
                 uploadImageToSupabase(images.ineFrente, 'ine_frente.jpg'),
@@ -144,7 +143,7 @@ const PublicVerification: React.FC = () => {
 
             setUploadProgress('Validando biometría...');
 
-            // 2. Nufi Proxy
+            // 2. Validar con NUFI
             const cleanBase64 = (str: string) => str.split(',')[1];
             const nufiPayload = {
                 imagen_rostro: cleanBase64(images.rostro),
@@ -158,49 +157,57 @@ const PublicVerification: React.FC = () => {
 
             if (error) throw new Error(error.message);
 
+            // 3. Obtener contacto actual (Necesario para el ID)
+            const { data: currentContact } = await supabase
+                .from('contactos')
+                .select('id, tenant_id, tipo, datos_kyc') 
+                .eq('verification_token', token)
+                .single();
+
+            // ✅ 4. INSERTAR LOG EN `kyc_validations` SIEMPRE (Sea éxito o error de API)
+            // Esto asegura que incluso si sale 403 Forbidden, quede registrado en la tabla.
+            if (currentContact) {
+                const isApiSuccess = data && data.status === 'success';
+                
+                await supabase.from('kyc_validations').insert({
+                    tenant_id: currentContact.tenant_id,
+                    entity_type: currentContact.tipo === 'propietario' ? 'Propietario' : 'Comprador',
+                    entity_id: currentContact.id,
+                    validation_type: 'biometric_check',
+                    
+                    // Si la API dice success, es success. Si no, es error (ej. 403, 402)
+                    status: isApiSuccess ? 'success' : 'error',
+                    
+                    nufi_transaction_id: data?.uuid || null, 
+                    
+                    // Guardamos la respuesta COMPLETA (incluso si es error 403)
+                    api_response: data || { error: 'No data returned' }, 
+                    
+                    // Guardamos las fotos SIEMPRE
+                    validation_evidence: {          
+                        selfie: urlSelfie, 
+                        frente: urlFrente, 
+                        reverso: urlReverso 
+                    }
+                });
+            }
+
+            // 5. MANEJO DE RESPUESTA (Éxito vs Error)
             if (data && data.status === 'success' && data.data) {
-                // data = Respuesta completa de Nufi (uuid, status, code, data: {...})
-                // nufiResult = Solo la parte interna de datos
                 const nufiResult = data.data; 
                 const isMatch = nufiResult.resultado_verificacion_rostro === "True";
                 const score = parseFloat(nufiResult.certeza_verificacion_rostro);
                 
-                // 3. Obtener contacto actual
-                const { data: currentContact } = await supabase
-                    .from('contactos')
-                    .select('id, tenant_id, tipo, datos_kyc') 
-                    .eq('verification_token', token)
-                    .single();
-
                 const currentKyc = currentContact?.datos_kyc || {};
 
-                // 4. ✅ INSERTAR LOG (Limpiamente separado)
-                if (currentContact) {
-                    await supabase.from('kyc_validations').insert({
-                        tenant_id: currentContact.tenant_id,
-                        entity_type: currentContact.tipo === 'propietario' ? 'Propietario' : 'Comprador',
-                        entity_id: currentContact.id,
-                        validation_type: 'biometric_check',
-                        status: isMatch ? 'success' : 'error',
-                        
-                        nufi_transaction_id: data.uuid, // ✅ Aprovechamos la columna existente (opcional pero recomendado)
-                        api_response: data,             // ✅ JSON PURO DE NUFI (uuid, status, data, code...)
-                        validation_evidence: {          // ✅ Columna dedicada para evidencias
-                            selfie: urlSelfie, 
-                            frente: urlFrente, 
-                            reverso: urlReverso 
-                        }
-                    });
-                }
-
-                // 5. Actualizar Contacto
+                // Solo actualizamos el contacto si fue un éxito técnico de la API
                 await supabase.from('contactos').update({ 
                     datos_kyc: { 
                         ...currentKyc, 
                         biometricStatus: isMatch ? 'Verificado' : 'Rechazado',
                         biometricScore: score,
                         biometricDate: new Date().toISOString(),
-                        biometricTransactionId: data.uuid, // También lo guardamos aquí por comodidad
+                        biometricTransactionId: data.uuid,
                         evidence_urls: { selfie: urlSelfie, frente: urlFrente, reverso: urlReverso },
                         ineVerificationData: {
                             tipoFrente: nufiResult.tipo_credencial_frente,
@@ -217,7 +224,9 @@ const PublicVerification: React.FC = () => {
                     setStep('error');
                 }
             } else {
-                throw new Error(data.message || 'No se pudo validar.');
+                // Si la API falló (ej. 403 Forbidden), lanzamos error para mostrarlo en pantalla
+                // PERO YA SE GUARDÓ EN LA BASE DE DATOS ARRIBA ⬆️
+                throw new Error(data.message || 'No se pudo validar (Error de API).');
             }
         } catch (err: any) {
             console.error(err);
@@ -226,7 +235,7 @@ const PublicVerification: React.FC = () => {
         }
     };
 
-    // --- RENDERIZADO UI (Sin cambios) ---
+    // --- RENDERIZADO UI ---
     return (
         <div className="min-h-[100dvh] bg-white flex flex-col font-sans text-gray-800">
             
