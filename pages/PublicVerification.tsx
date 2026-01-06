@@ -9,10 +9,11 @@ const PublicVerification: React.FC = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     
-    // Estados visuales: Añadimos 'expired' para enlaces ya usados
-    const [step, setStep] = useState('loading'); // loading, selfie, ine_front, ine_back, confirmation, processing, success, error, expired
+    // Estados visuales
+    const [step, setStep] = useState('loading'); 
     const [clientName, setClientName] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
+    const [uploadProgress, setUploadProgress] = useState(''); 
     
     // Imágenes en Base64
     const [images, setImages] = useState({
@@ -21,11 +22,10 @@ const PublicVerification: React.FC = () => {
         ineReverso: ''
     });
 
-    // 1. Cargar datos del cliente y verificar validez del enlace
+    // 1. Cargar datos del cliente
     useEffect(() => {
         const fetchClient = async () => {
             if (!token) return;
-            // Solicitamos 'datos_kyc' para verificar el estado actual
             const { data, error } = await supabase
                 .from('contactos')
                 .select('nombre, datos_kyc') 
@@ -37,17 +37,14 @@ const PublicVerification: React.FC = () => {
                 setErrorMsg('El enlace no es válido o ha expirado.');
             } else {
                 // ✅ VALIDACIÓN DE ENLACE VENCIDO
-                // Si ya está verificado, bloqueamos el acceso
                 const kyc = data.datos_kyc || {};
                 if (kyc.biometricStatus === 'Verificado') {
                     setClientName(data.nombre);
                     setStep('expired'); 
                     return;
                 }
-
-                // Si no está verificado, procedemos
                 setClientName(data.nombre);
-                setStep('selfie'); // Arrancamos directo en la selfie
+                setStep('selfie');
                 startCamera();
             }
         };
@@ -57,9 +54,7 @@ const PublicVerification: React.FC = () => {
     // --- CÁMARA & FOTOS ---
     const startCamera = async () => {
         try {
-            // Solo intentamos acceder a la cámara si NO estamos en estado expirado/error
             if (step === 'expired' || step === 'error') return;
-
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { facingMode: 'user' },
                 audio: false 
@@ -67,8 +62,6 @@ const PublicVerification: React.FC = () => {
             if (videoRef.current) videoRef.current.srcObject = stream;
         } catch (err) {
             console.error(err);
-            // No mostramos error bloqueante aquí para no interrumpir si el usuario prefiere subir foto después
-            // setErrorMsg('Por favor permite el acceso a la cámara para continuar.'); 
         }
     };
 
@@ -78,7 +71,6 @@ const PublicVerification: React.FC = () => {
             if (context) {
                 canvasRef.current.width = videoRef.current.videoWidth;
                 canvasRef.current.height = videoRef.current.videoHeight;
-                // Dibujar imagen (invertida horizontalmente si es selfie para efecto espejo)
                 context.save();
                 context.scale(-1, 1);
                 context.drawImage(videoRef.current, -canvasRef.current.width, 0);
@@ -87,7 +79,6 @@ const PublicVerification: React.FC = () => {
                 const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.8);
                 setImages(prev => ({ ...prev, rostro: dataUrl }));
                 
-                // Detener video para ahorrar recursos
                 const stream = videoRef.current.srcObject as MediaStream;
                 stream?.getTracks().forEach(track => track.stop());
                 
@@ -109,51 +100,103 @@ const PublicVerification: React.FC = () => {
         }
     };
 
-    // --- PROCESAMIENTO (LLAMADA A NUFI-PROXY) ---
+    // --- SUBIDA DE IMÁGENES A STORAGE ---
+    const uploadImageToSupabase = async (base64Data: string, fileName: string) => {
+        try {
+            const base64Content = base64Data.split(',')[1];
+            const byteCharacters = atob(base64Content);
+            const byteArrays = [];
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteArrays.push(byteCharacters.charCodeAt(i));
+            }
+            const blob = new Blob([new Uint8Array(byteArrays)], { type: 'image/jpeg' });
+
+            const path = `kyc/public_${token}/${Date.now()}_${fileName}`;
+
+            const { error } = await supabase.storage
+                .from('documentos-identidad')
+                .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+
+            if (error) throw error;
+
+            const { data } = supabase.storage
+                .from('documentos-identidad')
+                .getPublicUrl(path);
+
+            return data.publicUrl;
+        } catch (error) {
+            console.error(`Error subiendo ${fileName}:`, error);
+            return null;
+        }
+    };
+
+    // --- PROCESAMIENTO PRINCIPAL ---
     const processVerification = async () => {
         setStep('processing');
-        try {
-            const cleanBase64 = (str: string) => str.split(',')[1];
+        setUploadProgress('Subiendo evidencias...');
 
-            // Payload para NUFI
+        try {
+            // 1. Subir Fotos
+            const [urlSelfie, urlFrente, urlReverso] = await Promise.all([
+                uploadImageToSupabase(images.rostro, 'selfie_viva.jpg'),
+                uploadImageToSupabase(images.ineFrente, 'ine_frente.jpg'),
+                uploadImageToSupabase(images.ineReverso, 'ine_reverso.jpg')
+            ]);
+
+            setUploadProgress('Validando biometría...');
+
+            // 2. Nufi
+            const cleanBase64 = (str: string) => str.split(',')[1];
             const nufiPayload = {
                 imagen_rostro: cleanBase64(images.rostro),
                 credencial_frente: cleanBase64(images.ineFrente),
                 credencial_reverso: cleanBase64(images.ineReverso)
             };
 
-            // Llamada a la Edge Function
             const { data, error } = await supabase.functions.invoke('nufi-proxy', {
-                body: {
-                    action: 'biometric-match', 
-                    payload: nufiPayload
-                }
+                body: { action: 'biometric-match', payload: nufiPayload }
             });
 
             if (error) throw new Error(error.message);
 
-            // Analizar respuesta
             if (data && data.status === 'success' && data.data) {
                 const nufiResult = data.data;
                 const isMatch = nufiResult.resultado_verificacion_rostro === "True";
                 const score = parseFloat(nufiResult.certeza_verificacion_rostro);
                 
-                // 1. Obtener datos actuales para hacer merge (no sobrescribir)
+                // 3. Obtener contacto actual
                 const { data: currentContact } = await supabase
                     .from('contactos')
-                    .select('datos_kyc')
+                    .select('id, tenant_id, tipo, datos_kyc') 
                     .eq('verification_token', token)
                     .single();
 
                 const currentKyc = currentContact?.datos_kyc || {};
 
-                // 2. Guardar resultado
+                // 4. Insertar LOG
+                if (currentContact) {
+                    await supabase.from('kyc_validations').insert({
+                        tenant_id: currentContact.tenant_id,
+                        entity_type: currentContact.tipo === 'propietario' ? 'Propietario' : 'Comprador',
+                        entity_id: currentContact.id,
+                        validation_type: 'biometric_check',
+                        status: isMatch ? 'success' : 'error',
+                        api_response: { 
+                            ...nufiResult, 
+                            score: score, 
+                            evidence_urls: { selfie: urlSelfie, frente: urlFrente, reverso: urlReverso } 
+                        },
+                    });
+                }
+
+                // 5. Actualizar Contacto
                 await supabase.from('contactos').update({ 
                     datos_kyc: { 
-                        ...currentKyc, // Mantenemos datos previos (INE validado, PLD, etc.)
+                        ...currentKyc, 
                         biometricStatus: isMatch ? 'Verificado' : 'Rechazado',
                         biometricScore: score,
                         biometricDate: new Date().toISOString(),
+                        evidence_urls: { selfie: urlSelfie, frente: urlFrente, reverso: urlReverso },
                         ineVerificationData: {
                             tipoFrente: nufiResult.tipo_credencial_frente,
                             tipoReverso: nufiResult.tipo_credencial_reverso
@@ -169,31 +212,34 @@ const PublicVerification: React.FC = () => {
                     setStep('error');
                 }
             } else {
-                throw new Error(data.message || 'No se pudo validar las imágenes. Intenta de nuevo.');
+                throw new Error(data.message || 'No se pudo validar.');
             }
         } catch (err: any) {
             console.error(err);
-            setErrorMsg('Error de conexión o validación: ' + (err.message || 'Error desconocido'));
+            setErrorMsg('Error: ' + (err.message || 'Error desconocido'));
             setStep('error');
         }
     };
 
-    // --- RENDERIZADO UI (Responsive & Clean) ---
+    // --- RENDERIZADO UI ---
     return (
         <div className="min-h-[100dvh] bg-white flex flex-col font-sans text-gray-800">
             
-            {/* Header Flotante */}
-            <div className="w-full p-6 flex justify-center items-center">
-                <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 bg-iange-orange rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-sm">I</div>
-                    <span className="text-xs font-bold tracking-widest text-gray-400 uppercase">Verificación Segura</span>
+            {/* Header Flotante Refinado */}
+            <div className="w-full pt-8 pb-4 flex flex-col justify-center items-center">
+                <div className="flex items-center gap-2 mb-1">
+                    <ShieldCheckIcon className="h-4 w-4 text-gray-400" />
+                    <span className="text-xs font-bold tracking-widest text-gray-500 uppercase">Verificación Segura</span>
+                </div>
+                <div className="flex flex-col items-center gap-0.5 opacity-80 hover:opacity-100 transition-opacity cursor-default">
+                    <span className="text-[8px] font-medium text-gray-300 uppercase tracking-wider">powered by</span>
+                    {/* Logo SVG */}
+                    <img src="/logo.svg" alt="IANGE" className="h-5" />
                 </div>
             </div>
 
-            {/* Contenedor Principal */}
             <div className="flex-1 flex flex-col items-center justify-center px-6 pb-10 w-full max-w-md mx-auto">
                 
-                {/* 1. LOADING */}
                 {step === 'loading' && (
                     <div className="text-center animate-pulse">
                         <div className="h-12 w-12 border-4 border-gray-200 border-t-iange-orange rounded-full animate-spin mx-auto mb-4"></div>
@@ -201,7 +247,6 @@ const PublicVerification: React.FC = () => {
                     </div>
                 )}
 
-                {/* 2. ERROR */}
                 {step === 'error' && (
                     <div className="text-center w-full animate-fade-in-up">
                         <div className="h-20 w-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -217,7 +262,6 @@ const PublicVerification: React.FC = () => {
                     </div>
                 )}
 
-                {/* 3. ENLACE EXPIRADO (NUEVA PANTALLA) */}
                 {step === 'expired' && (
                     <div className="text-center w-full animate-fade-in-up">
                         <div className="h-24 w-24 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 border border-green-100 shadow-sm">
@@ -227,25 +271,19 @@ const PublicVerification: React.FC = () => {
                         <p className="text-gray-600 mb-6 leading-relaxed">
                             Hola <strong>{clientName.split(' ')[0]}</strong>, tu identidad ya ha sido verificada exitosamente. Por motivos de seguridad, este enlace ya no es válido.
                         </p>
-                        <div className="p-4 bg-gray-50 rounded-xl text-sm text-gray-500 border border-gray-100">
-                            Si crees que esto es un error o necesitas realizar el proceso nuevamente, por favor contacta a tu asesor.
-                        </div>
                     </div>
                 )}
 
-                {/* 4. SELFIE (Cámara) */}
                 {step === 'selfie' && (
                     <div className="w-full flex flex-col h-full justify-between animate-fade-in">
                         <div className="text-center mb-6">
                             <h2 className="text-2xl font-bold text-gray-900">Hola, {clientName.split(' ')[0]}</h2>
                             <p className="text-gray-500 mt-2">Centra tu rostro para la selfie</p>
                         </div>
-                        
                         <div className="relative w-full aspect-[3/4] bg-black rounded-3xl overflow-hidden shadow-2xl mb-6 ring-4 ring-gray-100">
                             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover transform scale-x-[-1]"></video>
                             <div className="absolute inset-0 border-2 border-white/30 rounded-3xl pointer-events-none m-6"></div>
                         </div>
-
                         <button onClick={captureSelfie} className="w-full bg-iange-orange text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-orange-200 hover:bg-orange-600 transition-transform active:scale-95 flex items-center justify-center gap-2">
                             <CameraIcon className="h-6 w-6" /> 
                             Tomar Foto
@@ -253,7 +291,6 @@ const PublicVerification: React.FC = () => {
                     </div>
                 )}
 
-                {/* 5. INE (Upload/Capture) */}
                 {(step === 'ine_front' || step === 'ine_back') && (
                     <div className="w-full text-center animate-fade-in-up">
                         <div className="mb-8">
@@ -265,7 +302,6 @@ const PublicVerification: React.FC = () => {
                                 Foto del <strong className="text-iange-orange">{step === 'ine_front' ? 'FRENTE' : 'REVERSO'}</strong> de tu INE.
                             </p>
                         </div>
-
                         <div 
                             className="w-full aspect-[4/3] border-2 border-dashed border-gray-300 rounded-3xl bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:bg-white hover:border-iange-orange transition-all group relative overflow-hidden"
                             onClick={() => fileInputRef.current?.click()}
@@ -277,23 +313,13 @@ const PublicVerification: React.FC = () => {
                             <span className="text-sm font-bold text-gray-600 z-10">Toca para abrir cámara</span>
                             <span className="text-xs text-gray-400 mt-1 z-10">o selecciona un archivo</span>
                         </div>
-
-                        <input 
-                            type="file" 
-                            ref={fileInputRef} 
-                            accept="image/*" 
-                            capture="environment" // Abre la cámara trasera por defecto
-                            className="hidden" 
-                            onChange={(e) => handleFileUpload(e, step === 'ine_front' ? 'ineFrente' : 'ineReverso')} 
-                        />
+                        <input type="file" ref={fileInputRef} accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileUpload(e, step === 'ine_front' ? 'ineFrente' : 'ineReverso')} />
                     </div>
                 )}
 
-                {/* 6. CONFIRMACIÓN */}
                 {step === 'confirmation' && (
                     <div className="w-full animate-fade-in-up">
                         <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">Revisa tus fotos</h2>
-                        
                         <div className="space-y-4 mb-8">
                             <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
                                 <img src={images.rostro} className="h-16 w-16 rounded-lg object-cover bg-gray-200" alt="Rostro" />
@@ -305,44 +331,34 @@ const PublicVerification: React.FC = () => {
                             </div>
                             <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
                                 <img src={images.ineFrente} className="h-16 w-24 rounded-lg object-cover bg-gray-200" alt="Frente" />
-                                <div className="flex-1">
-                                    <p className="font-bold text-sm text-gray-800">INE Frente</p>
-                                </div>
+                                <div className="flex-1"><p className="font-bold text-sm text-gray-800">INE Frente</p></div>
                                 <CheckCircleIcon className="h-6 w-6 text-green-500" />
                             </div>
                             <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
                                 <img src={images.ineReverso} className="h-16 w-24 rounded-lg object-cover bg-gray-200" alt="Reverso" />
-                                <div className="flex-1">
-                                    <p className="font-bold text-sm text-gray-800">INE Reverso</p>
-                                </div>
+                                <div className="flex-1"><p className="font-bold text-sm text-gray-800">INE Reverso</p></div>
                                 <CheckCircleIcon className="h-6 w-6 text-green-500" />
                             </div>
                         </div>
-
                         <button onClick={processVerification} className="w-full bg-green-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:bg-green-700 transition-transform active:scale-95 flex justify-center items-center gap-2 mb-4">
                             <CheckCircleIcon className="h-6 w-6" />
                             Enviar y Validar
                         </button>
-                        
-                        <button onClick={() => window.location.reload()} className="w-full text-gray-400 text-sm py-2 hover:text-gray-600">
-                            Volver a tomar fotos
-                        </button>
+                        <button onClick={() => window.location.reload()} className="w-full text-gray-400 text-sm py-2 hover:text-gray-600">Volver a tomar fotos</button>
                     </div>
                 )}
 
-                {/* 7. PROCESANDO */}
                 {step === 'processing' && (
                     <div className="text-center animate-fade-in">
                         <div className="relative h-24 w-24 mx-auto mb-6">
                             <div className="absolute inset-0 border-4 border-gray-100 rounded-full"></div>
                             <div className="absolute inset-0 border-4 border-t-iange-orange rounded-full animate-spin"></div>
                         </div>
-                        <h2 className="text-xl font-bold text-gray-900">Verificando...</h2>
-                        <p className="text-sm text-gray-500 mt-2 max-w-[200px] mx-auto">Estamos analizando la biometría de tu rostro con la INE.</p>
+                        <h2 className="text-xl font-bold text-gray-900">Procesando...</h2>
+                        <p className="text-sm text-gray-500 mt-2 max-w-[200px] mx-auto">{uploadProgress}</p>
                     </div>
                 )}
 
-                {/* 8. ÉXITO */}
                 {step === 'success' && (
                     <div className="text-center animate-bounce-short">
                         <div className="h-24 w-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
@@ -356,7 +372,6 @@ const PublicVerification: React.FC = () => {
                     </div>
                 )}
 
-                {/* Canvas oculto */}
                 <canvas ref={canvasRef} className="hidden"></canvas>
             </div>
         </div>
