@@ -36,7 +36,6 @@ const PublicVerification: React.FC = () => {
                 setStep('error');
                 setErrorMsg('El enlace no es válido o ha expirado.');
             } else {
-                // ✅ VALIDACIÓN DE ENLACE VENCIDO
                 const kyc = data.datos_kyc || {};
                 if (kyc.biometricStatus === 'Verificado') {
                     setClientName(data.nombre);
@@ -136,7 +135,7 @@ const PublicVerification: React.FC = () => {
         setUploadProgress('Subiendo evidencias...');
 
         try {
-            // 1. Subir Fotos
+            // 1. Subir Fotos a Storage
             const [urlSelfie, urlFrente, urlReverso] = await Promise.all([
                 uploadImageToSupabase(images.rostro, 'selfie_viva.jpg'),
                 uploadImageToSupabase(images.ineFrente, 'ine_frente.jpg'),
@@ -145,7 +144,7 @@ const PublicVerification: React.FC = () => {
 
             setUploadProgress('Validando biometría...');
 
-            // 2. Nufi
+            // 2. Nufi Proxy
             const cleanBase64 = (str: string) => str.split(',')[1];
             const nufiPayload = {
                 imagen_rostro: cleanBase64(images.rostro),
@@ -160,7 +159,9 @@ const PublicVerification: React.FC = () => {
             if (error) throw new Error(error.message);
 
             if (data && data.status === 'success' && data.data) {
-                const nufiResult = data.data;
+                // data = Respuesta completa de Nufi (uuid, status, code, data: {...})
+                // nufiResult = Solo la parte interna de datos
+                const nufiResult = data.data; 
                 const isMatch = nufiResult.resultado_verificacion_rostro === "True";
                 const score = parseFloat(nufiResult.certeza_verificacion_rostro);
                 
@@ -173,7 +174,7 @@ const PublicVerification: React.FC = () => {
 
                 const currentKyc = currentContact?.datos_kyc || {};
 
-                // 4. Insertar LOG
+                // 4. ✅ INSERTAR LOG (Limpiamente separado)
                 if (currentContact) {
                     await supabase.from('kyc_validations').insert({
                         tenant_id: currentContact.tenant_id,
@@ -181,11 +182,14 @@ const PublicVerification: React.FC = () => {
                         entity_id: currentContact.id,
                         validation_type: 'biometric_check',
                         status: isMatch ? 'success' : 'error',
-                        api_response: { 
-                            ...nufiResult, 
-                            score: score, 
-                            evidence_urls: { selfie: urlSelfie, frente: urlFrente, reverso: urlReverso } 
-                        },
+                        
+                        nufi_transaction_id: data.uuid, // ✅ Aprovechamos la columna existente (opcional pero recomendado)
+                        api_response: data,             // ✅ JSON PURO DE NUFI (uuid, status, data, code...)
+                        validation_evidence: {          // ✅ Columna dedicada para evidencias
+                            selfie: urlSelfie, 
+                            frente: urlFrente, 
+                            reverso: urlReverso 
+                        }
                     });
                 }
 
@@ -196,6 +200,7 @@ const PublicVerification: React.FC = () => {
                         biometricStatus: isMatch ? 'Verificado' : 'Rechazado',
                         biometricScore: score,
                         biometricDate: new Date().toISOString(),
+                        biometricTransactionId: data.uuid, // También lo guardamos aquí por comodidad
                         evidence_urls: { selfie: urlSelfie, frente: urlFrente, reverso: urlReverso },
                         ineVerificationData: {
                             tipoFrente: nufiResult.tipo_credencial_frente,
@@ -221,11 +226,10 @@ const PublicVerification: React.FC = () => {
         }
     };
 
-    // --- RENDERIZADO UI ---
+    // --- RENDERIZADO UI (Sin cambios) ---
     return (
         <div className="min-h-[100dvh] bg-white flex flex-col font-sans text-gray-800">
             
-            {/* Header Flotante Refinado */}
             <div className="w-full pt-8 pb-4 flex flex-col justify-center items-center">
                 <div className="flex items-center gap-2 mb-1">
                     <ShieldCheckIcon className="h-4 w-4 text-gray-400" />
@@ -233,7 +237,6 @@ const PublicVerification: React.FC = () => {
                 </div>
                 <div className="flex flex-col items-center gap-0.5 opacity-80 hover:opacity-100 transition-opacity cursor-default">
                     <span className="text-[8px] font-medium text-gray-300 uppercase tracking-wider">powered by</span>
-                    {/* Logo SVG */}
                     <img src="/logo.svg" alt="IANGE" className="h-5" />
                 </div>
             </div>
