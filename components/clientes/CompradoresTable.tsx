@@ -2,6 +2,11 @@ import React from 'react';
 import { Comprador, Propiedad, User } from '../../types';
 import { documentGenerator, DatosLegales } from '../../Services/DocumentGenerator';
 import { DocumentArrowDownIcon } from '../Icons'; 
+// ✅ NUEVOS IMPORTS PARA EL CERTIFICADO
+import { supabase } from '../../supabaseClient';
+import { pdf } from '@react-pdf/renderer';
+import { CertificadoKYCPDF } from '../PDF/CertificadoKYCPDF';
+import { saveAs } from 'file-saver';
 
 interface CompradoresTableProps {
     compradores: Comprador[];
@@ -13,7 +18,53 @@ interface CompradoresTableProps {
 
 const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit, onDelete, propiedades, asesores }) => {
     
-    // ✅ LÓGICA DE GENERACIÓN DE DOCUMENTOS (MANTENIDA)
+    // ✅ FUNCIÓN ACTUALIZADA: Extrae con precisión la clave "selfie" del JSON de evidencia
+    const handleDownloadKYCReport = async (comprador: Comprador) => {
+        try {
+            const { data, error } = await supabase
+                .from('kyc_validations')
+                .select('validation_type, api_response, validation_evidence')
+                .eq('entity_id', comprador.id)
+                .eq('status', 'success');
+
+            if (error || !data || data.length === 0) {
+                alert("No hay datos técnicos suficientes para generar este certificado todavía.");
+                return;
+            }
+
+            // Buscamos el registro biométrico
+            const bioRecord = data.find(v => v.validation_type === 'BIOMETRIC_MATCH');
+            
+            // ✅ EXTRACCIÓN ROBUSTA DE LA SELFIE
+            let extractedSelfie = null;
+            if (bioRecord && bioRecord.validation_evidence) {
+                const evidence = bioRecord.validation_evidence;
+                // Si la base de datos lo devuelve como string, lo parseamos; si es objeto, lo usamos directo
+                const parsedEvidence = typeof evidence === 'string' ? JSON.parse(evidence) : evidence;
+                extractedSelfie = parsedEvidence.selfie; 
+            }
+
+            const kycData = {
+                ine: data.find(v => v.validation_type === 'VALIDATE_INE')?.api_response,
+                pld: data.find(v => v.validation_type === 'CHECK_BLACKLIST')?.api_response,
+                bio: bioRecord?.api_response,
+                selfieUrl: extractedSelfie // ✅ Pasamos la URL final al PDF
+            };
+
+            const blob = await pdf(
+                <CertificadoKYCPDF 
+                    kycData={kycData} 
+                    nombre={comprador.nombreCompleto.trim()} 
+                />
+            ).toBlob();
+            
+            saveAs(blob, `Certificado_KYC_${comprador.nombreCompleto.replace(/\s/g, '_')}.pdf`);
+        } catch (err) {
+            console.error("Error generando PDF:", err);
+            alert("Hubo un error al generar el PDF.");
+        }
+    };
+
     const handleDescargarKitLegal = async (comprador: Comprador) => {
         const propiedad = propiedades.find(p => p.id === comprador.propiedadId);
 
@@ -61,7 +112,6 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
         alert("⏳ Iniciando descargas para el Comprador... Revisa los bloqueos de ventana emergente.");
 
         try {
-            console.log("⬇️ Descargando Entrevista...");
             await documentGenerator.generarWord(
                 '/templates/001_FORMATO_ENTREVISTA.docx', 
                 `001_Entrevista_${comprador.nombreCompleto}`, 
@@ -74,14 +124,12 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                 const rfcLimpio = (comprador.rfc || '').trim();
                 const esMoral = rfcLimpio.length === 12;
                 const plantillaKYC = esMoral ? '/templates/002_KYC_MORAL.docx' : '/templates/002_KYC_FISICA.docx'; 
-                console.log(`⬇️ Descargando KYC...`);
                 await documentGenerator.generarWord(plantillaKYC, `002_KYC_${esMoral ? 'Moral' : 'Fisica'}_${comprador.nombreCompleto}`, datosParaDocumentos);
             } catch (e) { console.error("❌ Fallo 002:", e); }
         }, 1000);
         
         setTimeout(async () => {
             try {
-                console.log("⬇️ Descargando Aviso PLD...");
                 await documentGenerator.generarWord(
                     '/templates/003_AVISO_PLD.docx', 
                     `003_Aviso_PLD_${comprador.nombreCompleto}`, 
@@ -91,7 +139,6 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
         }, 2000);
     };
 
-    // --- HELPERS ---
     const getPropertyDetails = (propiedadId: number | null | undefined) => {
         if (!propiedadId) return null;
         return propiedades.find(p => p.id === propiedadId);
@@ -103,7 +150,6 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
         return asesor ? asesor.name : null;
     };
 
-    // ✨ DISEÑO PETITE (Más limpio y pequeño)
     const getStatusBadge = (tipo: string) => {
         switch(tipo) {
             case 'Venta finalizada': 
@@ -123,22 +169,28 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
         });
     };
 
-    // ✨ NUEVA LÓGICA DE ESTADOS DE VERIFICACIÓN (DISEÑO PETITE)
     const renderVerificationBadge = (comprador: Comprador) => {
         const inePldOk = comprador.ineValidado && comprador.pldValidado;
         const biometriaOk = comprador.biometricStatus === 'Verificado';
 
-        // 1. TODO CORRECTO (VERDE SUAVE & REDONDO)
         if (inePldOk && biometriaOk) {
             return (
-                <span className="text-[9px] text-emerald-600 font-semibold flex items-center gap-1 mt-1 bg-emerald-50 px-2 py-0.5 rounded-full w-fit border border-emerald-100 shadow-sm">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                    VERIFICADO
-                </span>
+                <div className="flex flex-col gap-1">
+                    <span className="text-[9px] text-emerald-600 font-semibold flex items-center gap-1 mt-1 bg-emerald-50 px-2 py-0.5 rounded-full w-fit border border-emerald-100 shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                        VERIFICADO
+                    </span>
+                    <button 
+                        onClick={() => handleDownloadKYCReport(comprador)}
+                        className="text-[9px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 px-1 hover:underline"
+                    >
+                        <DocumentArrowDownIcon className="h-3 w-3" />
+                        DESCARGAR CERTIFICADO
+                    </button>
+                </div>
             );
         }
 
-        // 2. FALTA BIOMETRÍA (NARANJA SUAVE & REDONDO)
         if (inePldOk && !biometriaOk) {
             return (
                 <span className="text-[9px] text-orange-600 font-semibold flex items-center gap-1 mt-1 bg-orange-50 px-2 py-0.5 rounded-full w-fit border border-orange-100" title="El cliente debe completar la selfie">
@@ -148,7 +200,6 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
             );
         }
 
-        // 3. FALTA INE/PLD (GRIS MINIMALISTA)
         return (
             <span className="text-[9px] text-gray-400 font-medium flex items-center gap-1 mt-1 bg-gray-50 px-2 py-0.5 rounded-full w-fit border border-gray-100">
                 PENDIENTE
@@ -171,7 +222,6 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                 <tbody className="bg-white divide-y divide-gray-200">
                     {compradores.map((comprador) => {
                         const prop = getPropertyDetails(comprador.propiedadId);
-                        const tipoRelacion = (comprador as any).tipoRelacion || 'Propuesta de compra';
                         const asesorNombre = getAsesorName(comprador.asesorId);
 
                         return (
@@ -179,10 +229,7 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                                 <td className="px-6 py-4 align-middle">
                                     <div className="flex flex-col">
                                         <span className="text-sm font-bold text-gray-900">{comprador.nombreCompleto}</span>
-                                        
-                                        {/* ✅ AQUÍ USAMOS LA NUEVA FUNCIÓN PETITE */}
                                         {renderVerificationBadge(comprador)}
-
                                         {asesorNombre && (
                                             <div className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                                                 <span className="text-indigo-400">●</span> {asesorNombre}
@@ -194,13 +241,12 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                                     {prop ? (
                                         <div className="flex flex-col items-start gap-1">
                                             <span className="text-sm font-medium text-gray-800 line-clamp-1">{prop.calle} {prop.numero_exterior}</span>
-                                            {getStatusBadge(tipoRelacion)}
+                                            {getStatusBadge((comprador as any).tipoRelacion || 'Propuesta de compra')}
                                         </div>
                                     ) : (
                                         <span className="text-xs text-gray-400 italic bg-gray-50 px-2 py-1 rounded">-- Sin asignar --</span>
                                     )}
                                 </td>
-                                
                                 <td className="px-6 py-4 align-middle">
                                     {comprador.fechaCita ? (
                                         <div className="flex flex-col gap-1">
@@ -217,14 +263,12 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                                         <span className="text-xs text-gray-400 italic">-- Sin cita --</span>
                                     )}
                                 </td>
-
                                 <td className="px-6 py-4 align-middle">
                                     <div className="flex flex-col text-sm">
                                         <span className="text-gray-600">{comprador.email || '-'}</span>
                                         <span className="text-gray-500 text-xs">{comprador.telefono || '-'}</span>
                                     </div>
                                 </td>
-                                
                                 <td className="px-6 py-4 whitespace-nowrap align-middle text-right text-sm font-medium">
                                     <div className="flex justify-center items-center gap-3">
                                         <button onClick={() => handleDescargarKitLegal(comprador)} className="text-gray-400 hover:text-blue-600 transition-colors p-1 hover:bg-blue-50 rounded" title="Kit Legal"><DocumentArrowDownIcon className="h-5 w-5" /></button>
@@ -235,9 +279,6 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                             </tr>
                         );
                     })}
-                    {compradores.length === 0 && (
-                         <tr><td colSpan={5} className="text-center py-10 text-gray-500 italic">No se encontraron clientes registrados.</td></tr>
-                    )}
                 </tbody>
             </table>
         </div>

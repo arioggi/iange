@@ -2,6 +2,11 @@ import React from 'react';
 import { Propiedad, Propietario } from '../../types';
 import { documentGenerator, DatosLegales } from '../../Services/DocumentGenerator';
 import { DocumentArrowDownIcon } from '../Icons'; 
+// ✅ NUEVOS IMPORTS PARA EL CERTIFICADO
+import { supabase } from '../../supabaseClient';
+import { pdf } from '@react-pdf/renderer';
+import { CertificadoKYCPDF } from '../PDF/CertificadoKYCPDF';
+import { saveAs } from 'file-saver';
 
 interface PropiedadesTableProps {
     propiedades: Propiedad[];
@@ -12,7 +17,53 @@ interface PropiedadesTableProps {
 
 const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propietarios, onEdit, onDelete }) => {
     
-    // ✅ LÓGICA RESTAURADA: Generación de Documentos
+    // ✅ FUNCIÓN CORREGIDA: Extrae con seguridad la clave "selfie" del JSON de evidencia
+    const handleDownloadKYCReport = async (propietario: Propietario) => {
+        try {
+            const { data, error } = await supabase
+                .from('kyc_validations')
+                .select('validation_type, api_response, validation_evidence')
+                .eq('entity_id', propietario.id)
+                .eq('status', 'success');
+
+            if (error || !data || data.length === 0) {
+                alert("No hay datos técnicos suficientes para generar este certificado todavía.");
+                return;
+            }
+
+            // Buscamos el registro biométrico
+            const bioRecord = data.find(v => v.validation_type === 'BIOMETRIC_MATCH');
+            
+            // ✅ EXTRACCIÓN ROBUSTA DE LA SELFIE (Evita fallos si el JSON viene como string)
+            let extractedSelfie = null;
+            if (bioRecord && bioRecord.validation_evidence) {
+                const evidence = bioRecord.validation_evidence;
+                const parsedEvidence = typeof evidence === 'string' ? JSON.parse(evidence) : evidence;
+                extractedSelfie = parsedEvidence.selfie; 
+            }
+
+            const kycData = {
+                ine: data.find(v => v.validation_type === 'VALIDATE_INE')?.api_response,
+                pld: data.find(v => v.validation_type === 'CHECK_BLACKLIST')?.api_response,
+                bio: bioRecord?.api_response,
+                selfieUrl: extractedSelfie // ✅ Pasamos la URL final al PDF
+            };
+
+            const blob = await pdf(
+                <CertificadoKYCPDF 
+                    kycData={kycData} 
+                    nombre={propietario.nombreCompleto} 
+                />
+            ).toBlob();
+            
+            saveAs(blob, `Certificado_KYC_${propietario.nombreCompleto.replace(/\s/g, '_')}.pdf`);
+        } catch (err) {
+            console.error("Error generando PDF:", err);
+            alert("Hubo un error al generar el PDF.");
+        }
+    };
+
+    // ✅ LÓGICA DE GENERACIÓN DE DOCUMENTOS WORD
     const handleDescargarKitLegal = async (propiedad: Propiedad) => {
         const propietario = propietarios.find(p => p.id === propiedad.propietarioId);
 
@@ -65,12 +116,7 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
         alert("⏳ Iniciando descargas... Revisa si el navegador bloqueó las ventanas emergentes.");
 
         try {
-            console.log("⬇️ Descargando 001_FORMATO_ENTREVISTA.docx");
-            await documentGenerator.generarWord(
-                '/templates/001_FORMATO_ENTREVISTA.docx', 
-                `001_Entrevista_${propietario.nombreCompleto}`, 
-                datosParaDocumentos
-            );
+            await documentGenerator.generarWord('/templates/001_FORMATO_ENTREVISTA.docx', `001_Entrevista_${propietario.nombreCompleto}`, datosParaDocumentos);
         } catch (e) { console.error("❌ Fallo 001:", e); }
         
         setTimeout(async () => {
@@ -78,39 +124,39 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
                 const rfcLimpio = (propietario.rfc || '').trim();
                 const esMoral = rfcLimpio.length === 12;
                 const plantillaKYC = esMoral ? '/templates/002_KYC_MORAL.docx' : '/templates/002_KYC_FISICA.docx'; 
-                console.log(`⬇️ Descargando KYC: ${plantillaKYC}`);
                 await documentGenerator.generarWord(plantillaKYC, `002_KYC_${esMoral ? 'Moral' : 'Fisica'}_${propietario.nombreCompleto}`, datosParaDocumentos);
             } catch (e) { console.error("❌ Fallo 002:", e); }
         }, 1000);
         
         setTimeout(async () => {
             try {
-                console.log("⬇️ Descargando 003_AVISO_PLD.docx");
-                await documentGenerator.generarWord(
-                    '/templates/003_AVISO_PLD.docx', 
-                    `003_Aviso_PLD_${propietario.nombreCompleto}`, 
-                    datosParaDocumentos
-                );
+                await documentGenerator.generarWord('/templates/003_AVISO_PLD.docx', `003_Aviso_PLD_${propietario.nombreCompleto}`, datosParaDocumentos);
             } catch (e) { console.error("❌ Fallo 003:", e); }
         }, 2000);
     };
 
-    // ✅ NUEVA LÓGICA DE BADGES (DISEÑO PETITE / CÁPSULA)
     const renderVerificationBadge = (propietario: Propietario) => {
         const inePldOk = propietario.ineValidado && propietario.pldValidado;
         const biometriaOk = propietario.biometricStatus === 'Verificado';
 
-        // 1. TODO CORRECTO (VERDE SUAVE & REDONDO)
         if (inePldOk && biometriaOk) {
             return (
-                <span className="text-[9px] text-emerald-600 font-semibold flex items-center gap-1 mt-0.5 bg-emerald-50 px-2 py-0.5 rounded-full w-fit border border-emerald-100 shadow-sm">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                    VERIFICADO
-                </span>
+                <div className="flex flex-col gap-1 mt-0.5">
+                    <span className="text-[9px] text-emerald-600 font-semibold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-full w-fit border border-emerald-100 shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                        VERIFICADO
+                    </span>
+                    <button 
+                        onClick={() => handleDownloadKYCReport(propietario)}
+                        className="text-[9px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 px-1 hover:underline text-left"
+                    >
+                        <DocumentArrowDownIcon className="h-3 w-3" />
+                        DESCARGAR CERTIFICADO
+                    </button>
+                </div>
             );
         }
 
-        // 2. FALTA BIOMETRÍA (NARANJA SUAVE & REDONDO)
         if (inePldOk && !biometriaOk) {
             return (
                 <span className="text-[9px] text-orange-600 font-semibold flex items-center gap-1 mt-0.5 bg-orange-50 px-2 py-0.5 rounded-full w-fit border border-orange-100" title="El propietario debe completar la selfie">
@@ -120,9 +166,8 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
             );
         }
 
-        // 3. PENDIENTE (GRIS MINIMALISTA)
         return (
-            <span className="text-[9px] text-gray-400 font-medium flex items-center gap-1 mt-0.5 bg-gray-50 px-2 py-0.5 rounded-full w-fit border border-gray-100">
+            <span className="text-[9px] text-gray-400 font-medium flex items-center gap-1 mt-1 bg-gray-50 px-2 py-0.5 rounded-full w-fit border border-gray-100">
                 PENDIENTE
             </span>
         );
@@ -135,7 +180,6 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
         return (
             <div className="flex flex-col">
                 <span className="text-gray-900 font-medium">{propietario.nombreCompleto}</span>
-                {/* Usamos la nueva función de badges aquí */}
                 {renderVerificationBadge(propietario)}
             </div>
         );
