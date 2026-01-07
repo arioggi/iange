@@ -173,7 +173,7 @@ const PublicVerification: React.FC = () => {
                     tenant_id: currentContact.tenant_id,
                     entity_type: currentContact.tipo === 'propietario' ? 'Propietario' : 'Comprador',
                     entity_id: currentContact.id,
-                    validation_type: 'biometric_check',
+                    validation_type: 'BIOMETRIC_CHECK',
                     
                     // Si la API dice success, es success. Si no, es error (ej. 403, 402)
                     status: isApiSuccess ? 'success' : 'error',

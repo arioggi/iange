@@ -2,7 +2,6 @@ import React from 'react';
 import { Comprador, Propiedad, User } from '../../types';
 import { documentGenerator, DatosLegales } from '../../Services/DocumentGenerator';
 import { DocumentArrowDownIcon } from '../Icons'; 
-// ✅ NUEVOS IMPORTS PARA EL CERTIFICADO
 import { supabase } from '../../supabaseClient';
 import { pdf } from '@react-pdf/renderer';
 import { CertificadoKYCPDF } from '../PDF/CertificadoKYCPDF';
@@ -18,7 +17,7 @@ interface CompradoresTableProps {
 
 const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit, onDelete, propiedades, asesores }) => {
     
-    // ✅ FUNCIÓN ACTUALIZADA: Extrae con precisión la clave "selfie" del JSON de evidencia
+    // ✅ FUNCIÓN ACTUALIZADA: Nombres de validación corregidos para coincidir con la BD
     const handleDownloadKYCReport = async (comprador: Comprador) => {
         try {
             const { data, error } = await supabase
@@ -32,23 +31,23 @@ const CompradoresTable: React.FC<CompradoresTableProps> = ({ compradores, onEdit
                 return;
             }
 
-            // Buscamos el registro biométrico
-            const bioRecord = data.find(v => v.validation_type === 'BIOMETRIC_MATCH');
+            // 1. CORRECCIÓN: Usar 'biometric_check' (nombre real en BD)
+            const bioRecord = data.find(v => v.validation_type === 'biometric_check');
             
-            // ✅ EXTRACCIÓN ROBUSTA DE LA SELFIE
+            // 2. EXTRACCIÓN ROBUSTA DE LA SELFIE
             let extractedSelfie = null;
             if (bioRecord && bioRecord.validation_evidence) {
                 const evidence = bioRecord.validation_evidence;
-                // Si la base de datos lo devuelve como string, lo parseamos; si es objeto, lo usamos directo
                 const parsedEvidence = typeof evidence === 'string' ? JSON.parse(evidence) : evidence;
                 extractedSelfie = parsedEvidence.selfie; 
             }
 
+            // 3. CORRECCIÓN: Usar 'INE_CHECK' y 'PLD_CHECK'
             const kycData = {
-                ine: data.find(v => v.validation_type === 'VALIDATE_INE')?.api_response,
-                pld: data.find(v => v.validation_type === 'CHECK_BLACKLIST')?.api_response,
+                ine: data.find(v => v.validation_type === 'INE_CHECK')?.api_response,
+                pld: data.find(v => v.validation_type === 'PLD_CHECK')?.api_response,
                 bio: bioRecord?.api_response,
-                selfieUrl: extractedSelfie // ✅ Pasamos la URL final al PDF
+                selfieUrl: extractedSelfie 
             };
 
             const blob = await pdf(

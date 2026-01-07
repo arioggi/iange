@@ -27,23 +27,26 @@ const styles = StyleSheet.create({
   headerTextContent: {
     flex: 1,
   },
+  // 🎨 ESTILO CORREGIDO: Círculo perfecto tipo "Story" de Instagram
   selfieContainer: {
     width: 90,
     height: 90,
-    borderRadius: 45,
+    borderRadius: 45,       // Mitad de 90 para círculo perfecto
     borderWidth: 2,
-    borderColor: '#F37321',
-    overflow: 'hidden',
+    borderColor: '#F37321', // Aro Naranja
     marginLeft: 20,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F1F5F9', // Fondo gris si la imagen tarda en cargar
     display: 'flex',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    padding: 4,             // Espacio blanco entre el aro y la foto
+    overflow: 'hidden'      // IMPORTANTE: Recorta todo lo que se salga
   },
   selfieImage: {
     width: '100%',
     height: '100%',
-    objectFit: 'cover'
+    objectFit: 'cover',     // Hace que la foto llene todo el círculo sin deformarse
+    borderRadius: 41,       // (90px - 8px de padding/borde) / 2 = ~41px. Esto elimina las esquinas cuadradas.
   },
   tag: {
     color: '#F37321', 
@@ -169,7 +172,6 @@ interface CertificadoKYCPDFProps {
 
 export const CertificadoKYCPDF: React.FC<CertificadoKYCPDFProps> = ({ kycData, nombre }) => {
   
-  // ✅ SOLUCIÓN PARA CORS: Añadimos un timestamp para forzar una petición nueva y evitar caché bloqueada
   const selfieUrl = kycData.selfieUrl ? `${kycData.selfieUrl}?t=${Date.now()}` : null;
 
   return (
@@ -192,8 +194,12 @@ export const CertificadoKYCPDF: React.FC<CertificadoKYCPDFProps> = ({ kycData, n
             <View style={styles.selfieContainer}>
                 {selfieUrl ? (
                     <Image 
-                      // ✅ src como objeto URI con method GET explícito para ayudar al renderizador
-                      src={{ uri: selfieUrl, method: 'GET', headers: {}, body: '' }} 
+                      src={{ 
+                          uri: selfieUrl, 
+                          method: 'GET', 
+                          headers: { "Cache-Control": "no-cache" }, 
+                          body: null 
+                      }} 
                       style={styles.selfieImage} 
                     />
                 ) : (

@@ -2,7 +2,6 @@ import React from 'react';
 import { Propiedad, Propietario } from '../../types';
 import { documentGenerator, DatosLegales } from '../../Services/DocumentGenerator';
 import { DocumentArrowDownIcon } from '../Icons'; 
-// ✅ NUEVOS IMPORTS PARA EL CERTIFICADO
 import { supabase } from '../../supabaseClient';
 import { pdf } from '@react-pdf/renderer';
 import { CertificadoKYCPDF } from '../PDF/CertificadoKYCPDF';
@@ -17,7 +16,7 @@ interface PropiedadesTableProps {
 
 const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propietarios, onEdit, onDelete }) => {
     
-    // ✅ FUNCIÓN CORREGIDA: Extrae con seguridad la clave "selfie" del JSON de evidencia
+    // ✅ FUNCIÓN CORREGIDA: Nombres de validación actualizados
     const handleDownloadKYCReport = async (propietario: Propietario) => {
         try {
             const { data, error } = await supabase
@@ -31,22 +30,24 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
                 return;
             }
 
-            // Buscamos el registro biométrico
-            const bioRecord = data.find(v => v.validation_type === 'BIOMETRIC_MATCH');
+            // 1. CORRECCIÓN PRINCIPAL: Usar 'biometric_check' (así lo guarda PublicVerification.tsx)
+            const bioRecord = data.find(v => v.validation_type === 'biometric_check');
             
-            // ✅ EXTRACCIÓN ROBUSTA DE LA SELFIE (Evita fallos si el JSON viene como string)
+            // 2. EXTRACCIÓN ROBUSTA DE LA SELFIE
             let extractedSelfie = null;
             if (bioRecord && bioRecord.validation_evidence) {
                 const evidence = bioRecord.validation_evidence;
+                // Supabase a veces devuelve string y a veces objeto JSON, esto maneja ambos casos
                 const parsedEvidence = typeof evidence === 'string' ? JSON.parse(evidence) : evidence;
                 extractedSelfie = parsedEvidence.selfie; 
             }
 
+            // 3. CORRECCIÓN DE OTROS TIPOS: 'INE_CHECK' y 'PLD_CHECK' (así lo guarda KycPldForm.tsx)
             const kycData = {
-                ine: data.find(v => v.validation_type === 'VALIDATE_INE')?.api_response,
-                pld: data.find(v => v.validation_type === 'CHECK_BLACKLIST')?.api_response,
+                ine: data.find(v => v.validation_type === 'INE_CHECK')?.api_response,
+                pld: data.find(v => v.validation_type === 'PLD_CHECK')?.api_response,
                 bio: bioRecord?.api_response,
-                selfieUrl: extractedSelfie // ✅ Pasamos la URL final al PDF
+                selfieUrl: extractedSelfie // ✅ URL de la selfie extraída correctamente
             };
 
             const blob = await pdf(
@@ -63,7 +64,10 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
         }
     };
 
-    // ✅ LÓGICA DE GENERACIÓN DE DOCUMENTOS WORD
+    // ... EL RESTO DEL CÓDIGO SE MANTIENE IGUAL ...
+    // (Solo copié la función corregida, asegúrate de mantener el resto de tu archivo handleDescargarKitLegal y el return igual)
+
+    // ✅ LÓGICA DE GENERACIÓN DE DOCUMENTOS WORD (Sin cambios)
     const handleDescargarKitLegal = async (propiedad: Propiedad) => {
         const propietario = propietarios.find(p => p.id === propiedad.propietarioId);
 
