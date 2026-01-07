@@ -44,7 +44,7 @@ const fileToBase64 = (file: File): Promise<string> => {
             const img = new Image();
             img.src = event.target?.result as string;
             img.onload = () => {
-                const MAX_WIDTH = 1200; 
+                const MAX_WIDTH = 1200; // Bajamos un poco para agilizar subida
                 let width = img.width;
                 let height = img.height;
                 if (width > MAX_WIDTH) {
@@ -337,7 +337,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         if (pldResult.status === null) setPldResult({ status: null, msg: '' });
 
         try {
-            // 1. OCR (EXTRACCIÓN) - Solo si faltan datos
+            // 1. OCR (EXTRACCIÓN)
             const faltaFrente = !datosParaValidar.claveElector && files.front;
             const faltaReverso = !datosParaValidar.ocr && files.back;
             
@@ -406,55 +406,61 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             setStatusIne('validating');
             setStatusMessage("🚀 Validando en base de datos nominal...");
 
-            // 🛡️ ACTUALIZACIÓN CRÍTICA: Aseguramos usar los datos de los inputs (por si el usuario los editó)
-            if (ineDetails.claveElector) datosParaValidar.claveElector = ineDetails.claveElector;
-            if (ineDetails.ocr) datosParaValidar.ocr = ineDetails.ocr;
-            if (ineDetails.cic) datosParaValidar.cic = ineDetails.cic;
-            if (ineDetails.tipo) datosParaValidar.tipo = ineDetails.tipo;
-
             if (!datosParaValidar.claveElector) {
                 setStatusIne('idle'); 
-                alert("⚠️ Falta la Clave de Elector. Por favor escríbela manualmente si no se escaneó.");
+                alert("⚠️ Falta la Clave de Elector. Revisa que la foto del frente sea legible.");
                 return;
             }
 
-            // DETERMINAR MODELO
+            // DETERMINAR MODELO (Por si acaso, pero ya no filtramos con esto)
             let tipoFinal = datosParaValidar.tipo || 'C'; 
             const anioEmision = parseInt(datosParaValidar.emision || "0");
             if (anioEmision >= 2019) tipoFinal = 'H'; 
             else if (anioEmision >= 2014) tipoFinal = 'E'; 
 
+            // =========================================================================
+            // 🛑 AQUÍ ESTÁ EL CAMBIO CLAVE PARA ARREGLAR EL ERROR 500
+            // =========================================================================
+            // Implicamos la lógica "Payload Goloso": Mandamos TODO lo que tengamos.
+
+            const payloadIne: any = {
+                tipo_identificacion: tipoFinal,
+                clave_de_elector: datosParaValidar.claveElector.toUpperCase().trim(),
+                numero_de_emision: datosParaValidar.emision || "00"
+            };
+
             const cleanDigits = (s: string) => s ? s.replace(/\D/g, '') : '';
             const rawOcr = cleanDigits(datosParaValidar.ocr);
             const rawCic = cleanDigits(datosParaValidar.cic);
-            
+
+            // 1. SIEMPRE mandamos OCR si lo tenemos
+            if (rawOcr.length > 0) {
+                payloadIne.ocr = rawOcr;
+            }
+
+            // 2. Definimos el ID de Ciudadano (CIC)
             let idCiudadano = rawCic;
+
+            // Si no tenemos CIC directo, tratamos de sacarlo del MRZ/OCR
             if (!idCiudadano && rawOcr.length > 0) {
                  const mrzData = parseMrz(datosParaValidar.ocr); 
                  if (mrzData) idCiudadano = mrzData.cic;
             }
 
-            // --- CONSTRUCCIÓN DEL PAYLOAD PARA PROXY (CORREGIDA PARA TS) ---
-            const payloadIne = {
-                action: 'validate-ine',
-                entity_id: entityIdForDb,
-                entity_type: userType,
-                tenant_id: tenantId,
-                payload: {
-                    tipo_identificacion: tipoFinal,
-                    clave_de_elector: datosParaValidar.claveElector.toUpperCase().trim(),
-                    numero_de_emision: datosParaValidar.emision || "00",
-                    ocr: rawOcr,
-                    cic: idCiudadano || rawCic || rawOcr, 
-                    identificador_del_ciudadano: idCiudadano || rawCic || rawOcr 
-                }
-            };
-            
-            console.log("📦 Payload INE enviado:", payloadIne);
+            // 3. Mandamos CIC y Identificador (Azure pide ambos a veces)
+            if (idCiudadano) {
+                payloadIne.cic = idCiudadano;
+                payloadIne.identificador_del_ciudadano = idCiudadano; 
+            } else if (rawOcr.length === 9) {
+                // Caso raro: usuario puso CIC en campo OCR
+                payloadIne.cic = rawOcr;
+                payloadIne.identificador_del_ciudadano = rawOcr;
+            }
+
+            // =========================================================================
 
             // --- EJECUCIÓN PARALELA (INE + PLD) ---
-            // Usamos 'as any' para evitar el error TS2345 con el envoltorio del Proxy
-            const resVigencia = await validateIneData(payloadIne as any, entityIdForDb, tenantId);
+            const inePromise = validateIneData(payloadIne, entityIdForDb, tenantId);
 
             const nombreRaw = workingData.nombreCompleto || "";
             const nombreParaPld = cleanNameForNufi(nombreRaw); 
@@ -464,17 +470,19 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 pldPromise = checkBlacklist(nombreParaPld, entityIdForDb, tenantId);
             }
 
-            const resVigenciaReal = resVigencia;
-
+            const resVigencia = await inePromise;
+            
             // MANEJO RESPUESTA INE
-            if (resVigenciaReal.status === 'success' || resVigenciaReal.status === 'Success') {
-                 const dataVigencia = Array.isArray(resVigenciaReal.data) ? resVigenciaReal.data[0] : resVigenciaReal.data;
+            if (resVigencia.status === 'success' || resVigencia.status === 'Success') {
+                 // Verificar si está vigente de verdad
+                 const dataVigencia = Array.isArray(resVigencia.data) ? resVigencia.data[0] : resVigencia.data;
                  const esVigente = dataVigencia?.activa === true;
 
                  if (esVigente) {
                     setStatusIne('success');
                     setStatusMessage("✅ Identidad Verificada Correctamente");
                     
+                    // Subir evidencias
                     let evidenceUrls: any = {};
                     if (files.front) {
                         const url = await uploadEvidence(files.front, entityIdForStorage, 'frente');
@@ -485,19 +493,19 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                         if (url) evidenceUrls.reverso = url;
                     }
 
-                    const finalIneResponse = { ...resVigenciaReal, evidence_urls: evidenceUrls };
+                    const finalIneResponse = { ...resVigencia, evidence_urls: evidenceUrls };
                     workingData = await logToSupabaseAndPersist('INE_CHECK', 'success', finalIneResponse, workingData);
 
                  } else {
                     setStatusIne('error');
                     const motivo = dataVigencia?.estado || 'INE no vigente o datos incorrectos.';
-                    await logToSupabaseAndPersist('INE_CHECK', 'error', resVigenciaReal, workingData);
+                    logToSupabaseAndPersist('INE_CHECK', 'error', resVigencia, workingData);
                     alert(`❌ INE RECHAZADA POR LA INSTITUCIÓN:\n${motivo}\n\nRevisa que el año de emisión y clave sean correctos.`);
                  }
 
             } else {
-                await logToSupabaseAndPersist('INE_CHECK', 'error', resVigenciaReal, workingData);
-                throw new Error(resVigenciaReal.message || "Error desconocido del proveedor de validación.");
+                // Error 500 o fallo de API
+                throw new Error(resVigencia.message || "Error desconocido del proveedor de validación.");
             }
 
             // MANEJO RESULTADO PLD
@@ -520,7 +528,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             console.error("Error validación:", error);
             setStatusIne('error');
             if (error.message && error.message.includes("CustomException")) {
-                alert("Error 500: Nufi rechazó los datos. Revisa los campos técnicos (CIC, OCR) al final del formulario y asegúrate que no estén vacíos.");
+                alert("Error 500: Nufi rechazó los datos. Intenta capturar manualmente el CIC y OCR si el escaneo falló, o intenta con otra identificación.");
             } else {
                 alert(`Error: ${error.message}`);
             }
