@@ -142,7 +142,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
     const [pldResult, setPldResult] = useState<{ status: 'clean' | 'risk' | null, msg: string }>({ status: null, msg: '' });
     const [loadingPld, setLoadingPld] = useState(false); 
     
-    // ✅ ESTADO LOCAL PARA EL TOKEN (Solución al bug de visualización)
+    // ✅ ESTADO LOCAL PARA EL TOKEN
     const [localToken, setLocalToken] = useState<string | null>((formData as any).verification_token || null);
 
     // Estados para Eliminar
@@ -194,7 +194,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 }
             } catch (err) { console.error("Error validaciones:", err); }
 
-            // 1.2 Recuperar TOKEN SECRETO si falta (con backup local)
+            // 1.2 Recuperar TOKEN SECRETO si falta
             if (!(formData as any).verification_token && !localToken) {
                 try {
                     const { data: contactData } = await supabase
@@ -204,9 +204,8 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                         .single();
                     
                     if (contactData && contactData.verification_token) {
-                        console.log("🔄 Token recuperado:", contactData.verification_token);
-                        setLocalToken(contactData.verification_token); // Actualizamos estado local
-                        onFormChange({ ...formData, verification_token: contactData.verification_token } as any); // Y global
+                        setLocalToken(contactData.verification_token); 
+                        onFormChange({ ...formData, verification_token: contactData.verification_token } as any); 
                     }
                 } catch (err) { console.error("Error recuperando token:", err); }
             }
@@ -227,7 +226,6 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             const fileExt = file.name.split('.').pop();
             const fileName = `kyc/${entityId}/${Date.now()}_${side}.${fileExt}`;
 
-            // ⚠️ IMPORTANTE: El nombre del bucket debe coincidir EXACTAMENTE con el de Supabase
             const { error: uploadError } = await supabase.storage
                 .from('documentos-identidad') 
                 .upload(fileName, file);
@@ -238,12 +236,10 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 .from('documentos-identidad')
                 .getPublicUrl(fileName);
 
-            console.log(`✅ Imagen subida (${side}):`, data.publicUrl);
             return data.publicUrl;
 
         } catch (error: any) {
             console.error(`❌ Error subiendo imagen ${side}:`, error);
-            // Si el error es RLS, lo mostramos en un alert para debuggear
             if (error.message && error.message.includes("row-level security")) {
                 alert(`Error de Permisos: No se pudo subir la foto (${side}). Revisa las políticas del Bucket en Supabase.`);
             }
@@ -258,7 +254,9 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         response: any, 
         currentData: KycData 
     ) => {
-        const tenantId = user?.user_metadata?.tenant_id;
+        // 🔥 FIX FINAL: Si no hay tenant, enviamos null (y la BD debe permitir NULLs)
+        const tenantId = user?.user_metadata?.tenant_id || undefined; 
+        
         const entityId = (currentData as any).id || null;
 
         const { data, error } = await supabase.from('kyc_validations').insert({
@@ -299,7 +297,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
 
         if (idToDelete) {
             const { error } = await supabase.from('kyc_validations').delete().eq('id', idToDelete);
-            if (error) alert("Error al eliminar de BD, pero se reseteará localmente.");
+            if (error) console.warn("Error borrando de BD, reseteando local.");
         }
 
         if (deleteTarget === 'INE') {
@@ -320,7 +318,14 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
     const ejecutarValidacionCompleta = async (e?: React.MouseEvent) => {
         if (e) e.preventDefault();
 
-        const tenantId = user?.user_metadata?.tenant_id || "ID-TEMPORAL-PRUEBAS";
+        // 🔥 FIX: Permitimos que tenantId sea undefined si no está configurado
+        const tenantId = user?.user_metadata?.tenant_id || ""; 
+        
+        // Si no hay tenant, usamos una string vacía temporalmente para pasar al servicio, 
+        // pero el servicio nufiService y el proxy están diseñados para recibirlo.
+        // Lo importante es el LogToSupabase que arreglamos arriba.
+
+        // Definimos IDs
         const entityIdForStorage = (formData as any).id ? String((formData as any).id) : `temp_${Date.now()}`;
         const entityIdForDb = (formData as any).id ? String((formData as any).id) : "TEMP-NEW-USER";
         
@@ -330,7 +335,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         if (pldResult.status === null) setPldResult({ status: null, msg: '' });
 
         try {
-            // 1. OCR
+            // 1. OCR (Solo si faltan datos y hay archivos)
             const faltaFrente = !datosParaValidar.claveElector && files.front;
             const faltaReverso = !datosParaValidar.ocr && files.back;
             
@@ -338,15 +343,17 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 setStatusIne('scanning');
                 setStatusMessage("📷 Paso 1/3: Escaneando credencial...");
 
+                // A) OCR FRENTE
                 if (faltaFrente && files.front) {
                     try {
                         const base64 = await fileToBase64(files.front);
-                        const res = await extractFromImage(base64, 'frente', tenantId);
+                        // Pasamos tenantId (puede ser string vacia si no existe, el proxy lo maneja)
+                        const res = await extractFromImage(base64, 'frente', tenantId, entityIdForDb);
                         const extracted = res.data?.data?.ocr || res.data?.ocr || res.data; 
 
                         if (res.status === 'success' && extracted) {
                             datosParaValidar.claveElector = extracted.clave || extracted.clave_elector || datosParaValidar.claveElector;
-                            datosParaValidar.emision = extracted.emision || datosParaValidar.emision;
+                            datosParaValidar.emision = extracted.emision || datosParaValidar.emision || "00";
                             datosParaValidar.tipo = res.data?.data?.tipo || res.data?.tipo || 'C';
 
                             const nombre = `${extracted.nombre || ''} ${extracted.apellido_paterno || ''} ${extracted.apellido_materno || ''}`.trim();
@@ -354,11 +361,12 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                             if (nombre) workingData.nombreCompleto = nombre;
                             if (extracted.curp) workingData.curp = extracted.curp;
 
-                            // 📅 APLICAMOS FIX FECHA (DD/MM/YYYY -> YYYY-MM-DD)
+                            // 📅 FIX FECHA (DD/MM/YYYY -> YYYY-MM-DD)
                             if (extracted.fecha_nacimiento) {
                                 workingData.fechaNacimiento = formatDateForInput(extracted.fecha_nacimiento);
                             }
                             
+                            // Dirección
                             const calle = extracted.calle_numero || extracted.calle || '';
                             const col = extracted.colonia || '';
                             const cp = extracted.codigo_postal || extracted.cp || '';
@@ -374,16 +382,16 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                             
                             workingData.identificacionOficialTipo = 'INE';
                             workingData.identificacionOficialNumero = datosParaValidar.claveElector;
-
                             onFormChange(workingData);
                         }
                     } catch (e) { console.error("Error OCR Frente", e); }
                 }
 
+                // B) OCR REVERSO
                 if (faltaReverso && files.back) {
                     try {
                         const base64 = await fileToBase64(files.back);
-                        const res = await extractFromImage(base64, 'reverso', tenantId);
+                        const res = await extractFromImage(base64, 'reverso', tenantId, entityIdForDb);
                         const extracted = res.data?.data?.ocr || res.data?.ocr;
                         
                         if (res.status === 'success' && extracted) {
@@ -397,17 +405,19 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 setIneDetails(datosParaValidar);
             }
 
-            // 2. VALIDACIÓN INE
+            // 2. VALIDACIÓN INE (Lista Nominal)
             setStatusIne('validating');
             setStatusMessage("🚀 Validando Identidad...");
 
             if (!datosParaValidar.claveElector || (!datosParaValidar.ocr && !datosParaValidar.cic)) {
                 setStatusIne('idle'); 
-                alert("⚠️ Faltan datos clave (CIC/OCR).");
+                alert("⚠️ Faltan datos clave (CIC/OCR). El OCR no pudo leerlos. Por favor intenta tomar una foto más clara.");
                 return;
             }
 
+            // Preparar Payload Inteligente
             let tipoFinal = datosParaValidar.tipo;
+            // Lógica de inferencia de tipo basada en año de emisión si es ambiguo
             const anioEmision = parseInt(datosParaValidar.emision || "0");
             if (anioEmision >= 2019 && ['A', 'B', 'C'].includes(tipoFinal)) tipoFinal = 'H'; 
             else if (anioEmision >= 2014 && ['A', 'B', 'C'].includes(tipoFinal)) tipoFinal = 'E'; 
@@ -415,7 +425,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             const payloadIne: any = {
                 tipo_identificacion: tipoFinal,
                 clave_de_elector: datosParaValidar.claveElector,
-                numero_de_emision: datosParaValidar.emision
+                numero_de_emision: datosParaValidar.emision || "00" // Default a 00 si falla
             };
             const ocrLimpio = datosParaValidar.ocr ? datosParaValidar.ocr.replace(/\D/g, '') : '';
             if (ocrLimpio.length === 13) payloadIne.ocr = ocrLimpio;
@@ -423,6 +433,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             if (['E', 'F', 'G', 'H'].includes(tipoFinal)) {
                 let cicFinal = datosParaValidar.cic ? datosParaValidar.cic.replace(/\D/g, '') : '';
                 let idCiudadanoFinal = "";
+                // Rescate MRZ si tenemos OCR largo pero no CIC
                 if (datosParaValidar.ocr && !payloadIne.ocr) {
                     const rescatados = parseMrz(datosParaValidar.ocr);
                     if (rescatados) {
@@ -437,11 +448,9 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             } else if (tipoFinal === 'C' && !payloadIne.ocr) {
                  throw new Error("Para Modelo C, el OCR de 13 dígitos es obligatorio.");
             }
-            if ((['E', 'F', 'G', 'H'].includes(tipoFinal) && !payloadIne.cic) || !payloadIne.clave_de_elector) {
-                 throw new Error(`Faltan datos obligatorios para el modelo ${tipoFinal}.`);
-            }
 
-            // --- EJECUCIÓN PARALELA ---
+            // --- EJECUCIÓN PARALELA (Validar INE + PLD) ---
+            
             const inePromise = validateIneData(payloadIne, entityIdForDb, tenantId);
 
             const nombreRaw = workingData.nombreCompleto || "";
@@ -453,7 +462,10 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 pldPromise = checkBlacklist(nombreParaPld, entityIdForDb, tenantId);
             }
 
+            // Esperar INE
             const resVigencia = await inePromise;
+            
+            // Verificar respuesta INE
             const dataVigencia = Array.isArray(resVigencia.data) ? resVigencia.data[0] : resVigencia.data;
             const esVigente = resVigencia.status === 'Success' && dataVigencia?.activa === true;
 
@@ -461,7 +473,14 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 setStatusIne('error');
                 logToSupabaseAndPersist('INE_CHECK', 'error', resVigencia, workingData);
                 const motivo = dataVigencia?.estado || dataVigencia?.information || 'Datos incorrectos o vencida.';
-                alert(`❌ ALERTA: La INE no es vigente.\n\n${motivo}`);
+                
+                // Mensaje amigable si es por emisión
+                let mensajeExtra = "";
+                if (motivo.includes("no vigente") || motivo.includes("pérdida de vigencia")) {
+                    mensajeExtra = "\n\n💡 TIP: Verifica que el 'Número de Emisión' (00, 01, etc.) coincida con el de la credencial física.";
+                }
+
+                alert(`❌ ALERTA: La INE no es vigente.\nMotivo: ${motivo}${mensajeExtra}`);
             } else {
                  setStatusIne('success');
                  setStatusMessage("✅ Identidad Verificada. Guardando evidencia...");
@@ -479,9 +498,10 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
 
                  const finalIneResponse = { ...resVigencia, evidence_urls: evidenceUrls };
 
-                 // Guardar INE
+                 // Guardar INE Exitosa
                  workingData = await logToSupabaseAndPersist('INE_CHECK', 'success', finalIneResponse, workingData);
 
+                 // Procesar PLD si se ejecutó
                  if (pldPromise) {
                      const resPld = await pldPromise;
                      if (resPld.code === 400 || resPld.httpStatusCode === 400) {
@@ -546,9 +566,14 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
     const ejecutarValidacionListasManual = async () => {
         if (!formData.nombreCompleto || formData.nombreCompleto.length < 3) { alert("Ingresa nombre completo."); return; }
         
+        // 🔥 FIX: Permitimos que tenantId sea undefined
+        const tenantId = user?.user_metadata?.tenant_id || ""; 
+        
+        // OJO: Sin tenantId no podemos LOGGEAR en BD si la columna fuera estrictamente NOT NULL.
+        // Pero ya mandamos el ALTER TABLE, así que funcionará.
+
         setLoadingPld(true);
         try {
-            const tenantId = user?.user_metadata?.tenant_id || "ID-TEMPORAL-PRUEBAS";
             const entityId = (formData as any).id ? String((formData as any).id) : "TEMP-MANUAL";
             
             const nombreLimpio = cleanNameForNufi(formData.nombreCompleto);
@@ -716,7 +741,6 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                         Verificación Biométrica (INE vs Selfie)
                     </h3>
                     
-                    {/* ✅ FIX: Usamos tokenToUse (localToken || formData.token) */}
                     {!tokenToUse ? (
                         <div className="text-sm text-orange-800 bg-orange-100 p-3 rounded">
                             ⚠️ <strong>Guarda el contacto</strong> para generar su enlace de verificación seguro.
