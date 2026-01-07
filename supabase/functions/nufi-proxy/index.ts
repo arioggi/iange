@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-import-prefix
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,92 +8,72 @@ const corsHeaders = {
 }
 
 serve(async (req: Request) => {
-  // 1. MANEJO DE CORS (Para que no te de error en el navegador)
+  // 1. MANEJO DE CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  // Inicializar cliente Supabase interno para guardar logs
+  const supabaseAdmin = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  )
+
   try {
     const body = await req.json()
-    const { action, payload } = body
+    const { action, payload, entity_id, entity_type, tenant_id } = body
     
-    // 2. OBTENER TODAS LAS LLAVES DISPONIBLES (ROTACIÓN)
-    // Usamos NUFI_API_KEYS para todo, separadas por coma.
-    const keysString = Deno.env.get('NUFI_API_KEYS') || Deno.env.get('NUFI_KEY_GENERAL') || '';
-    const keysToUse = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0);
+    // 2. OBTENER LLAVES (Soporta ambos nombres de variable por seguridad)
+    const rawKeys = Deno.env.get('NUFI_KEY_GENERAL') || Deno.env.get('NUFI_API_KEYS') || ''
+    const keysToUse = rawKeys.split(',').map(k => k.trim()).filter(k => k.length > 5)
+    const KEY_BLACKLIST = Deno.env.get('NUFI_KEY_BLACKLIST') || ''
 
     if (keysToUse.length === 0) {
-        throw new Error("No hay API KEYS configuradas en Supabase (NUFI_API_KEYS).");
+        throw new Error("No hay API KEYS configuradas en las variables de entorno.");
     }
 
-    // Variables dinámicas según la acción
+    // Variables dinámicas
     let nufiUrl = ''
     let nufiBody: Record<string, unknown> = {}
-    let headerKeyName = 'NUFI-API-KEY' // Valor por defecto para OCR y PLD
-    
-    // Funciones de limpieza auxiliares
+    let headerKeyName = 'NUFI-API-KEY'
+    let currentPool = keysToUse
+
+    // Funciones de limpieza auxiliares (Evitan el Error 500 de Azure)
     const cleanStr = (s: unknown) => s ? String(s).trim().toUpperCase() : '';
     const cleanNum = (s: unknown) => s ? String(s).replace(/\D/g, '') : '';
     const getBase64 = (s: string) => s.includes(',') ? s.split(',').pop() || s : s;
 
-    // 3. CONFIGURACIÓN SEGÚN EL SERVICIO (SEGÚN TUS CURLS)
+    // 3. CONFIGURACIÓN SEGÚN ACCIÓN
     switch (action) {
-      
-      // --- CASO 1: VALIDACIÓN INE (Azure) ---
-      // Header: Ocp-Apim-Subscription-Key
       case 'validate-ine': {
         nufiUrl = 'https://nufi.azure-api.net/v1/lista_nominal/validar'
-        headerKeyName = 'Ocp-Apim-Subscription-Key' 
-        
-        // Payload "Goloso" (manda todo lo que tengas)
+        headerKeyName = 'Ocp-Apim-Subscription-Key'
         nufiBody = {
-            tipo_identificacion: cleanStr(payload.tipo_identificacion),
+            tipo_identificacion: cleanStr(payload.tipo_identificacion) || 'C',
             clave_de_elector: cleanStr(payload.clave_de_elector),
-            numero_de_emision: cleanNum(payload.numero_de_emision) || "00"
+            numero_de_emision: cleanNum(payload.numero_de_emision).padStart(2, '0') || "00",
+            ocr: cleanNum(payload.ocr),
+            cic: cleanNum(payload.cic || payload.ocr),
+            identificador_del_ciudadano: cleanNum(payload.identificador_del_ciudadano || payload.cic || payload.ocr)
         }
-        
-        // Opcionales que Azure agradece
-        const ocrLimpio = cleanNum(payload.ocr);
-        if (ocrLimpio.length > 0) nufiBody["ocr"] = ocrLimpio;
-
-        const cicLimpio = cleanNum(payload.cic);
-        if (cicLimpio.length > 0) nufiBody["cic"] = cicLimpio;
-        
-        const idCiudadano = cleanNum(payload.identificador_del_ciudadano);
-        if (idCiudadano.length > 0) nufiBody["identificador_del_ciudadano"] = idCiudadano;
-        
         break;
       }
 
-      // --- CASO 2: OCR (Frente y Reverso) ---
-      // Header: NUFI-API-KEY
       case 'extract-ocr': {
-        const side = payload.side === 'frente' ? 'frente' : 'reverso';
-        nufiUrl = `https://nufi.azure-api.net/ocr/v4/${side}` // v4/frente o v4/reverso
+        nufiUrl = `https://nufi.azure-api.net/ocr/v4/${payload.side}`
         headerKeyName = 'NUFI-API-KEY'
-
         const rawImg = getBase64(payload.image_data || '');
-        if (rawImg.length < 100) throw new Error("Imagen vacía o corrupta.");
-
-        // Estructura exacta de tu CURL de OCR
-        if (side === 'frente') {
-            nufiBody = { "base64_credencial_frente": rawImg }
-        } else {
-            nufiBody = { "base64_credencial_reverso": rawImg }
-        }
+        if (payload.side === 'frente') nufiBody = { "base64_credencial_frente": rawImg }
+        else nufiBody = { "base64_credencial_reverso": rawImg }
         break;
       }
 
-      // --- CASO 3: PLD / AML (Listas Negras) ---
-      // Header: NUFI-API-KEY
       case 'check-blacklist': {
         nufiUrl = 'https://nufi.azure-api.net/perfilamiento/v1/aml'
         headerKeyName = 'NUFI-API-KEY'
-
-        // Estructura exacta de tu CURL de PLD
-        // Nota: Enviamos strings vacíos "" si no hay datos, tal como en el ejemplo.
+        currentPool = [KEY_BLACKLIST]
         nufiBody = {
-          "nombre_completo": payload.nombre_completo || payload.nombreCompleto || "",
+          "nombre_completo": cleanStr(payload.nombre_completo || payload.nombreCompleto),
           "primer_nombre": payload.primer_nombre || "",
           "segundo_nombre": payload.segundo_nombre || "",
           "apellidos": payload.apellidos || "",
@@ -102,10 +83,9 @@ serve(async (req: Request) => {
         break;
       }
 
-      // --- CASO 4: BIOMETRÍA (Si la usas) ---
       case 'biometric-match':
         nufiUrl = 'https://nufi.azure-api.net/biometrico/v2/ine_vs_selfie'
-        headerKeyName = 'NUFI-API-KEY' // Asumo este header por consistencia con OCR
+        headerKeyName = 'NUFI-API-KEY'
         nufiBody = payload.body || payload
         break;
 
@@ -113,77 +93,65 @@ serve(async (req: Request) => {
         throw new Error(`Acción desconocida: ${action}`)
     }
 
-    console.log(`🚀 [Proxy] Ejecutando ${action} hacia ${nufiUrl}`)
-    
-    // 4. BUCLE DE ROTACIÓN DE LLAVES (REINTENTOS)
-    let finalResponse = null;
-    let success = false;
-    let lastError = null;
+    // 4. BUCLE DE ROTACIÓN (Failover)
+    let finalData = null
+    let lastStatus = 500
+    let usedKeyIndex = 0
 
-    for (let i = 0; i < keysToUse.length; i++) {
-        const currentKey = keysToUse[i];
+    for (let i = 0; i < currentPool.length; i++) {
+        usedKeyIndex = i + 1
+        const currentKey = currentPool[i]
         
-        // Headers dinámicos
-        const currentHeaders: Record<string, string> = { 
-            'Content-Type': 'application/json',
-            [headerKeyName]: currentKey 
-        };
-
         try {
             const response = await fetch(nufiUrl, {
                 method: 'POST',
-                headers: currentHeaders,
+                headers: { 'Content-Type': 'application/json', [headerKeyName]: currentKey },
                 body: JSON.stringify(nufiBody)
-            });
+            })
 
-            // Si falla la red o el JSON es inválido, caerá al catch.
-            // Pero si Nufi responde, debemos ver el status.
-            
-            const data = await response.json();
+            const data = await response.json()
 
-            // Lógica de Rotación: Si es error de Auth/Quota (401, 402, 403), probamos la siguiente llave.
-            // Si es 200 (OK) o 500/400 (Error de lógica de negocio), devolvemos la respuesta tal cual.
-            if (response.status === 401 || response.status === 402 || response.status === 403 || data.code === 403) {
-                console.warn(`⚠️ Key #${i + 1} agotada o rechazada. Rotando...`);
-                continue; 
+            // Si es error de créditos o permisos, rotar a la siguiente llave
+            if ((response.status === 403 || response.status === 401 || data.code === 403) && i < currentPool.length - 1) {
+                console.warn(`⚠️ Llave #${usedKeyIndex} falló. Rotando...`)
+                continue 
             }
 
-            finalResponse = data;
-            success = true;
-            break; // ¡Éxito! Salimos del bucle.
+            finalData = data
+            lastStatus = response.status
+            break 
 
         } catch (err) {
-            console.error(`Error de conexión con Key #${i + 1}:`, err);
-            lastError = err;
-            // Si es la última llave y falló, lanzamos el error
-            if (i === keysToUse.length - 1) break;
+            if (i === currentPool.length - 1) throw err
         }
     }
 
-    // 5. RESPUESTA FINAL
-    if (!success) {
-        return new Response(JSON.stringify({ 
-            status: 'error', 
-            message: 'Todas las API Keys fallaron o se agotaron.',
-            details: lastError ?String(lastError) : 'Sin respuesta de Nufi'
-        }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 503, 
-        });
+    // 5. GUARDADO AUTOMÁTICO EN kyc_validations
+    if (entity_id && tenant_id) {
+        await supabaseAdmin.from('kyc_validations').insert({
+            tenant_id,
+            entity_id,
+            entity_type: entity_type || 'Cliente',
+            validation_type: action.toUpperCase().replace('-', '_'),
+            status: (lastStatus === 200 && finalData?.status !== 'error') ? 'success' : 'error',
+            api_response: finalData,
+            api_key_usage: usedKeyIndex
+        })
     }
 
-    return new Response(JSON.stringify(finalResponse), {
+    // Inyectar info de uso para el Frontend
+    if (finalData) finalData._meta_usage = { key_index: usedKeyIndex };
+
+    return new Response(JSON.stringify(finalData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
+      status: 200, // Siempre 200 para que el front capture el JSON de error
     })
 
   } catch (error: unknown) {
-    let msg = 'Error interno';
-    if (error instanceof Error) msg = error.message;
-
+    const msg = error instanceof Error ? error.message : 'Error desconocido';
     return new Response(JSON.stringify({ status: 'error', message: msg }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400, 
+      status: 200, 
     })
   }
 })
