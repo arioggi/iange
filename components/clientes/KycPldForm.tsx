@@ -8,8 +8,8 @@ import DeleteConfirmationModal from '../ui/DeleteConfirmationModal';
 import { 
     ShieldCheckIcon, 
     ShareIcon, 
-    ClipboardDocumentCheckIcon,
-    CheckCircleIcon
+    ClipboardDocumentCheckIcon, 
+    CheckCircleIcon 
 } from '../Icons';
 
 // --- UTILIDADES ---
@@ -35,7 +35,6 @@ const formatDateForInput = (dateStr?: string): string => {
     return dateStr;
 };
 
-// Optimizada: Calidad media para OCR rápido y evitar timeouts
 const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -44,7 +43,7 @@ const fileToBase64 = (file: File): Promise<string> => {
             const img = new Image();
             img.src = event.target?.result as string;
             img.onload = () => {
-                const MAX_WIDTH = 1200; 
+                const MAX_WIDTH = 1200;
                 let width = img.width;
                 let height = img.height;
                 if (width > MAX_WIDTH) {
@@ -56,7 +55,7 @@ const fileToBase64 = (file: File): Promise<string> => {
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 ctx?.drawImage(img, 0, 0, width, height);
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
                 resolve(dataUrl);
             };
             img.onerror = (error) => reject(error);
@@ -68,7 +67,6 @@ const fileToBase64 = (file: File): Promise<string> => {
 const parseMrz = (fullText: string) => {
     if (!fullText) return null;
     const cleanText = fullText.toUpperCase();
-    // Intenta buscar patrones IDMEX
     const match = cleanText.match(/IDMEX(\d+)<+(\d+)/);
     if (match) {
         return {
@@ -144,6 +142,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
     const [pldResult, setPldResult] = useState<{ status: 'clean' | 'risk' | null, msg: string }>({ status: null, msg: '' });
     const [loadingPld, setLoadingPld] = useState(false); 
     
+    // ✅ ESTADO LOCAL PARA EL TOKEN (Solución al bug de visualización)
     const [localToken, setLocalToken] = useState<string | null>((formData as any).verification_token || null);
 
     // Estados para Eliminar
@@ -168,6 +167,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             const entityId = (formData as any).id; 
             if (!entityId) return;
 
+            // 1.1 Recuperar Validaciones (Historial)
             try {
                 const { data, error } = await supabase
                     .from('kyc_validations')
@@ -194,6 +194,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 }
             } catch (err) { console.error("Error validaciones:", err); }
 
+            // 1.2 Recuperar TOKEN SECRETO si falta (con backup local)
             if (!(formData as any).verification_token && !localToken) {
                 try {
                     const { data: contactData } = await supabase
@@ -203,8 +204,9 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                         .single();
                     
                     if (contactData && contactData.verification_token) {
-                        setLocalToken(contactData.verification_token);
-                        onFormChange({ ...formData, verification_token: contactData.verification_token } as any);
+                        console.log("🔄 Token recuperado:", contactData.verification_token);
+                        setLocalToken(contactData.verification_token); // Actualizamos estado local
+                        onFormChange({ ...formData, verification_token: contactData.verification_token } as any); // Y global
                     }
                 } catch (err) { console.error("Error recuperando token:", err); }
             }
@@ -219,21 +221,13 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         if (file) setFiles(prev => ({ ...prev, [side]: file }));
     };
 
-    // --- MANEJADOR DE CAMBIOS MANUALES EN DATOS TÉCNICOS ---
-    const handleIneDetailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setIneDetails(prev => ({
-            ...prev,
-            [name]: value
-        }));
-    };
-
     // --- 📸 SUBIR FOTOS A STORAGE ---
     const uploadEvidence = async (file: File, entityId: string, side: 'frente' | 'reverso') => {
         try {
             const fileExt = file.name.split('.').pop();
             const fileName = `kyc/${entityId}/${Date.now()}_${side}.${fileExt}`;
 
+            // ⚠️ IMPORTANTE: El nombre del bucket debe coincidir EXACTAMENTE con el de Supabase
             const { error: uploadError } = await supabase.storage
                 .from('documentos-identidad') 
                 .upload(fileName, file);
@@ -244,28 +238,28 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 .from('documentos-identidad')
                 .getPublicUrl(fileName);
 
+            console.log(`✅ Imagen subida (${side}):`, data.publicUrl);
             return data.publicUrl;
+
         } catch (error: any) {
             console.error(`❌ Error subiendo imagen ${side}:`, error);
+            // Si el error es RLS, lo mostramos en un alert para debuggear
             if (error.message && error.message.includes("row-level security")) {
-                alert(`Error de Permisos: No se pudo subir la foto (${side}).`);
+                alert(`Error de Permisos: No se pudo subir la foto (${side}). Revisa las políticas del Bucket en Supabase.`);
             }
             return null; 
         }
     };
 
-    // --- FUNCIÓN DE LOGGING Y PERSISTENCIA ACTUALIZADA PARA API KEY USAGE ---
+    // --- FUNCIÓN DE LOGGING Y PERSISTENCIA ---
     const logToSupabaseAndPersist = async (
-        tipo: 'INE_CHECK' | 'PLD_CHECK' | 'OCR_EXTRACT', 
+        tipo: 'INE_CHECK' | 'PLD_CHECK', 
         status: 'success' | 'error', 
         response: any, 
         currentData: KycData 
     ) => {
         const tenantId = user?.user_metadata?.tenant_id;
         const entityId = (currentData as any).id || null;
-        
-        // Extraemos el índice de la llave usada desde los metadatos inyectados por el Proxy
-        const usedKeyIndex = response?._meta_usage?.key_index || null;
 
         const { data, error } = await supabase.from('kyc_validations').insert({
             tenant_id: tenantId,
@@ -273,8 +267,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             entity_id: entityId, 
             validation_type: tipo,
             status: status,
-            api_response: response,
-            api_key_usage: usedKeyIndex
+            api_response: response, 
         }).select().single();
 
         if (error) console.error("❌ Error log Supabase:", error);
@@ -337,7 +330,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         if (pldResult.status === null) setPldResult({ status: null, msg: '' });
 
         try {
-            // 1. OCR (EXTRACCIÓN) - Solo si faltan datos
+            // 1. OCR
             const faltaFrente = !datosParaValidar.claveElector && files.front;
             const faltaReverso = !datosParaValidar.ocr && files.back;
             
@@ -357,9 +350,11 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                             datosParaValidar.tipo = res.data?.data?.tipo || res.data?.tipo || 'C';
 
                             const nombre = `${extracted.nombre || ''} ${extracted.apellido_paterno || ''} ${extracted.apellido_materno || ''}`.trim();
+                            
                             if (nombre) workingData.nombreCompleto = nombre;
                             if (extracted.curp) workingData.curp = extracted.curp;
 
+                            // 📅 APLICAMOS FIX FECHA (DD/MM/YYYY -> YYYY-MM-DD)
                             if (extracted.fecha_nacimiento) {
                                 workingData.fechaNacimiento = formatDateForInput(extracted.fecha_nacimiento);
                             }
@@ -402,128 +397,113 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 setIneDetails(datosParaValidar);
             }
 
-            // 2. VALIDACIÓN DE IDENTIDAD (CONEXIÓN A INE)
+            // 2. VALIDACIÓN INE
             setStatusIne('validating');
-            setStatusMessage("🚀 Validando en base de datos nominal...");
+            setStatusMessage("🚀 Validando Identidad...");
 
-            // 🛡️ ACTUALIZACIÓN CRÍTICA: Aseguramos usar los datos de los inputs (por si el usuario los editó)
-            if (ineDetails.claveElector) datosParaValidar.claveElector = ineDetails.claveElector;
-            if (ineDetails.ocr) datosParaValidar.ocr = ineDetails.ocr;
-            if (ineDetails.cic) datosParaValidar.cic = ineDetails.cic;
-            if (ineDetails.tipo) datosParaValidar.tipo = ineDetails.tipo;
-
-            if (!datosParaValidar.claveElector) {
+            if (!datosParaValidar.claveElector || (!datosParaValidar.ocr && !datosParaValidar.cic)) {
                 setStatusIne('idle'); 
-                alert("⚠️ Falta la Clave de Elector. Por favor escríbela manualmente si no se escaneó.");
+                alert("⚠️ Faltan datos clave (CIC/OCR).");
                 return;
             }
 
-            // DETERMINAR MODELO
-            let tipoFinal = datosParaValidar.tipo || 'C'; 
+            let tipoFinal = datosParaValidar.tipo;
             const anioEmision = parseInt(datosParaValidar.emision || "0");
-            if (anioEmision >= 2019) tipoFinal = 'H'; 
-            else if (anioEmision >= 2014) tipoFinal = 'E'; 
+            if (anioEmision >= 2019 && ['A', 'B', 'C'].includes(tipoFinal)) tipoFinal = 'H'; 
+            else if (anioEmision >= 2014 && ['A', 'B', 'C'].includes(tipoFinal)) tipoFinal = 'E'; 
 
-            const cleanDigits = (s: string) => s ? s.replace(/\D/g, '') : '';
-            const rawOcr = cleanDigits(datosParaValidar.ocr);
-            const rawCic = cleanDigits(datosParaValidar.cic);
-            
-            let idCiudadano = rawCic;
-            if (!idCiudadano && rawOcr.length > 0) {
-                 const mrzData = parseMrz(datosParaValidar.ocr); 
-                 if (mrzData) idCiudadano = mrzData.cic;
+            const payloadIne: any = {
+                tipo_identificacion: tipoFinal,
+                clave_de_elector: datosParaValidar.claveElector,
+                numero_de_emision: datosParaValidar.emision
+            };
+            const ocrLimpio = datosParaValidar.ocr ? datosParaValidar.ocr.replace(/\D/g, '') : '';
+            if (ocrLimpio.length === 13) payloadIne.ocr = ocrLimpio;
+
+            if (['E', 'F', 'G', 'H'].includes(tipoFinal)) {
+                let cicFinal = datosParaValidar.cic ? datosParaValidar.cic.replace(/\D/g, '') : '';
+                let idCiudadanoFinal = "";
+                if (datosParaValidar.ocr && !payloadIne.ocr) {
+                    const rescatados = parseMrz(datosParaValidar.ocr);
+                    if (rescatados) {
+                        if (!cicFinal) cicFinal = rescatados.cic;
+                        payloadIne.ocr = rescatados.ocrNumber;
+                        idCiudadanoFinal = rescatados.identificador;
+                    }
+                }
+                if (cicFinal) payloadIne.cic = cicFinal;
+                if (idCiudadanoFinal) payloadIne.identificador_del_ciudadano = idCiudadanoFinal;
+                else if (cicFinal) payloadIne.identificador_del_ciudadano = cicFinal; 
+            } else if (tipoFinal === 'C' && !payloadIne.ocr) {
+                 throw new Error("Para Modelo C, el OCR de 13 dígitos es obligatorio.");
+            }
+            if ((['E', 'F', 'G', 'H'].includes(tipoFinal) && !payloadIne.cic) || !payloadIne.clave_de_elector) {
+                 throw new Error(`Faltan datos obligatorios para el modelo ${tipoFinal}.`);
             }
 
-            // --- CONSTRUCCIÓN DEL PAYLOAD PARA PROXY (CORREGIDA PARA TS) ---
-            const payloadIne = {
-                action: 'validate-ine',
-                entity_id: entityIdForDb,
-                entity_type: userType,
-                tenant_id: tenantId,
-                payload: {
-                    tipo_identificacion: tipoFinal,
-                    clave_de_elector: datosParaValidar.claveElector.toUpperCase().trim(),
-                    numero_de_emision: datosParaValidar.emision || "00",
-                    ocr: rawOcr,
-                    cic: idCiudadano || rawCic || rawOcr, 
-                    identificador_del_ciudadano: idCiudadano || rawCic || rawOcr 
-                }
-            };
-            
-            console.log("📦 Payload INE enviado:", payloadIne);
-
-            // --- EJECUCIÓN PARALELA (INE + PLD) ---
-            // Usamos 'as any' para evitar el error TS2345 con el envoltorio del Proxy
-            const resVigencia = await validateIneData(payloadIne as any, entityIdForDb, tenantId);
+            // --- EJECUCIÓN PARALELA ---
+            const inePromise = validateIneData(payloadIne, entityIdForDb, tenantId);
 
             const nombreRaw = workingData.nombreCompleto || "";
             const nombreParaPld = cleanNameForNufi(nombreRaw); 
             
             let pldPromise = null;
             if (nombreParaPld && nombreParaPld.length >= 3) {
+                console.log(`⚡️ PLD Auto: Buscando "${nombreParaPld}"`);
                 pldPromise = checkBlacklist(nombreParaPld, entityIdForDb, tenantId);
             }
 
-            const resVigenciaReal = resVigencia;
+            const resVigencia = await inePromise;
+            const dataVigencia = Array.isArray(resVigencia.data) ? resVigencia.data[0] : resVigencia.data;
+            const esVigente = resVigencia.status === 'Success' && dataVigencia?.activa === true;
 
-            // MANEJO RESPUESTA INE
-            if (resVigenciaReal.status === 'success' || resVigenciaReal.status === 'Success') {
-                 const dataVigencia = Array.isArray(resVigenciaReal.data) ? resVigenciaReal.data[0] : resVigenciaReal.data;
-                 const esVigente = dataVigencia?.activa === true;
-
-                 if (esVigente) {
-                    setStatusIne('success');
-                    setStatusMessage("✅ Identidad Verificada Correctamente");
-                    
-                    let evidenceUrls: any = {};
-                    if (files.front) {
-                        const url = await uploadEvidence(files.front, entityIdForStorage, 'frente');
-                        if (url) evidenceUrls.frente = url;
-                    }
-                    if (files.back) {
-                        const url = await uploadEvidence(files.back, entityIdForStorage, 'reverso');
-                        if (url) evidenceUrls.reverso = url;
-                    }
-
-                    const finalIneResponse = { ...resVigenciaReal, evidence_urls: evidenceUrls };
-                    workingData = await logToSupabaseAndPersist('INE_CHECK', 'success', finalIneResponse, workingData);
-
-                 } else {
-                    setStatusIne('error');
-                    const motivo = dataVigencia?.estado || 'INE no vigente o datos incorrectos.';
-                    await logToSupabaseAndPersist('INE_CHECK', 'error', resVigenciaReal, workingData);
-                    alert(`❌ INE RECHAZADA POR LA INSTITUCIÓN:\n${motivo}\n\nRevisa que el año de emisión y clave sean correctos.`);
+            if (!esVigente) {
+                setStatusIne('error');
+                logToSupabaseAndPersist('INE_CHECK', 'error', resVigencia, workingData);
+                const motivo = dataVigencia?.estado || dataVigencia?.information || 'Datos incorrectos o vencida.';
+                alert(`❌ ALERTA: La INE no es vigente.\n\n${motivo}`);
+            } else {
+                 setStatusIne('success');
+                 setStatusMessage("✅ Identidad Verificada. Guardando evidencia...");
+                 
+                 // 📸 SUBIR FOTOS Y GUARDAR LINKS
+                 let evidenceUrls: any = {};
+                 if (files.front) {
+                     const url = await uploadEvidence(files.front, entityIdForStorage, 'frente');
+                     if (url) evidenceUrls.frente = url;
+                 }
+                 if (files.back) {
+                     const url = await uploadEvidence(files.back, entityIdForStorage, 'reverso');
+                     if (url) evidenceUrls.reverso = url;
                  }
 
-            } else {
-                await logToSupabaseAndPersist('INE_CHECK', 'error', resVigenciaReal, workingData);
-                throw new Error(resVigenciaReal.message || "Error desconocido del proveedor de validación.");
-            }
+                 const finalIneResponse = { ...resVigencia, evidence_urls: evidenceUrls };
 
-            // MANEJO RESULTADO PLD
-            if (pldPromise) {
-                 const resPld = await pldPromise;
-                 if (resPld.code !== 400) {
-                     const hayRiesgo = resPld.data?.has_sanction_match || resPld.data?.has_crimelist_match;
-                     workingData = await logToSupabaseAndPersist('PLD_CHECK', hayRiesgo ? 'error' : 'success', resPld, workingData);
+                 // Guardar INE
+                 workingData = await logToSupabaseAndPersist('INE_CHECK', 'success', finalIneResponse, workingData);
 
-                     if (hayRiesgo) {
-                        setPldResult({ status: 'risk', msg: 'Riesgo detectado' });
-                        alert(`⚠️ ADVERTENCIA PLD: Se encontraron coincidencias en listas de riesgo.`);
-                    } else {
-                        setPldResult({ status: 'clean', msg: 'Sin antecedentes' });
-                    }
+                 if (pldPromise) {
+                     const resPld = await pldPromise;
+                     if (resPld.code === 400 || resPld.httpStatusCode === 400) {
+                         console.warn("⚠️ Nufi PLD 400. Ignorando.");
+                     } else {
+                         const hayRiesgo = resPld.data?.has_sanction_match || resPld.data?.has_crimelist_match;
+                         workingData = await logToSupabaseAndPersist('PLD_CHECK', hayRiesgo ? 'error' : 'success', resPld, workingData);
+
+                         if (hayRiesgo) {
+                            setPldResult({ status: 'risk', msg: 'Riesgo detectado' });
+                            alert(`⚠️ ADVERTENCIA PLD: Coincidencias encontradas.`);
+                        } else {
+                            setPldResult({ status: 'clean', msg: 'Sin antecedentes' });
+                        }
+                     }
                  }
             }
 
         } catch (error: any) {
             console.error("Error validación:", error);
             setStatusIne('error');
-            if (error.message && error.message.includes("CustomException")) {
-                alert("Error 500: Nufi rechazó los datos. Revisa los campos técnicos (CIC, OCR) al final del formulario y asegúrate que no estén vacíos.");
-            } else {
-                alert(`Error: ${error.message}`);
-            }
+            alert(`Error: ${error.message}`);
         } finally {
             console.log("🏁 Proceso terminado.");
         }
@@ -562,6 +542,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         onSave(selectedPropiedadId ? Number(selectedPropiedadId) : undefined, selectedPropiedadId ? tipoRelacion : undefined);
     };
 
+    // --- VALIDACIÓN MANUAL PLD ---
     const ejecutarValidacionListasManual = async () => {
         if (!formData.nombreCompleto || formData.nombreCompleto.length < 3) { alert("Ingresa nombre completo."); return; }
         
@@ -569,7 +550,9 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         try {
             const tenantId = user?.user_metadata?.tenant_id || "ID-TEMPORAL-PRUEBAS";
             const entityId = (formData as any).id ? String((formData as any).id) : "TEMP-MANUAL";
+            
             const nombreLimpio = cleanNameForNufi(formData.nombreCompleto);
+            console.log(`🔎 Validando manualmente: "${nombreLimpio}"`);
 
             if (nombreLimpio.length < 3) {
                 alert("❌ El nombre es demasiado corto.");
@@ -585,7 +568,8 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             }
 
             const hayRiesgo = resPld.data?.has_sanction_match || resPld.data?.has_crimelist_match;
-            await logToSupabaseAndPersist('PLD_CHECK', hayRiesgo ? 'error' : 'success', resPld, formData);
+            
+            logToSupabaseAndPersist('PLD_CHECK', hayRiesgo ? 'error' : 'success', resPld, formData);
 
             if (hayRiesgo) {
                 setPldResult({ status: 'risk', msg: 'Riesgo detectado' });
@@ -594,6 +578,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 setPldResult({ status: 'clean', msg: 'Sin antecedentes' });
                 alert(`✅ APROBADO: ${formData.nombreCompleto} no está en listas negras.`);
             }
+
         } catch (error) { 
             console.error(error); 
             alert("Error de conexión con servicio PLD."); 
@@ -644,6 +629,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                     </FormSection>
                 )}
 
+                {/* --- SECCIÓN INE (OCR y Vigencia) --- */}
                 <div className={`mb-8 border-2 border-dashed rounded-xl p-6 ${statusIne === 'success' ? 'border-green-300 bg-green-50' : 'border-indigo-200 bg-indigo-50/50'}`}>
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
                         <div>
@@ -702,7 +688,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
 
                     <div className={`mt-4 overflow-hidden transition-all duration-300 ${statusIne === 'idle' ? 'max-h-0' : 'max-h-96'}`}>
                         <div className="flex justify-between items-center mb-1">
-                            <p className="text-xs text-gray-400 uppercase font-bold">Datos Técnicos (Editables si el escaneo falla):</p>
+                            <p className="text-xs text-gray-400 uppercase font-bold">Datos Técnicos:</p>
                             {pldResult.status && (
                                 <div className="flex items-center gap-2">
                                     <span className={`text-xs font-bold px-2 py-0.5 rounded ${pldResult.status === 'clean' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
@@ -714,52 +700,23 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                                 </div>
                             )}
                         </div>
-                        {/* INPUTS TÉCNICOS DESBLOQUEADOS */}
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 opacity-100">
-                            <input 
-                                type="text" 
-                                name="tipo"
-                                value={ineDetails.tipo} 
-                                onChange={handleIneDetailChange}
-                                className="text-xs bg-white border border-gray-300 rounded p-1 text-center font-bold text-gray-700" 
-                                title="Modelo (C, D, E, F, G, H)"
-                                placeholder="Modelo"
-                            />
-                            <input 
-                                type="text" 
-                                name="claveElector"
-                                value={ineDetails.claveElector} 
-                                onChange={handleIneDetailChange}
-                                className="col-span-2 text-xs bg-white border border-gray-300 rounded p-1 font-mono" 
-                                placeholder="Clave Elector (18 chars)"
-                            />
-                            <input 
-                                type="text" 
-                                name="ocr"
-                                value={ineDetails.ocr} 
-                                onChange={handleIneDetailChange}
-                                className="text-xs bg-white border border-gray-300 rounded p-1 font-mono" 
-                                placeholder="OCR (13 dígitos)"
-                            />
-                            <input 
-                                type="text" 
-                                name="cic"
-                                value={ineDetails.cic} 
-                                onChange={handleIneDetailChange}
-                                className="text-xs bg-white border border-gray-300 rounded p-1 font-mono" 
-                                placeholder="CIC (9 dígitos)"
-                            />
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 opacity-75">
+                            <input type="text" disabled value={ineDetails.tipo} className="text-xs bg-gray-100 border-none rounded p-1 text-center" title="Modelo"/>
+                            <input type="text" disabled value={ineDetails.claveElector} className="col-span-2 text-xs bg-gray-100 border-none rounded p-1" placeholder="Clave Elector"/>
+                            <input type="text" disabled value={ineDetails.ocr} className="text-xs bg-gray-100 border-none rounded p-1" placeholder="OCR"/>
+                            <input type="text" disabled value={ineDetails.cic} className="text-xs bg-gray-100 border-none rounded p-1" placeholder="CIC"/>
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-1 text-right">* Si algún campo aparece vacío ("") o null, ingrésalo manualmente mirando la credencial física.</p>
                     </div>
                 </div>
 
+                {/* --- SECCIÓN NUEVA: VERIFICACIÓN BIOMÉTRICA (INE vs Selfie) --- */}
                 <div className="mb-6 bg-orange-50 border border-orange-200 rounded-lg p-5">
                     <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
                         <ShieldCheckIcon className="h-5 w-5 text-iange-orange" />
                         Verificación Biométrica (INE vs Selfie)
                     </h3>
                     
+                    {/* ✅ FIX: Usamos tokenToUse (localToken || formData.token) */}
                     {!tokenToUse ? (
                         <div className="text-sm text-orange-800 bg-orange-100 p-3 rounded">
                             ⚠️ <strong>Guarda el contacto</strong> para generar su enlace de verificación seguro.
@@ -770,6 +727,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                                 Comparte este enlace seguro con el cliente para que realice la prueba de vida.
                             </p>
                             
+                            {/* Estatus Actual */}
                             <div className="flex items-center gap-4 mb-4 text-sm">
                                 <div className={`px-3 py-1 rounded-full font-medium border ${
                                     (formData as any).biometricStatus === 'Verificado' 
@@ -805,6 +763,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                                     </button>
                                 </div>
                                 
+                                {/* WhatsApp Button */}
                                 <button 
                                     type="button"
                                     onClick={() => {
@@ -827,7 +786,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 </div>
 
                 <FormSection title={`Paso 2: Datos del ${userType} (Autocompletado)`}>
-                    {asesores && asesores.length > 0 && (
+                    {asesores.length > 0 && (
                         <div className="md:col-span-2 bg-yellow-50 p-3 rounded border border-yellow-200 mb-2">
                             <label className="block text-sm font-bold text-yellow-800 mb-1">Asesor Responsable</label>
                             <select name="asesorId" value={formData.asesorId || ''} onChange={handleChange as any} className="w-full text-sm rounded border-yellow-300">
