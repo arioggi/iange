@@ -8,8 +8,8 @@ import DeleteConfirmationModal from '../ui/DeleteConfirmationModal';
 import { 
     ShieldCheckIcon, 
     ShareIcon, 
-    ClipboardDocumentCheckIcon, 
-    CheckCircleIcon 
+    ClipboardDocumentCheckIcon,
+    CheckCircleIcon
 } from '../Icons';
 
 // --- UTILIDADES ---
@@ -219,6 +219,15 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         if (file) setFiles(prev => ({ ...prev, [side]: file }));
     };
 
+    // --- MANEJADOR DE CAMBIOS MANUALES EN DATOS TÉCNICOS ---
+    const handleIneDetailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setIneDetails(prev => ({
+            ...prev,
+            [name]: value
+        }));
+    };
+
     // --- 📸 SUBIR FOTOS A STORAGE ---
     const uploadEvidence = async (file: File, entityId: string, side: 'frente' | 'reverso') => {
         try {
@@ -245,15 +254,18 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         }
     };
 
-    // --- FUNCIÓN DE LOGGING Y PERSISTENCIA ---
+    // --- FUNCIÓN DE LOGGING Y PERSISTENCIA ACTUALIZADA PARA API KEY USAGE ---
     const logToSupabaseAndPersist = async (
-        tipo: 'INE_CHECK' | 'PLD_CHECK', 
+        tipo: 'INE_CHECK' | 'PLD_CHECK' | 'OCR_EXTRACT', 
         status: 'success' | 'error', 
         response: any, 
         currentData: KycData 
     ) => {
         const tenantId = user?.user_metadata?.tenant_id;
         const entityId = (currentData as any).id || null;
+        
+        // Extraemos el índice de la llave usada desde los metadatos inyectados por el Proxy
+        const usedKeyIndex = response?._meta_usage?.key_index || null;
 
         const { data, error } = await supabase.from('kyc_validations').insert({
             tenant_id: tenantId,
@@ -261,7 +273,8 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             entity_id: entityId, 
             validation_type: tipo,
             status: status,
-            api_response: response, 
+            api_response: response,
+            api_key_usage: usedKeyIndex
         }).select().single();
 
         if (error) console.error("❌ Error log Supabase:", error);
@@ -408,8 +421,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             // =========================================================================
             // 🛑 AQUÍ ESTÁ EL CAMBIO CLAVE PARA ARREGLAR EL ERROR 500
             // =========================================================================
-            // Implicamos la lógica "Payload Goloso": Mandamos TODO lo que tengamos,
-            // igual que en tu CURL que sí funciona.
+            // Implicamos la lógica "Payload Goloso": Mandamos TODO lo que tengamos.
 
             const payloadIne: any = {
                 tipo_identificacion: tipoFinal,
@@ -421,7 +433,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             const rawOcr = cleanDigits(datosParaValidar.ocr);
             const rawCic = cleanDigits(datosParaValidar.cic);
 
-            // 1. SIEMPRE mandamos OCR si lo tenemos (Nufi Azure lo agradece)
+            // 1. SIEMPRE mandamos OCR si lo tenemos
             if (rawOcr.length > 0) {
                 payloadIne.ocr = rawOcr;
             }
@@ -558,7 +570,6 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         onSave(selectedPropiedadId ? Number(selectedPropiedadId) : undefined, selectedPropiedadId ? tipoRelacion : undefined);
     };
 
-    // --- VALIDACIÓN MANUAL PLD ---
     const ejecutarValidacionListasManual = async () => {
         if (!formData.nombreCompleto || formData.nombreCompleto.length < 3) { alert("Ingresa nombre completo."); return; }
         
@@ -566,7 +577,6 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         try {
             const tenantId = user?.user_metadata?.tenant_id || "ID-TEMPORAL-PRUEBAS";
             const entityId = (formData as any).id ? String((formData as any).id) : "TEMP-MANUAL";
-            
             const nombreLimpio = cleanNameForNufi(formData.nombreCompleto);
 
             if (nombreLimpio.length < 3) {
@@ -583,8 +593,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
             }
 
             const hayRiesgo = resPld.data?.has_sanction_match || resPld.data?.has_crimelist_match;
-            
-            logToSupabaseAndPersist('PLD_CHECK', hayRiesgo ? 'error' : 'success', resPld, formData);
+            await logToSupabaseAndPersist('PLD_CHECK', hayRiesgo ? 'error' : 'success', resPld, formData);
 
             if (hayRiesgo) {
                 setPldResult({ status: 'risk', msg: 'Riesgo detectado' });
@@ -593,7 +602,6 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 setPldResult({ status: 'clean', msg: 'Sin antecedentes' });
                 alert(`✅ APROBADO: ${formData.nombreCompleto} no está en listas negras.`);
             }
-
         } catch (error) { 
             console.error(error); 
             alert("Error de conexión con servicio PLD."); 
@@ -702,7 +710,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
 
                     <div className={`mt-4 overflow-hidden transition-all duration-300 ${statusIne === 'idle' ? 'max-h-0' : 'max-h-96'}`}>
                         <div className="flex justify-between items-center mb-1">
-                            <p className="text-xs text-gray-400 uppercase font-bold">Datos Técnicos:</p>
+                            <p className="text-xs text-gray-400 uppercase font-bold">Datos Técnicos (Editables si el escaneo falla):</p>
                             {pldResult.status && (
                                 <div className="flex items-center gap-2">
                                     <span className={`text-xs font-bold px-2 py-0.5 rounded ${pldResult.status === 'clean' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
@@ -714,12 +722,43 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                                 </div>
                             )}
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 opacity-75">
-                            <input type="text" disabled value={ineDetails.tipo} className="text-xs bg-gray-100 border-none rounded p-1 text-center" title="Modelo"/>
-                            <input type="text" disabled value={ineDetails.claveElector} className="col-span-2 text-xs bg-gray-100 border-none rounded p-1" placeholder="Clave Elector"/>
-                            <input type="text" disabled value={ineDetails.ocr} className="text-xs bg-gray-100 border-none rounded p-1" placeholder="OCR"/>
-                            <input type="text" disabled value={ineDetails.cic} className="text-xs bg-gray-100 border-none rounded p-1" placeholder="CIC"/>
+                        {/* INPUTS TÉCNICOS DESBLOQUEADOS */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 opacity-100">
+                            <input 
+                                type="text" 
+                                name="tipo"
+                                value={ineDetails.tipo} 
+                                onChange={handleIneDetailChange}
+                                className="text-xs bg-white border border-gray-300 rounded p-1 text-center font-bold text-gray-700" 
+                                title="Modelo (C, D, E, F, G, H)"
+                                placeholder="Modelo"
+                            />
+                            <input 
+                                type="text" 
+                                name="claveElector"
+                                value={ineDetails.claveElector} 
+                                onChange={handleIneDetailChange}
+                                className="col-span-2 text-xs bg-white border border-gray-300 rounded p-1 font-mono" 
+                                placeholder="Clave Elector (18 chars)"
+                            />
+                            <input 
+                                type="text" 
+                                name="ocr"
+                                value={ineDetails.ocr} 
+                                onChange={handleIneDetailChange}
+                                className="text-xs bg-white border border-gray-300 rounded p-1 font-mono" 
+                                placeholder="OCR (13 dígitos)"
+                            />
+                            <input 
+                                type="text" 
+                                name="cic"
+                                value={ineDetails.cic} 
+                                onChange={handleIneDetailChange}
+                                className="text-xs bg-white border border-gray-300 rounded p-1 font-mono" 
+                                placeholder="CIC (9 dígitos)"
+                            />
                         </div>
+                        <p className="text-[10px] text-gray-400 mt-1 text-right">* Si algún campo aparece vacío ("") o null, ingrésalo manualmente mirando la credencial física.</p>
                     </div>
                 </div>
 
@@ -796,7 +835,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 </div>
 
                 <FormSection title={`Paso 2: Datos del ${userType} (Autocompletado)`}>
-                    {asesores.length > 0 && (
+                    {asesores && asesores.length > 0 && (
                         <div className="md:col-span-2 bg-yellow-50 p-3 rounded border border-yellow-200 mb-2">
                             <label className="block text-sm font-bold text-yellow-800 mb-1">Asesor Responsable</label>
                             <select name="asesorId" value={formData.asesorId || ''} onChange={handleChange as any} className="w-full text-sm rounded border-yellow-300">

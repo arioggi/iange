@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { CameraIcon, CheckCircleIcon, XCircleIcon, DocumentTextIcon, ArrowUpTrayIcon, ShieldCheckIcon } from '../components/Icons';
+import { CameraIcon, CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ShieldCheckIcon } from '../components/Icons';
 
 const PublicVerification: React.FC = () => {
     const { token } = useParams<{ token: string }>(); 
@@ -206,15 +206,16 @@ const PublicVerification: React.FC = () => {
             if (currentContact) {
                 const isApiSuccess = data && data.status === 'success';
                 
+                // ✅ CAMBIO CLAVE: Usar 'biometric_check' para que las tablas y el PDF lo encuentren
                 await supabase.from('kyc_validations').insert({
                     tenant_id: currentContact.tenant_id,
                     entity_type: currentContact.tipo === 'propietario' ? 'Propietario' : 'Comprador',
                     entity_id: currentContact.id,
-                    validation_type: 'BIOMETRIC_CHECK',
+                    validation_type: 'biometric_check', // Antes BIOMETRIC_CHECK
                     status: isApiSuccess ? 'success' : 'error',
                     nufi_transaction_id: data?.uuid || null, 
                     api_response: data || { error: 'No data returned' }, 
-                    validation_evidence: {          
+                    validation_evidence: {           
                         selfie: urlSelfie, 
                         frente: urlFrente, 
                         reverso: urlReverso 
