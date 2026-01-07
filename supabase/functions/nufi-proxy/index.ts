@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-import-prefix
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,33 +8,33 @@ const corsHeaders = {
 }
 
 serve(async (req: Request) => {
-  // Manejo de CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  // Inicializar cliente Supabase interno para guardar logs
+  const supabaseAdmin = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  )
+
   try {
     const body = await req.json()
-    const { action, payload } = body
+    const { action, payload, entity_id, entity_type, tenant_id } = body
     
-    const KEY_GENERAL = Deno.env.get('NUFI_KEY_GENERAL') || ''
+    const rawKeys = Deno.env.get('NUFI_KEY_GENERAL') || ''
+    const keysPool = rawKeys.split(',').map(k => k.trim()).filter(k => k !== '')
     const KEY_BLACKLIST = Deno.env.get('NUFI_KEY_BLACKLIST') || ''
 
     let nufiUrl = ''
-    
-    // Definimos el tipo para headers
-    const nufiHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
-    
-    // CORRECCIÓN 1: Usamos 'Record<string, unknown>' en lugar de 'any'
-    // Esto le dice a TypeScript: "Es un objeto con claves string y valores desconocidos"
+    let headerKeyName = 'NUFI-API-KEY'
     let nufiBody: Record<string, unknown> = {}
+    let keysToUse = keysPool
 
     switch (action) {
-      // --- 1. VALIDAR INE ---
       case 'validate-ine':
         nufiUrl = 'https://nufi.azure-api.net/v1/lista_nominal/validar'
-        nufiHeaders['Ocp-Apim-Subscription-Key'] = KEY_GENERAL 
-        
+        headerKeyName = 'Ocp-Apim-Subscription-Key'
         nufiBody = {
             tipo_identificacion: payload.tipo_identificacion,
             ocr: payload.ocr,
@@ -44,35 +45,22 @@ serve(async (req: Request) => {
         if (payload.identificador_del_ciudadano) nufiBody["identificador_del_ciudadano"] = payload.identificador_del_ciudadano;
         break;
 
-      // --- 2. OCR (FRENTE Y REVERSO) ---
-      case 'extract-ocr': { 
+      case 'extract-ocr':
         nufiUrl = `https://nufi.azure-api.net/ocr/v4/${payload.side}`
-        nufiHeaders['NUFI-API-KEY'] = KEY_GENERAL
-        
         let rawImg = payload.image_data || '';
         if (rawImg.includes(',')) rawImg = rawImg.split(',').pop();
-
-        if (rawImg.length < 100) throw new Error("Imagen vacía recibida en backend");
-
-        if (payload.side === 'frente') {
-            nufiBody = { "base64_credencial_frente": rawImg }
-        } else {
-            nufiBody = { "base64_credencial_reverso": rawImg }
-        }
+        if (payload.side === 'frente') nufiBody = { "base64_credencial_frente": rawImg }
+        else nufiBody = { "base64_credencial_reverso": rawImg }
         break;
-      }
 
-      // --- 3. BLACKLIST (PLD) ---
       case 'check-blacklist':
         nufiUrl = 'https://nufi.azure-api.net/perfilamiento/v1/aml'
-        nufiHeaders['NUFI-API-KEY'] = KEY_BLACKLIST
+        keysToUse = [KEY_BLACKLIST]
         nufiBody = payload.body || payload
         break;
 
-      // --- 4. BIOMETRÍA (INE vs SELFIE) ---
       case 'biometric-match':
         nufiUrl = 'https://nufi.azure-api.net/biometrico/v2/ine_vs_selfie'
-        nufiHeaders['NUFI-API-KEY'] = KEY_GENERAL
         nufiBody = payload.body || payload
         break;
 
@@ -80,30 +68,61 @@ serve(async (req: Request) => {
         throw new Error(`Acción desconocida: ${action}`)
     }
 
-    console.log(`🚀 [Proxy] Enviando a NuFi: ${action}`)
+    let finalData = null
+    let lastStatus = 200
+    let usedKeyIndex = 0
 
-    const nufiResponse = await fetch(nufiUrl, {
-      method: 'POST',
-      headers: nufiHeaders,
-      body: JSON.stringify(nufiBody)
-    })
+    // BUCLE DE ROTACIÓN
+    for (let i = 0; i < keysToUse.length; i++) {
+        usedKeyIndex = i + 1
+        const currentKey = keysToUse[i]
+        
+        try {
+            const nufiResponse = await fetch(nufiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', [headerKeyName]: currentKey },
+                body: JSON.stringify(nufiBody)
+            })
 
-    const nufiData = await nufiResponse.json()
+            const nufiData = await nufiResponse.json()
 
-    return new Response(JSON.stringify(nufiData), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
+            if ((nufiResponse.status === 403 || nufiData.code === 403) && i < keysToUse.length - 1) {
+                console.warn(`⚠️ Key #${usedKeyIndex} agotada. Rotando...`)
+                continue 
+            }
 
-  } catch (error: unknown) { // CORRECCIÓN 2: Usamos 'unknown' y validamos el tipo
-    let msg = 'Error desconocido del servidor';
-    
-    if (error instanceof Error) {
-        msg = error.message;
-    } else if (typeof error === 'string') {
-        msg = error;
+            finalData = nufiData
+            lastStatus = nufiResponse.status
+            break 
+
+        } catch (err) {
+            if (i === keysToUse.length - 1) throw err
+        }
     }
 
+    // --- GUARDADO AUTOMÁTICO EN TABLA kyc_validations ---
+    if (entity_id && tenant_id) {
+        await supabaseAdmin.from('kyc_validations').insert({
+            tenant_id,
+            entity_id,
+            entity_type: entity_type || 'Cliente',
+            validation_type: action.toUpperCase().replace('-', '_'),
+            status: (lastStatus === 200 && finalData?.status !== 'error') ? 'success' : 'error',
+            api_response: finalData,
+            api_key_usage: usedKeyIndex // Registra cuál de las 5 llaves se usó
+        })
+    }
+
+    // Inyectar info de uso en la respuesta para el Front
+    if (finalData) finalData._meta_usage = { key_index: usedKeyIndex };
+
+    return new Response(JSON.stringify(finalData), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: lastStatus,
+    })
+
+  } catch (error: unknown) {
+    let msg = error instanceof Error ? error.message : 'Error desconocido';
     return new Response(JSON.stringify({ status: 'error', message: msg }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400, 
