@@ -7,97 +7,143 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// --- HERRAMIENTAS DE SANITIZACIÓN ---
+// 1. Solo números (quita espacios, letras, guiones)
+const cleanNumbersOnly = (val: unknown) => String(val || '').replace(/\D/g, '').trim();
+
+// 2. Alfanumérico limpio (Mayúsculas, sin ñ, sin acentos raros, sin espacios)
+const cleanAlphaNum = (val: unknown) => String(val || '').toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
+
+// 3. Texto normal limpio (quita espacios dobles, trim)
+const cleanText = (val: unknown) => String(val || '').trim().replace(/\s+/g, ' ');
+
 serve(async (req: Request) => {
-  // 1. Manejo Preflight CORS
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
     const body = await req.json()
     const { action, payload, entity_id, tenant_id, entity_type } = body
     
-    // --- 1. ESTRATEGIA DE LLAVES: USAR SOLO LA GENERAL ---
+    // --- AUTH ---
     const generalKey = Deno.env.get('NUFI_KEY_GENERAL') || ''
-    
-    // Creamos el pool solo con esta llave
-    const keysPool = [generalKey.trim()].filter(k => k.length > 5)
-
-    if (keysPool.length === 0) {
-        throw new Error("No se encontró la variable NUFI_KEY_GENERAL en Supabase Secrets.")
+    if (!generalKey || generalKey.length < 5) {
+        throw new Error("Falta la variable NUFI_KEY_GENERAL en Supabase.")
     }
 
-    // --- 2. CONFIGURACIÓN DEL FETCH ---
     let nufiUrl = ''
     let headerKeyName = 'NUFI-API-KEY'
     let nufiBody: Record<string, unknown> = {}
 
+    // --- LÓGICA DE LIMPIEZA POR TIPO DE PETICIÓN ---
+
     if (action === 'validate-ine') {
+      // PROMPT: "Error 500 en Validación de Lista Nominal (INE)"
+      // CAUSA: Inconsistencia en formato. SOLUCIÓN: Sanitización estricta.
+      
       nufiUrl = 'https://nufi.azure-api.net/v1/lista_nominal/validar'
       headerKeyName = 'Ocp-Apim-Subscription-Key'
       
-      const cleanNum = (val: unknown) => String(val || '').replace(/\D/g, '').trim();
-      const ocrVal = cleanNum(payload.ocr);
-      const cicVal = cleanNum(payload.cic || payload.identificador_del_ciudadano || ocrVal);
+      // 1. Limpieza de Clave de Elector (Solo letras y números, mayúsculas)
+      const claveElector = cleanAlphaNum(payload.clave_de_elector);
 
-      // Limpieza para evitar Error 500 en Azure
-      const baseBody: Record<string, unknown> = {
-          tipo_identificacion: String(payload.tipo_identificacion || 'C').toUpperCase(),
-          clave_de_elector: String(payload.clave_de_elector || '').toUpperCase().trim(),
-          numero_de_emision: String(payload.numero_de_emision || "00").padStart(2, '0')
-      }
+      // 2. Número de emisión (Siempre 2 dígitos. Si es vacio o null, asume "00")
+      let emision = cleanNumbersOnly(payload.numero_de_emision);
+      if (emision.length === 0) emision = "00"; 
+      if (emision.length === 1) emision = "0" + emision;
 
-      if (ocrVal.length > 0) baseBody.ocr = ocrVal;
-      if (cicVal.length > 0) {
-          baseBody.cic = cicVal;
-          baseBody.identificador_del_ciudadano = cicVal;
-      }
+      // 3. Tipo de ID (Limpiar ruido, default a 'C' si falla, tomar solo la primera letra)
+      let tipoId = cleanAlphaNum(payload.tipo_identificacion);
+      if (tipoId.length === 0) tipoId = "C";
+      tipoId = tipoId.substring(0, 1); 
 
-      nufiBody = baseBody;
+      // 4. Identificadores Numéricos (CIC, OCR, ID Ciudadano)
+      // El prompt dice: "El sistema intenta enviar campos que no existen en modelos antiguos... enviando valores null"
+      // Solución: Solo agregamos al body lo que tenga valor real después de limpiar.
+      
+      const cicClean = cleanNumbersOnly(payload.cic);
+      const ocrClean = cleanNumbersOnly(payload.ocr);
+      const idCiudadanoClean = cleanNumbersOnly(payload.identificador_del_ciudadano);
+
+      // Construcción del objeto limpio para Azure
+      const cleanPayload: Record<string, string> = {
+          tipo_identificacion: tipoId,
+          clave_de_elector: claveElector,
+          numero_de_emision: emision
+      };
+
+      // Solo inyectamos si existen y no están vacíos para no enviar "" que causa 500
+      if (cicClean.length > 0) cleanPayload.cic = cicClean;
+      if (ocrClean.length > 0) cleanPayload.ocr = ocrClean;
+      if (idCiudadanoClean.length > 0) cleanPayload.identificador_del_ciudadano = idCiudadanoClean;
+
+      // Log de seguridad para ver qué estamos enviando realmente (sin datos sensibles completos)
+      console.log(`🧹 INE Sanitizada: Tipo:${tipoId}, Emision:${emision}, TieneCIC:${cicClean.length>0}, TieneOCR:${ocrClean.length>0}`);
+
+      nufiBody = cleanPayload;
+
+    } else if (action === 'check-blacklist') {
+      // PROMPT: Request de PLD
+      nufiUrl = 'https://nufi.azure-api.net/perfilamiento/v1/aml'
+      
+      nufiBody = {
+          nombre_completo: cleanText(payload.nombre_completo),
+          primer_nombre: cleanText(payload.primer_nombre),
+          segundo_nombre: cleanText(payload.segundo_nombre),
+          apellidos: cleanText(payload.apellidos),
+          // Si la fecha viene vacía, no la mandamos o la mandamos vacía según requiera la API. 
+          // Usualmente PLD acepta strings vacíos, pero limpiamos espacios.
+          fecha_nacimiento: cleanText(payload.fecha_nacimiento), 
+          lugar_nacimiento: cleanText(payload.lugar_nacimiento)
+      };
 
     } else if (action === 'extract-ocr') {
       nufiUrl = `https://nufi.azure-api.net/ocr/v4/${payload.side}`
       const img = payload.image_data?.includes(',') ? payload.image_data.split(',').pop() : payload.image_data
       nufiBody = payload.side === 'frente' ? { "base64_credencial_frente": img } : { "base64_credencial_reverso": img }
+      
     } else {
-      nufiUrl = action === 'check-blacklist' ? 'https://nufi.azure-api.net/perfilamiento/v1/aml' : 'https://nufi.azure-api.net/biometrico/v2/ine_vs_selfie';
+      // Biometrico u otros
+      nufiUrl = 'https://nufi.azure-api.net/biometrico/v2/ine_vs_selfie';
       nufiBody = payload;
     }
 
-    // --- 3. EJECUCIÓN (SIN TIMEOUT MANUAL) ---
-    // Hemos eliminado el AbortController y setTimeout.
-    // Ahora depende exclusivamente del tiempo máximo que permita Supabase Edge Functions.
-    
+    // --- EJECUCIÓN ---
     let finalData = null
     let lastStatus = 500
-    const currentKey = keysPool[0];
 
     try {
-        console.log(`🚀 Ejecutando ${action} con NUFI_KEY_GENERAL (Sin límite de tiempo)...`)
+        console.log(`🚀 Request a NuFi: ${action} (Body size: ${JSON.stringify(nufiBody).length})`)
 
         const response = await fetch(nufiUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', [headerKeyName]: currentKey },
+          headers: { 'Content-Type': 'application/json', [headerKeyName]: generalKey },
           body: JSON.stringify(nufiBody)
-          // signal: ELIMINADO
         })
-        
-        // Verificamos si la respuesta es OK antes de parsear
+
         if (!response.ok) {
-            throw new Error(`Error HTTP NuFi: ${response.status} ${response.statusText}`);
+             // Manejo de respuesta NO-JSON (HTML Error de Azure)
+             const textResp = await response.text();
+             let jsonError;
+             try {
+                jsonError = JSON.parse(textResp);
+             } catch {
+                // Si falla el parseo, es que Azure devolvió HTML o texto plano (el Error 500 sucio)
+                console.error(`🔥 NuFi Error Crudo (Posible 500/HTML): ${textResp.substring(0, 200)}...`);
+                throw new Error(`Error remoto de NuFi (${response.status}): El servicio externo devolvió una respuesta inválida.`);
+             }
+             throw new Error(jsonError.message || `Error NuFi ${response.status}`);
         }
 
-        const data = await response.json()
-        
-        finalData = data;
+        finalData = await response.json()
         lastStatus = response.status;
 
     } catch (e) {
-        // Corrección de tipos para el catch
         const errMessage = e instanceof Error ? e.message : String(e);
-        console.error(`❌ Error de comunicación con Nufi:`, errMessage)
-        throw new Error(`Error de comunicación con Nufi: ${errMessage}`);
+        console.error(`❌ Error Nufi/Azure:`, errMessage)
+        throw new Error(errMessage);
     }
 
-    // --- 4. LOGGING (CORREGIDO PARA TS) ---
+    // --- LOGGING DB (Sin cambios) ---
     if (entity_id && tenant_id) {
       try {
           const adminClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
@@ -108,38 +154,23 @@ serve(async (req: Request) => {
               'extract-ocr': 'OCR_EXTRACT'
           };
           
-          const { error: logError } = await adminClient.from('kyc_validations').insert({
-            tenant_id, 
-            entity_id, 
-            entity_type: entity_type || 'Cliente',
+          await adminClient.from('kyc_validations').insert({
+            tenant_id, entity_id, entity_type: entity_type || 'Cliente',
             validation_type: validationTypeMap[action] || action.toUpperCase(),
             status: lastStatus === 200 ? 'success' : 'error',
-            api_response: finalData, 
-            api_key_usage: 99 
+            api_response: finalData, api_key_usage: 99 
           });
-
-          if (logError) {
-              console.error("Error guardando log en BD:", logError);
-          }
-            
-      } catch (err) { 
-          const errMessage = err instanceof Error ? err.message : String(err);
-          console.error("Error cliente DB:", errMessage) 
-      }
+      } catch (err) { console.error("Error DB Log:", err) }
     }
 
     return new Response(JSON.stringify(finalData), {
-      status: 200, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : "Error desconocido";
-    console.error("❌ ERROR CRÍTICO:", errorMessage)
-    
     return new Response(JSON.stringify({ status: 'error', message: errorMessage }), {
-      status: 200, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 })

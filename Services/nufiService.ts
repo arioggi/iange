@@ -11,16 +11,23 @@ interface InePayload {
 }
 
 // --- FUNCIÓN PRINCIPAL (El cartero) ---
+// 🔥 FIX: Agregamos entityId (opcional) para que viaje al log de Supabase
 const callNufiProxy = async (
   action: 'check-blacklist' | 'validate-ine' | 'biometric-match' | 'extract-ocr', 
   payload: any, 
-  tenantId: string
+  tenantId: string,
+  entityId?: string // <--- NUEVO ARGUMENTO
 ) => {
+  
+  // Debug para ver si llegan los IDs antes de salir
+  if (!tenantId) console.warn("⚠️ callNufiProxy: tenantId es null o undefined");
+
   const { data, error } = await supabase.functions.invoke('nufi-proxy', {
     body: {
       action,
       payload,
-      tenant_id: tenantId
+      tenant_id: tenantId,
+      entity_id: entityId // <--- AQUI SE AGREGA AL ENVÍO
     }
   });
 
@@ -39,10 +46,8 @@ const callNufiProxy = async (
 
 // --- MÉTODOS PÚBLICOS ---
 
-// 1. PLD / LISTAS NEGRAS (CORREGIDO SEGÚN TU CURL)
+// 1. PLD / LISTAS NEGRAS
 export const checkBlacklist = async (nombreCompleto: string, entityId: string, tenantId: string) => {
-  // ⚠️ FIX: Usamos la estructura exacta del CURL que proporcionaste.
-  // La llave obligatoria es "nombre_completo".
   const payload = {
     "nombre_completo": nombreCompleto,
     "primer_nombre": "",
@@ -53,12 +58,14 @@ export const checkBlacklist = async (nombreCompleto: string, entityId: string, t
   };
   
   console.log("📤 Enviando a PLD:", payload);
-  return await callNufiProxy('check-blacklist', payload, tenantId);
+  // 🔥 FIX: Pasamos entityId al final
+  return await callNufiProxy('check-blacklist', payload, tenantId, entityId);
 };
 
 // 2. VALIDAR VIGENCIA INE
 export const validateIneData = async (datosIne: InePayload, entityId: string, tenantId: string) => {
-  return await callNufiProxy('validate-ine', datosIne, tenantId);
+  // 🔥 FIX: Pasamos entityId al final
+  return await callNufiProxy('validate-ine', datosIne, tenantId, entityId);
 };
 
 // 3. BIOMETRÍA (Selfie vs INE)
@@ -76,14 +83,16 @@ export const verifyBiometrics = async (
       credencial_frente: clean(ineFrenteBase64),
       credencial_reverso: clean(ineReversoBase64)
   };
-  return await callNufiProxy('biometric-match', payload, tenantId);
+  // 🔥 FIX: Pasamos entityId al final
+  return await callNufiProxy('biometric-match', payload, tenantId, entityId);
 };
 
 // 4. OCR (Extracción de Datos)
 export const extractFromImage = async (
   base64Image: string, 
   side: 'frente' | 'reverso', 
-  tenantId: string
+  tenantId: string,
+  entityId?: string // Opcional aquí también por si acaso
 ) => {
   const cleanBase64 = base64Image.includes(',') ? base64Image.split(',').pop() || base64Image : base64Image;
   
@@ -94,5 +103,6 @@ export const extractFromImage = async (
       image_data: cleanBase64 
   };
   
-  return await callNufiProxy('extract-ocr', payload, tenantId);
+  // 🔥 FIX: Pasamos entityId al final
+  return await callNufiProxy('extract-ocr', payload, tenantId, entityId);
 };
