@@ -114,7 +114,13 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
         showToast('Procesando imágenes y guardando...', 'success');
 
         try {
-            const ownerDb = await createContact(nuevoPropietario, currentUser.tenantId, 'propietario');
+            // ✅ CORRECCIÓN: Solo crear el contacto si realmente vienen datos.
+            // Si nuevoPropietario es null (se marcó "omitir"), saltamos la creación.
+            let ownerDb = null;
+            if (nuevoPropietario) {
+                ownerDb = await createContact(nuevoPropietario, currentUser.tenantId, 'propietario');
+            }
+
             const uploadedImageUrls: string[] = [];
             
             if (nuevaPropiedad.fotos && nuevaPropiedad.fotos.length > 0) {
@@ -129,10 +135,20 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                 }
             }
 
-            await createProperty({
+            // Al crear la propiedad, pasamos el ID del propietario si existe, o null si no.
+            // Si ownerDb es null, ownerDb.id no existe, así que pasamos null directo.
+            const propietarioIdFinal = ownerDb ? ownerDb.id : null;
+
+            // Ajustamos el status si no hay propietario
+            const propiedadConStatus = {
                 ...nuevaPropiedad,
+                status: propietarioIdFinal ? (nuevaPropiedad.status || 'En Promoción') : 'Incompleto'
+            };
+
+            await createProperty({
+                ...propiedadConStatus,
                 imageUrls: uploadedImageUrls
-            }, currentUser.tenantId, ownerDb.id);
+            }, currentUser.tenantId, propietarioIdFinal);
 
             if (onDataChange) onDataChange();
             
@@ -407,13 +423,14 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                 </Modal>
             )}
 
-            {/* Modal Editar Propiedad */}
+            {/* Modal Editar Propiedad - AQUI ESTÁ EL CAMBIO CLAVE */}
             {selectedPropiedad && (
                 <Modal title="Editar Propiedad y Propietario" isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)}>
-                    {propiedades.find(p => p.id === selectedPropiedad.id) && propietarios.find(p => p.id === selectedPropiedad.propietarioId) && (
+                    {propiedades.find(p => p.id === selectedPropiedad.id) && (
                         <EditPropiedadForm
                             propiedad={selectedPropiedad}
-                            propietario={propietarios.find(p => p.id === selectedPropiedad.propietarioId)!}
+                            // Pasamos el propietario si existe, si no, pasamos undefined (el ! al final era el error)
+                            propietario={propietarios.find(p => p.id === selectedPropiedad.propietarioId) as any}
                             onSave={localHandleUpdate}
                             onCancel={() => setEditModalOpen(false)}
                             asesores={asesores}

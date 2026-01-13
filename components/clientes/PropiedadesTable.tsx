@@ -64,11 +64,14 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
         }
     };
 
-    // ... EL RESTO DEL CÓDIGO SE MANTIENE IGUAL ...
-    // (Solo copié la función corregida, asegúrate de mantener el resto de tu archivo handleDescargarKitLegal y el return igual)
-
     // ✅ LÓGICA DE GENERACIÓN DE DOCUMENTOS WORD (Sin cambios)
     const handleDescargarKitLegal = async (propiedad: Propiedad) => {
+        // Validamos si existe propietario antes de buscarlo
+        if (!propiedad.propietarioId) {
+            alert("⚠️ Esta propiedad no tiene un propietario asignado. Completa los datos primero.");
+            return;
+        }
+
         const propietario = propietarios.find(p => p.id === propiedad.propietarioId);
 
         if (!propietario) {
@@ -139,6 +142,22 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
         }, 2000);
     };
 
+    // ✅ CORREGIDO: StatusBadge ahora incluye el estado "Incompleto"
+    const getStatusBadge = (status: string) => {
+        switch(status) {
+            case 'Vendida': 
+                return <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full border bg-green-100 text-green-800 border-green-200">VENDIDA</span>;
+            case 'Separada': 
+                return <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full border bg-yellow-100 text-yellow-800 border-yellow-200">SEPARADA</span>;
+            case 'En Promoción': 
+                return <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full border bg-blue-50 text-blue-700 border-blue-200">EN PROMOCIÓN</span>;
+            case 'Incompleto':
+                return <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full border bg-red-50 text-red-700 border-red-100">FALTA PROPIETARIO</span>;
+            default: 
+                return <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full border bg-gray-100 text-gray-800 border-gray-200">{status}</span>;
+        }
+    };
+
     const renderVerificationBadge = (propietario: Propietario) => {
         const inePldOk = propietario.ineValidado && propietario.pldValidado;
         const biometriaOk = propietario.biometricStatus === 'Verificado';
@@ -177,9 +196,24 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
         );
     };
 
-    const renderPropietarioCell = (propietarioId: number) => {
+    // ✅ ACTUALIZADO: Maneja IDs nulos y muestra estado visual
+    const renderPropietarioCell = (propietarioId: number | null | undefined) => {
+        // Caso: Sin propietario asignado
+        if (!propietarioId) {
+            return (
+                <div className="flex flex-col">
+                    <span className="text-gray-400 italic text-sm">Sin propietario</span>
+                    <span className="text-[9px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-full w-fit border border-amber-100 mt-1 uppercase tracking-wide">
+                        DATOS PENDIENTES
+                    </span>
+                </div>
+            );
+        }
+
         const propietario = propietarios.find(p => p.id === propietarioId);
-        if (!propietario) return <span className="text-gray-400 italic">No asignado</span>;
+        
+        // Caso: ID existe pero no se encuentra en la lista (posible error de integridad)
+        if (!propietario) return <span className="text-gray-400 italic text-xs">No encontrado (ID: {propietarioId})</span>;
         
         return (
             <div className="flex flex-col">
@@ -233,14 +267,7 @@ const PropiedadesTable: React.FC<PropiedadesTableProps> = ({ propiedades, propie
                                 {formatCurrency(propiedad.valor_operacion)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap align-middle">
-                                <span className={`px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full border ${
-                                    propiedad.status === 'Vendida' ? 'bg-green-100 text-green-800 border-green-200' : 
-                                    propiedad.status === 'Separada' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 
-                                    propiedad.status === 'En Promoción' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
-                                    'bg-gray-100 text-gray-800 border-gray-200'
-                                }`}>
-                                    {propiedad.status}
-                                </span>
+                                {getStatusBadge(propiedad.status)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap align-middle text-right text-sm font-medium">
                                 <div className="flex justify-center items-center gap-3">
