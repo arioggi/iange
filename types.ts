@@ -101,7 +101,8 @@ export interface Visita {
 export interface Propiedad {
   id: number;
   token_publico?: string;
-  propietarioId: number;
+  // ✅ CAMBIO: Permitimos null para propiedades en modo Bypass
+  propietarioId: number | null;
   compradorId?: number | null;
   asesorId: number | string;
   calle: string;
@@ -113,7 +114,7 @@ export interface Propiedad {
   codigo_postal: string;
   pais: string;
   tipo_inmueble: string; 
-  tipoOperacion?: 'Venta' | 'Renta'; // ✅ CAMPO AGREGADO
+  tipoOperacion?: 'Venta' | 'Renta'; 
   valor_operacion: string;
   terreno_m2?: string;
   construccion_m2?: string;
