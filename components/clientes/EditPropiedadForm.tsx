@@ -8,7 +8,6 @@ import { createContact } from '../../Services/api';
 import { useAuth } from '../../authContext';
 
 // === COMPONENTES REUSABLES ===
-
 const LabeledInput: React.FC<{ label: string; name: string; value: string | number; onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void; type?: string; placeholder?: string; }> = ({ label, name, value, onChange, type = 'text', placeholder }) => (
     <div>
         <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
@@ -39,7 +38,6 @@ const LabeledSelect: React.FC<{ label: string; name: string; value: string | num
     </div>
 );
 
-// Helper: Calculate progress percentage
 const totalChecklistItems = FLUJO_PROGRESO.reduce((acc, etapa) => acc + etapa.items.length, 0);
 const calculateProgress = (checklist: ChecklistStatus): number => {
     if (totalChecklistItems === 0) return 0;
@@ -47,7 +45,6 @@ const calculateProgress = (checklist: ChecklistStatus): number => {
     return Math.round((checkedCount / totalChecklistItems) * 100);
 };
 
-// Helper: Determine property status
 const getStatusFromChecklist = (checklist: ChecklistStatus, compradorId: number | null | undefined): Propiedad['status'] => {
     if (checklist.ventaConcluida) return 'Vendida';
     if (checklist.propiedadSeparada || compradorId) return 'Separada';
@@ -61,12 +58,10 @@ const PhotoIcon = () => (
     </svg>
 );
 
-
 interface EditPropiedadFormProps {
     propiedad: Propiedad;
     propietario: Propietario;
-    // updatedPropietario es opcional para permitir guardar solo la propiedad
-    onSave: (updatedPropiedad: Propiedad, updatedPropietario?: Propietario) => void;
+    onSave: (updatedPropiedad: Propiedad, updatedPropietario?: Propietario | null) => void;
     onCancel: () => void;
     asesores: User[];
     viewMode?: 'progressOnly';
@@ -88,13 +83,14 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
     const [activeTab, setActiveTab] = useState(viewMode === 'progressOnly' ? TABS[2] : TABS[0]);
     const [editedPropiedad, setEditedPropiedad] = useState<Propiedad>(propiedad);
     
-    // Inicialización segura
+    // Inicialización del propietario
     const [editedPropietario, setEditedPropietario] = useState<Propietario>(
         propietario || { ...initialKycState, id: 0 } as Propietario
     );
     
-    // Flag para saber si es un propietario "fantasma" (id 0)
-    const [isCreatingNewOwner, setIsCreatingNewOwner] = useState(!propietario || propietario.id === 0);
+    // ✅ NUEVO: Estado explícito para omitir (Igual que en AddForm)
+    // Se activa por defecto si el ID es 0 o null
+    const [omitirPropietario, setOmitirPropietario] = useState(!propietario || propietario.id === 0);
     const [isSaving, setIsSaving] = useState(false);
 
     const [photos, setPhotos] = useState<Array<File | string>>([
@@ -106,11 +102,10 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
         setEditedPropiedad(propiedad);
         if (propietario && propietario.id !== 0) {
             setEditedPropietario(propietario);
-            setIsCreatingNewOwner(false);
+            setOmitirPropietario(false);
         } else {
-            // Caso Bypass: Preparamos objeto vacío
             setEditedPropietario({ ...initialKycState, id: 0 } as Propietario);
-            setIsCreatingNewOwner(true);
+            setOmitirPropietario(true);
         }
         
         setPhotos([
@@ -119,6 +114,7 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
         ]);
     }, [propiedad, propietario]);
     
+    // --- MANEJO DE FOTOS ---
     const MAX_SIZE_MB = 5;
     const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 
@@ -126,7 +122,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
         if (e.target.files) {
             const newFiles = Array.from(e.target.files);
             const validFiles: File[] = [];
-            
             for (const file of newFiles as File[]) {
                 if (file.size > MAX_SIZE_BYTES) {
                     alert(`El archivo "${file.name}" excede el tamaño máximo de ${MAX_SIZE_MB}MB.`);
@@ -146,13 +141,11 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
         setPhotos(newPhotos);
     };
 
+    // --- MANEJO DE INPUTS ---
     const handlePropiedadChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
         const checked = (e.target as HTMLInputElement).checked;
-
-        const numericFields = [
-            'asesorId', 'recamaras', 'banos_completos', 'medios_banos', 'cochera_autos',
-        ];
+        const numericFields = ['asesorId', 'recamaras', 'banos_completos', 'medios_banos', 'cochera_autos'];
 
         if (type === 'checkbox') {
              setEditedPropiedad(prev => ({ ...prev, [name]: checked }));
@@ -201,7 +194,7 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
         });
     };
 
-    // ✅ FIX FINAL: Permitir guardar propiedad sin dueño
+    // ✅ LOGICA DE GUARDADO ESPEJO AL ADDFORM
     const handleFinalSave = async () => {
         setIsSaving(true);
         try {
@@ -211,34 +204,51 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
             // Clones
             let finalPropietario = { ...editedPropietario };
             let finalPropiedad = { ...editedPropiedad };
-            let propietarioParaGuardar: Propietario | undefined = finalPropietario;
+            
+            // Variable final para el padre (null si omitimos, objeto si existe)
+            let propietarioParaGuardar: Propietario | null | undefined = finalPropietario;
 
-            // 1. Si el propietario es nuevo (ID 0)
-            if (finalPropietario.id === 0) {
-                
-                // A) Si el usuario escribió un nombre, asumimos que quiere CREARLO
-                if (finalPropietario.nombreCompleto) {
+            // CASO 1: SE MARCÓ OMITIR PROPIETARIO
+            if (omitirPropietario) {
+                propietarioParaGuardar = null; // Indicamos explícitamente null
+                finalPropiedad.propietarioId = null;
+                // Ajustamos estatus si es necesario
+                if (finalPropiedad.status !== 'Incompleto') {
+                     // Opcional: Podrías forzar a 'Incompleto' o dejarlo como está
+                }
+            } 
+            // CASO 2: NO SE OMITIÓ -> Validar y Crear/Actualizar
+            else {
+                // Validación básica espejo
+                if (!finalPropietario.nombreCompleto) {
+                    alert("Si desmarcas 'Añadir datos más tarde', debes escribir al menos el nombre del propietario.");
+                    setIsSaving(false);
+                    return;
+                }
+
+                // Si es un propietario nuevo (ID 0) hay que crearlo antes
+                if (!finalPropietario.id || finalPropietario.id === 0) {
                     const tenantId = user?.user_metadata?.tenant_id;
                     if (tenantId) {
                         const ownerPayload = { ...finalPropietario };
-                        delete (ownerPayload as any).id; // Quitamos ID 0
+                        delete (ownerPayload as any).id;
 
                         const nuevoContactoDb = await createContact(ownerPayload, tenantId, 'propietario');
                         
                         finalPropietario.id = nuevoContactoDb.id;
                         finalPropiedad.propietarioId = nuevoContactoDb.id;
-                        
+                        propietarioParaGuardar = { ...finalPropietario };
+
                         if (finalPropiedad.status === 'Incompleto' || finalPropiedad.status === 'Falta Propietario') {
                             finalPropiedad.status = 'En Promoción';
                         }
+                    } else {
+                         alert("Error de sesión (Tenant ID). Recarga la página.");
+                         setIsSaving(false);
+                         return;
                     }
-                } 
-                // B) Si NO escribió nombre (Bypass), NO mandamos propietario
-                // Y NO lanzamos alerta, simplemente guardamos la propiedad huérfana
-                else {
-                    propietarioParaGuardar = undefined; // Esto evita que el padre intente actualizar ID 0
-                    finalPropiedad.propietarioId = null; // Mantenemos el vínculo nulo
                 }
+                // Si ya tiene ID > 0, se usa propietarioParaGuardar tal cual
             }
 
             const propiedadParaEnviar = { 
@@ -247,9 +257,7 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                 imageUrls: existingImageUrls,
             };
 
-            // 2. Enviamos al padre. 
-            // Si propietarioParaGuardar es undefined, el padre solo actualizará la propiedad.
-            onSave(propiedadParaEnviar, propietarioParaGuardar);
+            await onSave(propiedadParaEnviar, propietarioParaGuardar);
 
         } catch (error) {
             console.error("Error en handleFinalSave:", error);
@@ -302,6 +310,7 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
     
     const renderPropiedadDetailsForm = () => (
         <div className="space-y-6">
+            {/* ... (SECCIÓN IDÉNTICA DE DATOS DE PROPIEDAD) ... */}
             <section>
                 <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dirección del Inmueble</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -324,12 +333,9 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                     <LabeledInput label="Cochera (autos)" name="cochera_autos" type="number" value={editedPropiedad.cochera_autos || ''} onChange={handlePropiedadChange} placeholder="2" />
                 </div>
             </section>
-            
             <section>
                 <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">Desglose de Comisiones</h3>
-                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* COLUMNA 1: CAPTACIÓN */}
                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
                         <h4 className="font-bold text-blue-800 mb-3 uppercase text-sm flex items-center">
                             <span className="bg-blue-200 text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">1</span>
@@ -365,16 +371,8 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                                 />
                                 <label htmlFor="checkCaptacion" className="ml-2 text-sm text-gray-700 select-none cursor-pointer">¿Comisión Compartida?</label>
                             </div>
-                            <div className="pt-2 border-t border-blue-200 mt-2 flex justify-between items-center">
-                                <p className="text-xs text-gray-500">Subtotal Captación</p>
-                                <p className="font-bold text-blue-900">
-                                    {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format((editedPropiedad.comisionCaptacionOficina || 0) + (editedPropiedad.comisionCaptacionAsesor || 0))}
-                                </p>
-                            </div>
                         </div>
                     </div>
-
-                    {/* COLUMNA 2: VENTA */}
                     <div className="bg-green-50 p-4 rounded-lg border border-green-100">
                         <h4 className="font-bold text-green-800 mb-3 uppercase text-sm flex items-center">
                             <span className="bg-green-200 text-green-800 rounded-full w-5 h-5 flex items-center justify-center text-xs mr-2">2</span>
@@ -410,29 +408,10 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                                 />
                                 <label htmlFor="checkVenta" className="ml-2 text-sm text-gray-700 select-none cursor-pointer">¿Comisión Compartida?</label>
                             </div>
-                            <div className="pt-2 border-t border-green-200 mt-2 flex justify-between items-center">
-                                <p className="text-xs text-gray-500">Subtotal Venta</p>
-                                <p className="font-bold text-green-900">
-                                    {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format((editedPropiedad.comisionVentaOficina || 0) + (editedPropiedad.comisionVentaAsesor || 0))}
-                                </p>
-                            </div>
                         </div>
                     </div>
                 </div>
-
-                <div className="mt-4 p-4 bg-gray-100 rounded-lg flex justify-between items-center border border-gray-200">
-                    <div className="text-xs text-gray-500">
-                        * La comisión compartida se restará del ingreso final en reportes.
-                    </div>
-                    <div className="text-right">
-                        <span className="text-sm font-medium text-gray-600 mr-2">COMISIÓN TOTAL OPERACIÓN:</span>
-                        <span className="text-xl font-extrabold text-gray-900">
-                            {new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(comisionTotalOperacion)}
-                        </span>
-                    </div>
-                </div>
             </section>
-
              <section>
                  <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Detalles Adicionales</h3>
                 <div className="space-y-4">
@@ -441,7 +420,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                          <textarea id="descripcion_breve" name="descripcion_breve" value={editedPropiedad.descripcion_breve || ''} onChange={handlePropiedadChange} rows={3} placeholder="Descripción breve..." className="w-full px-3 py-2 bg-gray-50 border rounded-md text-gray-900 placeholder-gray-500 focus:ring-iange-orange focus:border-iange-orange sm:text-sm" />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* [3] VALOR OPERACIÓN CON CURRENCY INPUT */}
                         <CurrencyInput
                             label="Valor de la operación (MXN)"
                             name="valor_operacion"
@@ -456,8 +434,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                             ))}
                         </LabeledSelect>
                     </div>
-                    
-                    {/* ✅ GRID DE 3 COLUMNAS: TIPO OPERACIÓN, TIPO INMUEBLE Y FUENTE */}
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <LabeledSelect 
                             label="Tipo de Operación" 
@@ -468,7 +444,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                             <option value="Venta">Venta</option>
                             <option value="Renta">Renta</option>
                         </LabeledSelect>
-
                          <LabeledSelect label="Tipo de Inmueble" name="tipo_inmueble" value={editedPropiedad.tipo_inmueble} onChange={handlePropiedadChange as any}>
                             <option>Casa</option>
                             <option>Departamento</option>
@@ -485,23 +460,11 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                     </div>
                 </div>
             </section>
-            
              <section>
                 <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Fotografías ({photos.length})</h3>
-                <p className="text-sm text-gray-600 my-2">
-                    <strong>Arrastra y suelta</strong> para ordenar. La primera foto es la <strong>PORTADA</strong>. Haz clic en '×' para eliminar.
-                </p>
-                
-                {/* COMPONENTE DRAG & DROP */}
                 <div className="mb-4">
-                    <PhotoSorter 
-                        photos={photos} 
-                        onChange={handleReorderPhotos} 
-                        onRemove={removePhoto} 
-                    />
+                    <PhotoSorter photos={photos} onChange={handleReorderPhotos} onRemove={removePhoto} />
                 </div>
-                
-                {/* Input de Carga */}
                  <div className="flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:bg-gray-50 transition-colors">
                     <div className="space-y-1 text-center">
                         <PhotoIcon />
@@ -526,30 +489,36 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
             case 'Datos del Propietario':
                 return (
                     <div className="space-y-4">
-                        {isCreatingNewOwner && (
-                            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-                                <div className="flex">
-                                    <div className="flex-shrink-0">
-                                        <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                                        </svg>
-                                    </div>
-                                    <div className="ml-3">
-                                        <p className="text-sm text-yellow-700">
-                                            Esta propiedad no tiene propietario asignado. Completa los datos a continuación para crearlo automáticamente al guardar.
-                                        </p>
-                                    </div>
-                                </div>
+                        {/* ✅ CHECKBOX PARA OMITIR (Espejo de AddForm) */}
+                        <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-md mb-4 flex items-start gap-3">
+                            <input 
+                                type="checkbox" 
+                                id="omitirPropietario" 
+                                checked={omitirPropietario}
+                                onChange={(e) => setOmitirPropietario(e.target.checked)}
+                                className="mt-1 h-5 w-5 text-iange-orange border-gray-300 rounded focus:ring-iange-orange"
+                            />
+                            <div>
+                                <label htmlFor="omitirPropietario" className="font-medium text-yellow-800 block cursor-pointer select-none">
+                                    Añadir datos del propietario más tarde (Bypass)
+                                </label>
+                                <p className="text-sm text-yellow-700 mt-1">
+                                    Si marcas esta opción, la propiedad quedará sin propietario asignado.
+                                </p>
                             </div>
-                        )}
-                        <KycPldForm 
-                            formData={editedPropietario} 
-                            onFormChange={handlePropietarioChange} 
-                            onSave={() => setActiveTab(TABS[0])} 
-                            onCancel={() => {}} 
-                            userType="Propietario" 
-                            isEmbedded={true} 
-                        />
+                        </div>
+
+                        {/* Bloqueamos visualmente el form si se omite */}
+                        <div className={`transition-opacity duration-300 ${omitirPropietario ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+                            <KycPldForm 
+                                formData={editedPropietario} 
+                                onFormChange={handlePropietarioChange} 
+                                onSave={() => setActiveTab(TABS[0])} 
+                                onCancel={() => {}} 
+                                userType="Propietario" 
+                                isEmbedded={true} 
+                            />
+                        </div>
                     </div>
                 );
             case 'Progreso':
@@ -576,7 +545,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
 
     return (
         <div>
-            {/* CORRECCIÓN FINAL: Usamos px-4 para mantener el ancho, pero py-4 para dar aire vertical */}
             <div className="max-h-[calc(90vh-15rem)] overflow-y-auto px-4 py-4 custom-scrollbar">
                 {viewMode === 'progressOnly' ? renderProgressView() : renderFullEditView()}
             </div>

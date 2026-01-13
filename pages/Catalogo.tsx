@@ -59,7 +59,8 @@ interface CatalogoProps {
     propietarios: Propietario[];
     asesores: User[];
     onAddVisita: (propiedadId: number, visitaData: Omit<Visita, 'id' | 'fecha'>) => void;
-    handleUpdatePropiedad: (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => void;
+    // ✅ CORRECCIÓN: Permitimos null/undefined para soportar el modo Bypass
+    handleUpdatePropiedad: (updatedPropiedad: Propiedad, updatedPropietario?: Propietario | null) => void;
     showToast: (message: string, type?: 'success' | 'error') => void;
     currentUser: User;
     compradores: Comprador[]; 
@@ -200,7 +201,8 @@ const Catalogo: React.FC<CatalogoProps> = ({
         }
     };
 
-    const handleSaveEdit = (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
+    // ✅ CORRECCIÓN: Aceptamos null/undefined en el propietario y lo pasamos al padre
+    const handleSaveEdit = (updatedPropiedad: Propiedad, updatedPropietario?: Propietario | null) => {
         handleUpdatePropiedad(updatedPropiedad, updatedPropietario);
         setEditModalOpen(false);
         showToast('Propiedad guardada con éxito.', 'success');

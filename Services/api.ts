@@ -271,7 +271,8 @@ export const createContact = async (contactData: any, tenantId: string, tipo: 'p
     return data;
 };
 
-export const createProperty = async (propertyData: any, tenantId: string, ownerId: string) => {
+// ✅ FIX: ownerId ahora acepta string | null para soportar Bypass en creación
+export const createProperty = async (propertyData: any, tenantId: string, ownerId: string | null) => {
   const { 
     titulo, direccion, valor_operacion, tipo_inmueble, status, 
     fotos, 
@@ -361,7 +362,8 @@ export const getPropertiesByTenant = async (tenantId: string) => {
   });
 };
 
-export const updateProperty = async (propertyData: any, ownerId: string) => {
+// ✅ FIX: ownerId acepta null | undefined para Bypass y se agrega al dbPayload
+export const updateProperty = async (propertyData: any, ownerId: string | null | undefined) => {
     const { 
         id, 
         valor_operacion, 
@@ -404,6 +406,7 @@ export const updateProperty = async (propertyData: any, ownerId: string) => {
         precio: precioNumerico,
         tipo: tipo_inmueble,
         estatus: dbStatus,
+        contacto_id: ownerId, // ✅ CRÍTICO: Se añade esto para actualizar el dueño (o ponerlo en null)
         comprador_id: compradorIdToSave,
         features: featuresPayload, 
         images: imageUrls || [],

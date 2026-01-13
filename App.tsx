@@ -275,7 +275,8 @@ const App = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleUpdatePropiedad = async (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
+  // ✅ CORRECCIÓN FINAL: Manejo de Bypass en el padre
+  const handleUpdatePropiedad = async (updatedPropiedad: Propiedad, updatedPropietario?: Propietario | null) => {
     if (!user) return;
     if (!user.planId) {
         showToast('Debes elegir un plan para guardar información.', 'error');
@@ -283,11 +284,22 @@ const App = () => {
     }
     showToast('Guardando cambios...', 'success');
     try {
-        await updateContact(updatedPropietario.id, updatedPropietario);
-        await updateProperty(updatedPropiedad, updatedPropietario.id.toString());
+        // 1. Si existe un propietario real (y no es null/bypass), actualizamos sus datos de contacto
+        if (updatedPropietario && updatedPropietario.id > 0) {
+            await updateContact(updatedPropietario.id, updatedPropietario);
+        }
+
+        // 2. Preparamos el ID del dueño para la propiedad
+        // Si updatedPropietario es null/undefined, mandamos null para desvincular (Bypass)
+        const ownerIdToSave = updatedPropietario?.id ? updatedPropietario.id.toString() : null;
+
+        // 3. Actualizamos la propiedad
+        await updateProperty(updatedPropiedad, ownerIdToSave);
+        
         showToast('Guardado con éxito.', 'success');
         refreshAppData(true); 
     } catch (error) {
+        console.error("Error al guardar:", error);
         showToast('Error al guardar.', 'error');
     }
   };

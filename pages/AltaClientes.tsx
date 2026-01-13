@@ -37,7 +37,8 @@ interface AltaClientesProps {
     setPropietarios: React.Dispatch<React.SetStateAction<Propietario[]>>;
     compradores: Comprador[];
     setCompradores: React.Dispatch<React.SetStateAction<Comprador[]>>;
-    handleUpdatePropiedad: (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => void;
+    // ✅ FIX: Permitir null/undefined para Bypass
+    handleUpdatePropiedad: (updatedPropiedad: Propiedad, updatedPropietario?: Propietario | null) => void;
     handleDeletePropiedad: (propiedad: Propiedad) => void;
     initialEditPropId: number | null;
     setInitialEditPropId: (id: number | null) => void;
@@ -114,8 +115,6 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
         showToast('Procesando imágenes y guardando...', 'success');
 
         try {
-            // ✅ CORRECCIÓN: Solo crear el contacto si realmente vienen datos.
-            // Si nuevoPropietario es null (se marcó "omitir"), saltamos la creación.
             let ownerDb = null;
             if (nuevoPropietario) {
                 ownerDb = await createContact(nuevoPropietario, currentUser.tenantId, 'propietario');
@@ -135,11 +134,8 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                 }
             }
 
-            // Al crear la propiedad, pasamos el ID del propietario si existe, o null si no.
-            // Si ownerDb es null, ownerDb.id no existe, así que pasamos null directo.
             const propietarioIdFinal = ownerDb ? ownerDb.id : null;
 
-            // Ajustamos el status si no hay propietario
             const propiedadConStatus = {
                 ...nuevaPropiedad,
                 status: propietarioIdFinal ? (nuevaPropiedad.status || 'En Promoción') : 'Incompleto'
@@ -168,7 +164,8 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
         setEditModalOpen(true);
     };
 
-    const localHandleUpdate = (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => {
+    // ✅ FIX: Permitir null/undefined aquí también
+    const localHandleUpdate = (updatedPropiedad: Propiedad, updatedPropietario?: Propietario | null) => {
         handleUpdatePropiedad(updatedPropiedad, updatedPropietario);
         if (onDataChange) onDataChange();
         setEditModalOpen(false);
@@ -333,7 +330,7 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                             onEdit={handleEditCompradorClick} 
                             onDelete={handleDeleteCompradorClick} 
                             propiedades={propiedades}
-                            asesores={asesores} // <--- 1. PASAR ASESORES
+                            asesores={asesores} 
                         />
                     </div>
                 );
@@ -398,7 +395,7 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                         onCancel={() => setAddCompradorModalOpen(false)} 
                         userType="Comprador"
                         propiedades={propiedades}
-                        asesores={asesores} // <--- 2. PASAR ASESORES
+                        asesores={asesores} 
                     />
                 )}
             </Modal>
@@ -418,18 +415,18 @@ const AltaClientes: React.FC<AltaClientesProps> = ({
                         onCancel={() => setEditCompradorModalOpen(false)} 
                         userType="Comprador"
                         propiedades={propiedades} 
-                        asesores={asesores} // <--- 3. PASAR ASESORES
+                        asesores={asesores} 
                     />
                 </Modal>
             )}
 
-            {/* Modal Editar Propiedad - AQUI ESTÁ EL CAMBIO CLAVE */}
+            {/* Modal Editar Propiedad */}
             {selectedPropiedad && (
                 <Modal title="Editar Propiedad y Propietario" isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)}>
                     {propiedades.find(p => p.id === selectedPropiedad.id) && (
                         <EditPropiedadForm
                             propiedad={selectedPropiedad}
-                            // Pasamos el propietario si existe, si no, pasamos undefined (el ! al final era el error)
+                            // Mantenemos el cast 'as any' pero ahora el componente sí aceptará undefined si no lo encuentra
                             propietario={propietarios.find(p => p.id === selectedPropiedad.propietarioId) as any}
                             onSave={localHandleUpdate}
                             onCancel={() => setEditModalOpen(false)}
