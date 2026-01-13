@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Propiedad, Propietario, User, ChecklistStatus, KycData } from '../../types';
-import { FLUJO_PROGRESO } from '../../constants';
+import { FLUJO_PROGRESO, initialKycState } from '../../constants';
 import KycPldForm from './KycPldForm';
 import PhotoSorter from '../ui/PhotoSorter';
-// [1] IMPORTAMOS EL COMPONENTE CURRENCY INPUT
 import { CurrencyInput } from '../ui/CurrencyInput';
+import { createContact } from '../../Services/api';
+import { useAuth } from '../../authContext';
 
 // === COMPONENTES REUSABLES ===
 
@@ -64,7 +65,8 @@ const PhotoIcon = () => (
 interface EditPropiedadFormProps {
     propiedad: Propiedad;
     propietario: Propietario;
-    onSave: (updatedPropiedad: Propiedad, updatedPropietario: Propietario) => void;
+    // updatedPropietario es opcional para permitir guardar solo la propiedad
+    onSave: (updatedPropiedad: Propiedad, updatedPropietario?: Propietario) => void;
     onCancel: () => void;
     asesores: User[];
     viewMode?: 'progressOnly';
@@ -82,10 +84,19 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
     viewMode,
     onNavigateToEdit
 }) => {
+    const { user } = useAuth();
     const [activeTab, setActiveTab] = useState(viewMode === 'progressOnly' ? TABS[2] : TABS[0]);
     const [editedPropiedad, setEditedPropiedad] = useState<Propiedad>(propiedad);
-    const [editedPropietario, setEditedPropietario] = useState<Propietario>(propietario);
     
+    // Inicialización segura
+    const [editedPropietario, setEditedPropietario] = useState<Propietario>(
+        propietario || { ...initialKycState, id: 0 } as Propietario
+    );
+    
+    // Flag para saber si es un propietario "fantasma" (id 0)
+    const [isCreatingNewOwner, setIsCreatingNewOwner] = useState(!propietario || propietario.id === 0);
+    const [isSaving, setIsSaving] = useState(false);
+
     const [photos, setPhotos] = useState<Array<File | string>>([
         ...(propiedad.imageUrls || []), 
         ...(propiedad.fotos || []),
@@ -93,7 +104,15 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
 
     useEffect(() => {
         setEditedPropiedad(propiedad);
-        setEditedPropietario(propietario);
+        if (propietario && propietario.id !== 0) {
+            setEditedPropietario(propietario);
+            setIsCreatingNewOwner(false);
+        } else {
+            // Caso Bypass: Preparamos objeto vacío
+            setEditedPropietario({ ...initialKycState, id: 0 } as Propietario);
+            setIsCreatingNewOwner(true);
+        }
+        
         setPhotos([
             ...(propiedad.imageUrls || []), 
             ...(propiedad.fotos || []), 
@@ -133,7 +152,6 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
 
         const numericFields = [
             'asesorId', 'recamaras', 'banos_completos', 'medios_banos', 'cochera_autos',
-            // OJO: 'comisionCaptacionOficina', etc. se manejan en handleCurrencyChange ahora
         ];
 
         if (type === 'checkbox') {
@@ -150,13 +168,10 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
         }
     };
 
-    // [2] MANEJADOR ESPECIAL PARA INPUTS DE MONEDA
     const handleCurrencyChange = (fieldName: string, value: string) => {
-        // 'valor_operacion' es string en tu DB, así que lo guardamos tal cual (limpio de comas)
         if (fieldName === 'valor_operacion') {
             setEditedPropiedad(prev => ({ ...prev, [fieldName]: value }));
         } else {
-            // Las comisiones son numéricas, convertimos
             const numVal = parseFloat(value);
             setEditedPropiedad(prev => ({ ...prev, [fieldName]: isNaN(numVal) ? 0 : numVal }));
         }
@@ -186,16 +201,62 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
         });
     };
 
-    const handleFinalSave = () => {
-        const existingImageUrls = photos.filter(f => typeof f === 'string') as string[];
-        const newFilesToUpload = photos.filter(f => f instanceof File) as File[];
+    // ✅ FIX FINAL: Permitir guardar propiedad sin dueño
+    const handleFinalSave = async () => {
+        setIsSaving(true);
+        try {
+            const existingImageUrls = photos.filter(f => typeof f === 'string') as string[];
+            const newFilesToUpload = photos.filter(f => f instanceof File) as File[];
 
-        const finalPropiedad = { 
-            ...editedPropiedad, 
-            fotos: newFilesToUpload,
-            imageUrls: existingImageUrls,
-        };
-        onSave(finalPropiedad, editedPropietario);
+            // Clones
+            let finalPropietario = { ...editedPropietario };
+            let finalPropiedad = { ...editedPropiedad };
+            let propietarioParaGuardar: Propietario | undefined = finalPropietario;
+
+            // 1. Si el propietario es nuevo (ID 0)
+            if (finalPropietario.id === 0) {
+                
+                // A) Si el usuario escribió un nombre, asumimos que quiere CREARLO
+                if (finalPropietario.nombreCompleto) {
+                    const tenantId = user?.user_metadata?.tenant_id;
+                    if (tenantId) {
+                        const ownerPayload = { ...finalPropietario };
+                        delete (ownerPayload as any).id; // Quitamos ID 0
+
+                        const nuevoContactoDb = await createContact(ownerPayload, tenantId, 'propietario');
+                        
+                        finalPropietario.id = nuevoContactoDb.id;
+                        finalPropiedad.propietarioId = nuevoContactoDb.id;
+                        
+                        if (finalPropiedad.status === 'Incompleto' || finalPropiedad.status === 'Falta Propietario') {
+                            finalPropiedad.status = 'En Promoción';
+                        }
+                    }
+                } 
+                // B) Si NO escribió nombre (Bypass), NO mandamos propietario
+                // Y NO lanzamos alerta, simplemente guardamos la propiedad huérfana
+                else {
+                    propietarioParaGuardar = undefined; // Esto evita que el padre intente actualizar ID 0
+                    finalPropiedad.propietarioId = null; // Mantenemos el vínculo nulo
+                }
+            }
+
+            const propiedadParaEnviar = { 
+                ...finalPropiedad, 
+                fotos: newFilesToUpload,
+                imageUrls: existingImageUrls,
+            };
+
+            // 2. Enviamos al padre. 
+            // Si propietarioParaGuardar es undefined, el padre solo actualizará la propiedad.
+            onSave(propiedadParaEnviar, propietarioParaGuardar);
+
+        } catch (error) {
+            console.error("Error en handleFinalSave:", error);
+            alert("Hubo un error al guardar. Revisa la consola.");
+        } finally {
+            setIsSaving(false);
+        }
     };
     
     const comisionTotalOperacion = useMemo(() => {
@@ -463,7 +524,34 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
             case 'Datos de la Propiedad':
                 return renderPropiedadDetailsForm();
             case 'Datos del Propietario':
-                return <KycPldForm formData={editedPropietario} onFormChange={handlePropietarioChange} onSave={() => setActiveTab(TABS[0])} onCancel={() => {}} userType="Propietario" isEmbedded={true} />;
+                return (
+                    <div className="space-y-4">
+                        {isCreatingNewOwner && (
+                            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                                <div className="flex">
+                                    <div className="flex-shrink-0">
+                                        <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div className="ml-3">
+                                        <p className="text-sm text-yellow-700">
+                                            Esta propiedad no tiene propietario asignado. Completa los datos a continuación para crearlo automáticamente al guardar.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        <KycPldForm 
+                            formData={editedPropietario} 
+                            onFormChange={handlePropietarioChange} 
+                            onSave={() => setActiveTab(TABS[0])} 
+                            onCancel={() => {}} 
+                            userType="Propietario" 
+                            isEmbedded={true} 
+                        />
+                    </div>
+                );
             case 'Progreso':
                 return renderProgressView();
             default:
@@ -493,11 +581,11 @@ const EditPropiedadForm: React.FC<EditPropiedadFormProps> = ({
                 {viewMode === 'progressOnly' ? renderProgressView() : renderFullEditView()}
             </div>
             <div className="flex-shrink-0 flex justify-end mt-6 pt-4 border-t space-x-4">
-                <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-800 py-2 px-6 rounded-md hover:bg-gray-300">
+                <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-800 py-2 px-6 rounded-md hover:bg-gray-300" disabled={isSaving}>
                     Cancelar
                 </button>
-                <button type="button" onClick={handleFinalSave} className="bg-iange-orange text-white py-2 px-6 rounded-md hover:bg-orange-600">
-                    Guardar Cambios
+                <button type="button" onClick={handleFinalSave} className="bg-iange-orange text-white py-2 px-6 rounded-md hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed" disabled={isSaving}>
+                    {isSaving ? 'Guardando...' : 'Guardar Cambios'}
                 </button>
             </div>
         </div>

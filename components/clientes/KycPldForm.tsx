@@ -165,6 +165,7 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
 
         const fetchExtraData = async () => {
             const entityId = (formData as any).id; 
+            // 🔒 CANDADO 1: Si no hay ID, no hacemos fetch (evita error "properties of null")
             if (!entityId) return;
 
             // 1.1 Recuperar Validaciones (Historial)
@@ -222,6 +223,9 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
 
     // --- 📸 SUBIR FOTOS A STORAGE ---
     const uploadEvidence = async (file: File, entityId: string, side: 'frente' | 'reverso') => {
+        // 🔒 CANDADO 2: Si no hay ID, no intentamos subir nada (evita error de path)
+        if (!entityId) return null;
+
         try {
             const fileExt = file.name.split('.').pop();
             const fileName = `kyc/${entityId}/${Date.now()}_${side}.${fileExt}`;
@@ -258,6 +262,9 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         const tenantId = user?.user_metadata?.tenant_id || undefined; 
         
         const entityId = (currentData as any).id || null;
+
+        // 🔒 CANDADO 3: Si no hay ID, no guardamos log (evita error de constraints)
+        if (!entityId) return currentData;
 
         const { data, error } = await supabase.from('kyc_validations').insert({
             tenant_id: tenantId,
@@ -321,10 +328,6 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         // 🔥 FIX: Permitimos que tenantId sea undefined si no está configurado
         const tenantId = user?.user_metadata?.tenant_id || ""; 
         
-        // Si no hay tenant, usamos una string vacía temporalmente para pasar al servicio, 
-        // pero el servicio nufiService y el proxy están diseñados para recibirlo.
-        // Lo importante es el LogToSupabase que arreglamos arriba.
-
         // Definimos IDs
         const entityIdForStorage = (formData as any).id ? String((formData as any).id) : `temp_${Date.now()}`;
         const entityIdForDb = (formData as any).id ? String((formData as any).id) : "TEMP-NEW-USER";
@@ -569,9 +572,6 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
         // 🔥 FIX: Permitimos que tenantId sea undefined
         const tenantId = user?.user_metadata?.tenant_id || ""; 
         
-        // OJO: Sin tenantId no podemos LOGGEAR en BD si la columna fuera estrictamente NOT NULL.
-        // Pero ya mandamos el ALTER TABLE, así que funcionará.
-
         setLoadingPld(true);
         try {
             const entityId = (formData as any).id ? String((formData as any).id) : "TEMP-MANUAL";
@@ -614,6 +614,9 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
 
     const tokenToUse = (formData as any).verification_token || localToken;
 
+    // ✅ CHECKBOX: Variable lógica para ocultar secciones si no hay ID
+    const hasEntityId = !!(formData as any).id || !isEmbedded;
+
     return (
         <>
             <DeleteConfirmationModal 
@@ -655,159 +658,165 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                 )}
 
                 {/* --- SECCIÓN INE (OCR y Vigencia) --- */}
-                <div className={`mb-8 border-2 border-dashed rounded-xl p-6 ${statusIne === 'success' ? 'border-green-300 bg-green-50' : 'border-indigo-200 bg-indigo-50/50'}`}>
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
-                        <div>
-                            <h3 className={`text-lg font-bold flex items-center gap-2 ${statusIne === 'success' ? 'text-green-800' : 'text-indigo-900'}`}>
-                                🪪 Paso 1: Identificación (INE)
-                            </h3>
-                            <p className="text-sm text-indigo-600">
-                                {statusIne === 'success' ? 'Validación completada correctamente.' : 'Sube las fotos y nosotros llenaremos el formulario por ti.'}
-                            </p>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                            {statusIne === 'success' ? (
-                                <>
-                                    <span className="px-4 py-2 bg-white text-green-700 font-bold rounded-lg shadow-sm border border-green-200 flex items-center gap-2">
-                                        ✅ INE Verificada
-                                    </span>
-                                    <button 
-                                        type="button"
-                                        onClick={() => confirmDelete('INE')}
-                                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                                        title="Eliminar validación y re-escanear"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 000-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                                        </svg>
-                                    </button>
-                                </>
-                            ) : (
-                                <button type="button" onClick={(e) => ejecutarValidacionCompleta(e)} disabled={statusIne === 'scanning' || statusIne === 'validating'} className={`px-4 py-2 rounded-lg font-medium text-white transition-all shadow-md flex items-center gap-2 text-sm ${statusIne === 'error' ? 'bg-red-500 hover:bg-red-600' : (statusIne === 'scanning' || statusIne === 'validating') ? 'bg-indigo-400 cursor-wait' : 'bg-indigo-600 hover:bg-indigo-700 hover:scale-105'}`}>
-                                    {statusIne === 'scanning' && '📷 Procesando...'}
-                                    {statusIne === 'validating' && '📡 Validando...'}
-                                    {statusIne === 'idle' && '🚀 Procesar y Validar Ahora'}
-                                    {statusIne === 'error' && '⚠️ Reintentar'}
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    {(statusIne === 'scanning' || statusIne === 'validating') && (
-                        <div className="mb-4 bg-white px-3 py-2 rounded border border-indigo-100 text-xs text-indigo-600 font-mono animate-pulse">{statusMessage}</div>
-                    )}
-                    
-                    {statusIne !== 'success' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-sm">
-                                <label className="block text-sm font-bold text-gray-700 mb-2">1. Frente de la INE</label>
-                                <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'front')} className="block w-full text-xs text-slate-500 file:mr-2 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                {/* 🔒 Si no hay ID, ocultamos el escáner para evitar errores */}
+                {hasEntityId && (
+                    <div className={`mb-8 border-2 border-dashed rounded-xl p-6 ${statusIne === 'success' ? 'border-green-300 bg-green-50' : 'border-indigo-200 bg-indigo-50/50'}`}>
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                            <div>
+                                <h3 className={`text-lg font-bold flex items-center gap-2 ${statusIne === 'success' ? 'text-green-800' : 'text-indigo-900'}`}>
+                                    🪪 Paso 1: Identificación (INE)
+                                </h3>
+                                <p className="text-sm text-indigo-600">
+                                    {statusIne === 'success' ? 'Validación completada correctamente.' : 'Sube las fotos y nosotros llenaremos el formulario por ti.'}
+                                </p>
                             </div>
-                            <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-sm">
-                                <label className="block text-sm font-bold text-gray-700 mb-2">2. Reverso de la INE</label>
-                                <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'back')} className="block w-full text-xs text-slate-500 file:mr-2 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className={`mt-4 overflow-hidden transition-all duration-300 ${statusIne === 'idle' ? 'max-h-0' : 'max-h-96'}`}>
-                        <div className="flex justify-between items-center mb-1">
-                            <p className="text-xs text-gray-400 uppercase font-bold">Datos Técnicos:</p>
-                            {pldResult.status && (
-                                <div className="flex items-center gap-2">
-                                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${pldResult.status === 'clean' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                        {pldResult.status === 'clean' ? '🛡️ PLD: Limpio' : '⚠️ PLD: Riesgo'}
-                                    </span>
-                                    <button onClick={() => confirmDelete('PLD')} className="text-gray-400 hover:text-red-500" title="Borrar validación PLD">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 opacity-75">
-                            <input type="text" disabled value={ineDetails.tipo} className="text-xs bg-gray-100 border-none rounded p-1 text-center" title="Modelo"/>
-                            <input type="text" disabled value={ineDetails.claveElector} className="col-span-2 text-xs bg-gray-100 border-none rounded p-1" placeholder="Clave Elector"/>
-                            <input type="text" disabled value={ineDetails.ocr} className="text-xs bg-gray-100 border-none rounded p-1" placeholder="OCR"/>
-                            <input type="text" disabled value={ineDetails.cic} className="text-xs bg-gray-100 border-none rounded p-1" placeholder="CIC"/>
-                        </div>
-                    </div>
-                </div>
-
-                {/* --- SECCIÓN NUEVA: VERIFICACIÓN BIOMÉTRICA (INE vs Selfie) --- */}
-                <div className="mb-6 bg-orange-50 border border-orange-200 rounded-lg p-5">
-                    <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
-                        <ShieldCheckIcon className="h-5 w-5 text-iange-orange" />
-                        Verificación Biométrica (INE vs Selfie)
-                    </h3>
-                    
-                    {!tokenToUse ? (
-                        <div className="text-sm text-orange-800 bg-orange-100 p-3 rounded">
-                            ⚠️ <strong>Guarda el contacto</strong> para generar su enlace de verificación seguro.
-                        </div>
-                    ) : (
-                        <div>
-                            <p className="text-sm text-gray-600 mb-4">
-                                Comparte este enlace seguro con el cliente para que realice la prueba de vida.
-                            </p>
                             
-                            {/* Estatus Actual */}
-                            <div className="flex items-center gap-4 mb-4 text-sm">
-                                <div className={`px-3 py-1 rounded-full font-medium border ${
-                                    (formData as any).biometricStatus === 'Verificado' 
-                                        ? 'bg-green-100 text-green-800 border-green-200' 
-                                        : (formData as any).biometricStatus === 'Rechazado'
-                                        ? 'bg-red-100 text-red-800 border-red-200'
-                                        : 'bg-gray-100 text-gray-600 border-gray-200'
-                                }`}>
-                                    Estado: {(formData as any).biometricStatus || 'Pendiente'}
-                                </div>
-                                {(formData as any).biometricScore && (
-                                    <span className="text-gray-500">Certeza: {((formData as any).biometricScore * 100).toFixed(1)}%</span>
+                            <div className="flex items-center gap-2">
+                                {statusIne === 'success' ? (
+                                    <>
+                                        <span className="px-4 py-2 bg-white text-green-700 font-bold rounded-lg shadow-sm border border-green-200 flex items-center gap-2">
+                                            ✅ INE Verificada
+                                        </span>
+                                        <button 
+                                            type="button"
+                                            onClick={() => confirmDelete('INE')}
+                                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Eliminar validación y re-escanear"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 000-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                            </svg>
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button type="button" onClick={(e) => ejecutarValidacionCompleta(e)} disabled={statusIne === 'scanning' || statusIne === 'validating'} className={`px-4 py-2 rounded-lg font-medium text-white transition-all shadow-md flex items-center gap-2 text-sm ${statusIne === 'error' ? 'bg-red-500 hover:bg-red-600' : (statusIne === 'scanning' || statusIne === 'validating') ? 'bg-indigo-400 cursor-wait' : 'bg-indigo-600 hover:bg-indigo-700 hover:scale-105'}`}>
+                                        {statusIne === 'scanning' && '📷 Procesando...'}
+                                        {statusIne === 'validating' && '📡 Validando...'}
+                                        {statusIne === 'idle' && '🚀 Procesar y Validar Ahora'}
+                                        {statusIne === 'error' && '⚠️ Reintentar'}
+                                    </button>
                                 )}
                             </div>
+                        </div>
 
-                            <div className="flex gap-2">
-                                <div className="flex-1 relative">
-                                    <input 
-                                        readOnly 
-                                        value={`${window.location.origin}/verificar-identidad/${tokenToUse}`} 
-                                        className="w-full pl-3 pr-10 py-2 border rounded-md bg-white text-gray-500 text-sm truncate"
-                                    />
+                        {(statusIne === 'scanning' || statusIne === 'validating') && (
+                            <div className="mb-4 bg-white px-3 py-2 rounded border border-indigo-100 text-xs text-indigo-600 font-mono animate-pulse">{statusMessage}</div>
+                        )}
+                        
+                        {statusIne !== 'success' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-sm">
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">1. Frente de la INE</label>
+                                    <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'front')} className="block w-full text-xs text-slate-500 file:mr-2 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                                </div>
+                                <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-sm">
+                                    <label className="block text-sm font-bold text-gray-700 mb-2">2. Reverso de la INE</label>
+                                    <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'back')} className="block w-full text-xs text-slate-500 file:mr-2 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className={`mt-4 overflow-hidden transition-all duration-300 ${statusIne === 'idle' ? 'max-h-0' : 'max-h-96'}`}>
+                            <div className="flex justify-between items-center mb-1">
+                                <p className="text-xs text-gray-400 uppercase font-bold">Datos Técnicos:</p>
+                                {pldResult.status && (
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${pldResult.status === 'clean' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                            {pldResult.status === 'clean' ? '🛡️ PLD: Limpio' : '⚠️ PLD: Riesgo'}
+                                        </span>
+                                        <button onClick={() => confirmDelete('PLD')} className="text-gray-400 hover:text-red-500" title="Borrar validación PLD">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 opacity-75">
+                                <input type="text" disabled value={ineDetails.tipo} className="text-xs bg-gray-100 border-none rounded p-1 text-center" title="Modelo"/>
+                                <input type="text" disabled value={ineDetails.claveElector} className="col-span-2 text-xs bg-gray-100 border-none rounded p-1" placeholder="Clave Elector"/>
+                                <input type="text" disabled value={ineDetails.ocr} className="text-xs bg-gray-100 border-none rounded p-1" placeholder="OCR"/>
+                                <input type="text" disabled value={ineDetails.cic} className="text-xs bg-gray-100 border-none rounded p-1" placeholder="CIC"/>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- SECCIÓN NUEVA: VERIFICACIÓN BIOMÉTRICA (INE vs Selfie) --- */}
+                {/* 🔒 Si no hay ID, ocultamos la biometría */}
+                {hasEntityId && (
+                    <div className="mb-6 bg-orange-50 border border-orange-200 rounded-lg p-5">
+                        <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
+                            <ShieldCheckIcon className="h-5 w-5 text-iange-orange" />
+                            Verificación Biométrica (INE vs Selfie)
+                        </h3>
+                        
+                        {!tokenToUse ? (
+                            <div className="text-sm text-orange-800 bg-orange-100 p-3 rounded">
+                                ⚠️ <strong>Guarda el contacto</strong> para generar su enlace de verificación seguro.
+                            </div>
+                        ) : (
+                            <div>
+                                <p className="text-sm text-gray-600 mb-4">
+                                    Comparte este enlace seguro con el cliente para que realice la prueba de vida.
+                                </p>
+                                
+                                {/* Estatus Actual */}
+                                <div className="flex items-center gap-4 mb-4 text-sm">
+                                    <div className={`px-3 py-1 rounded-full font-medium border ${
+                                        (formData as any).biometricStatus === 'Verificado' 
+                                            ? 'bg-green-100 text-green-800 border-green-200' 
+                                            : (formData as any).biometricStatus === 'Rechazado'
+                                            ? 'bg-red-100 text-red-800 border-red-200'
+                                            : 'bg-gray-100 text-gray-600 border-gray-200'
+                                    }`}>
+                                        Estado: {(formData as any).biometricStatus || 'Pendiente'}
+                                    </div>
+                                    {(formData as any).biometricScore && (
+                                        <span className="text-gray-500">Certeza: {((formData as any).biometricScore * 100).toFixed(1)}%</span>
+                                    )}
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <div className="flex-1 relative">
+                                        <input 
+                                            readOnly 
+                                            value={`${window.location.origin}/verificar-identidad/${tokenToUse}`} 
+                                            className="w-full pl-3 pr-10 py-2 border rounded-md bg-white text-gray-500 text-sm truncate"
+                                        />
+                                        <button 
+                                            type="button"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(`${window.location.origin}/verificar-identidad/${tokenToUse}`);
+                                                alert("Enlace copiado");
+                                            }}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-iange-orange"
+                                            title="Copiar enlace"
+                                        >
+                                            <ClipboardDocumentCheckIcon className="h-5 w-5" />
+                                        </button>
+                                    </div>
+                                    
+                                    {/* WhatsApp Button */}
                                     <button 
                                         type="button"
                                         onClick={() => {
-                                            navigator.clipboard.writeText(`${window.location.origin}/verificar-identidad/${tokenToUse}`);
-                                            alert("Enlace copiado");
+                                            const link = `${window.location.origin}/verificar-identidad/${tokenToUse}`;
+                                            const phone = formData.telefono ? formData.telefono.replace(/[^0-9]/g, '') : '';
+                                            const text = `Hola ${formData.nombreCompleto ? formData.nombreCompleto.split(' ')[0] : ''}, por seguridad necesitamos validar tu identidad. Por favor entra aquí para tomarte una foto rápida: ${link}`;
+                                            if (phone) {
+                                                window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+                                            } else {
+                                                alert("No hay teléfono registrado para enviar WhatsApp.");
+                                            }
                                         }}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-iange-orange"
-                                        title="Copiar enlace"
+                                        className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md flex items-center gap-2 font-medium transition-colors"
                                     >
-                                        <ClipboardDocumentCheckIcon className="h-5 w-5" />
+                                        <ShareIcon className="h-4 w-4" /> WhatsApp
                                     </button>
                                 </div>
-                                
-                                {/* WhatsApp Button */}
-                                <button 
-                                    type="button"
-                                    onClick={() => {
-                                        const link = `${window.location.origin}/verificar-identidad/${tokenToUse}`;
-                                        const phone = formData.telefono ? formData.telefono.replace(/[^0-9]/g, '') : '';
-                                        const text = `Hola ${formData.nombreCompleto ? formData.nombreCompleto.split(' ')[0] : ''}, por seguridad necesitamos validar tu identidad. Por favor entra aquí para tomarte una foto rápida: ${link}`;
-                                        if (phone) {
-                                            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
-                                        } else {
-                                            alert("No hay teléfono registrado para enviar WhatsApp.");
-                                        }
-                                    }}
-                                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md flex items-center gap-2 font-medium transition-colors"
-                                >
-                                    <ShareIcon className="h-4 w-4" /> WhatsApp
-                                </button>
                             </div>
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
 
                 <FormSection title={`Paso 2: Datos del ${userType} (Autocompletado)`}>
                     {asesores.length > 0 && (
@@ -822,18 +831,22 @@ const KycPldForm: React.FC<KycPldFormProps> = ({ onSave, onCancel, formData, onF
                     <div className="md:col-span-2">
                         <Input label="Nombre completo" name="nombreCompleto" value={formData.nombreCompleto} onChange={handleChange} fullWidth placeholder="Se llenará automáticamente al escanear" />
                         
-                        {pldResult.status ? (
-                            <div className="mt-1 flex items-center gap-2">
-                                <span className={`text-xs font-bold ${pldResult.status === 'clean' ? 'text-green-600' : 'text-red-600'}`}>
-                                    {pldResult.status === 'clean' ? '✅ PLD Verificado' : '⚠️ PLD con Riesgo'}
-                                </span>
-                            </div>
-                        ) : (
-                            <button type="button" onClick={ejecutarValidacionListasManual} className="text-xs text-indigo-600 underline mt-1 hover:text-indigo-800">
-                                {loadingPld ? 'Consultando...' : '🔍 Verificar manualmente en Listas Negras'}
-                            </button>
-                        )}
+                        {/* VALIDACIÓN MANUAL PLD - SÓLO SI HAY ID */}
+                        {hasEntityId ? (
+                            pldResult.status ? (
+                                <div className="mt-1 flex items-center gap-2">
+                                    <span className={`text-xs font-bold ${pldResult.status === 'clean' ? 'text-green-600' : 'text-red-600'}`}>
+                                        {pldResult.status === 'clean' ? '✅ PLD Verificado' : '⚠️ PLD con Riesgo'}
+                                    </span>
+                                </div>
+                            ) : (
+                                <button type="button" onClick={ejecutarValidacionListasManual} className="text-xs text-indigo-600 underline mt-1 hover:text-indigo-800">
+                                    {loadingPld ? 'Consultando...' : '🔍 Verificar manualmente en Listas Negras'}
+                                </button>
+                            )
+                        ) : null}
                     </div>
+                    {/* ... Resto del formulario ... */}
                     <Input label="CURP" name="curp" value={formData.curp} onChange={handleChange} placeholder="Se llena auto." />
                     <Input label="RFC" name="rfc" value={formData.rfc} onChange={handleChange} />
                     <Input label="Fecha nacimiento" name="fechaNacimiento" value={formData.fechaNacimiento} onChange={handleChange} type="date" />

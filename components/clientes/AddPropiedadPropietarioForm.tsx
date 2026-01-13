@@ -46,7 +46,7 @@ const initialPropiedadState: Omit<Propiedad, 'id' | 'propietarioId' | 'fecha_cap
 };
 
 interface AddPropiedadPropietarioFormProps {
-    onSave: (propiedad: Omit<Propiedad, 'id' | 'propietarioId' | 'fecha_captacion' | 'status' | 'fecha_venta'>, propietario: Omit<Propietario, 'id'>) => void;
+    onSave: (propiedad: Omit<Propiedad, 'id' | 'propietarioId' | 'fecha_captacion' | 'status' | 'fecha_venta'>, propietario: Omit<Propietario, 'id'> | null) => void;
     onCancel: () => void;
     asesores: User[];
 }
@@ -99,6 +99,9 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
     const [propietarioData, setPropietarioData] = useState<Omit<Propietario, 'id'>>(initialKycPropietarioState);
     const [photos, setPhotos] = useState<File[]>([]);
     const [isSaving, setIsSaving] = useState(false);
+    
+    // ✅ NUEVO ESTADO: Omitir propietario
+    const [omitirPropietario, setOmitirPropietario] = useState(false);
 
     const MAX_SIZE_MB = 5;
     const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
@@ -165,6 +168,7 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
         setActiveTab(TABS[0]);
     };
     
+    // ✅ Validamos si los datos mínimos del propietario están (solo si no se omite)
     const isPropietarioDataComplete = !!(propietarioData.nombreCompleto && propietarioData.email);
     const arePhotosSufficient = photos.length >= 1;
 
@@ -179,27 +183,45 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
             setActiveTab(TABS[0]);
             return;
         }
-        if (propiedadData.calle && isPropietarioDataComplete) {
+
+        // ✅ LÓGICA CONDICIONAL DE GUARDADO
+        // Si se omite el propietario, solo validamos la propiedad.
+        // Si NO se omite, validamos ambos.
+        const canSave = propiedadData.calle && (omitirPropietario || isPropietarioDataComplete);
+
+        if (canSave) {
             setIsSaving(true);
             try {
                 // GENERAMOS EL PDF USANDO EL COMPONENTE BONITO
-                const pdfDataUrl = await generatePdf(propiedadData, photos);
+                let pdfDataUrl = '';
+                try {
+                    pdfDataUrl = await generatePdf(propiedadData, photos);
+                } catch (pdfError) {
+                    console.error("Error generando PDF:", pdfError);
+                    // No bloqueamos el guardado si falla el PDF
+                }
                 
                 const finalPropiedadData = { ...propiedadData, fotos: photos, fichaTecnicaPdf: pdfDataUrl };
-                onSave(finalPropiedadData, propietarioData);
+                
+                // Si omitirPropietario es true, mandamos null en lugar de los datos vacíos
+                const finalPropietarioData = omitirPropietario ? null : propietarioData;
+
+                onSave(finalPropiedadData, finalPropietarioData);
             } catch (error) {
-                console.error("Error generando PDF:", error);
-                alert("Hubo un error al generar la ficha técnica. La propiedad se guardará sin ella.");
-                // Guardamos igual aunque falle el PDF
-                const finalPropiedadData = { ...propiedadData, fotos: photos, fichaTecnicaPdf: '' };
-                onSave(finalPropiedadData, propietarioData);
+                console.error("Error al guardar:", error);
+                alert("Hubo un error al guardar la propiedad.");
             } finally {
                 setIsSaving(false);
             }
         } else {
              let message = 'Por favor, completa los siguientes campos antes de guardar:\n';
             if (!propiedadData.calle) message += '- Calle de la propiedad (en "Datos de la Propiedad")\n';
-            if (!isPropietarioDataComplete) message += '- Nombre y email del propietario (en "Datos del Propietario")\n';
+            
+            // Solo pedimos datos de propietario si NO se marcó la casilla de omitir
+            if (!omitirPropietario && !isPropietarioDataComplete) {
+                message += '- Nombre y email del propietario (en "Datos del Propietario")\n';
+                message += '  (O marca la casilla "Añadir datos del propietario más tarde")\n';
+            }
             alert(message);
         }
     };
@@ -218,7 +240,7 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                         >
-                            {tab} {tab === 'Datos del Propietario' && isPropietarioDataComplete && '✓'}
+                            {tab} {tab === 'Datos del Propietario' && (omitirPropietario ? ' (Pendiente)' : isPropietarioDataComplete ? '✓' : '')}
                         </button>
                     ))}
                 </nav>
@@ -228,6 +250,7 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
 
                 {activeTab === 'Datos de la Propiedad' && (
                     <div className="space-y-6">
+                        {/* ... (Todo el contenido de Datos de la Propiedad sigue igual) ... */}
                         <section>
                             <h3 className="text-lg font-semibold text-gray-800 mb-2 border-b pb-2">Dirección del Inmueble</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -429,7 +452,6 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                                     </div>
                                 </div>
                                 
-                                {/* ✅ GRID DE 3 COLUMNAS: TIPO OPERACIÓN, TIPO INMUEBLE Y ASESOR */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>
                                         <label htmlFor="tipoOperacion" className="block text-sm font-medium text-gray-700 mb-1">Tipo de Operación</label>
@@ -498,14 +520,39 @@ const AddPropiedadPropietarioForm: React.FC<AddPropiedadPropietarioFormProps> = 
                 )}
 
                 {activeTab === 'Datos del Propietario' && (
-                    <KycPldForm 
-                        formData={propietarioData}
-                        onFormChange={setPropietarioData}
-                        onSave={handleSavePropietario}
-                        onCancel={()=>{}} 
-                        userType="Propietario" 
-                        isEmbedded={true}
-                    />
+                    <div className="space-y-4">
+                        {/* ✅ CHEKBOX PARA OMITIR DATOS */}
+                        <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-md mb-4 flex items-start gap-3">
+                            <input 
+                                type="checkbox" 
+                                id="omitirPropietario" 
+                                checked={omitirPropietario}
+                                onChange={(e) => setOmitirPropietario(e.target.checked)}
+                                className="mt-1 h-5 w-5 text-iange-orange border-gray-300 rounded focus:ring-iange-orange"
+                            />
+                            <div>
+                                <label htmlFor="omitirPropietario" className="font-medium text-yellow-800 block cursor-pointer select-none">
+                                    Añadir datos del propietario más tarde
+                                </label>
+                                <p className="text-sm text-yellow-700 mt-1">
+                                    Si marcas esta opción, podrás guardar la propiedad sin llenar la información del dueño. 
+                                    El estatus de la propiedad quedará como "Incompleto" hasta que asignes un propietario.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Si omitir es true, deshabilitamos el form visualmente */}
+                        <div className={`transition-opacity duration-300 ${omitirPropietario ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+                            <KycPldForm 
+                                formData={propietarioData}
+                                onFormChange={setPropietarioData}
+                                onSave={handleSavePropietario}
+                                onCancel={()=>{}} 
+                                userType="Propietario" 
+                                isEmbedded={true}
+                            />
+                        </div>
+                    </div>
                 )}
             </div>
 
