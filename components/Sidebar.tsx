@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { MENU_ITEMS, SETTINGS_MENU_ITEM, SETTINGS_MENU_ITEMS, SUPERADMIN_MENU_ITEMS, ROLES } from '../constants';
 import { User, UserPermissions } from '../types';
@@ -12,25 +12,29 @@ const ChevronLeftIcon = ({ className }: { className?: string }) => (
 );
 
 // ==========================================
-// COMPONENTE LOGO ADAPTATIVO
+// COMPONENTE LOGO ADAPTATIVO (CENTRADO Y MÁS GRANDE)
 // ==========================================
 const Logo = ({ url, collapsed, accountName }: { url?: string | null, collapsed: boolean, accountName?: string }) => {
-    // Obtenemos la inicial (Si no hay nombre, usamos 'I')
     const initial = accountName ? accountName.charAt(0).toUpperCase() : 'I';
 
     return (
-        <div className={`flex items-center mb-8 h-12 transition-all duration-300 ${collapsed ? 'justify-center px-0' : 'justify-center px-2'}`}>
+        // Contenedor principal del Logo:
+        // - collapsed: justify-center (Centrado perfecto)
+        // - expanded: justify-center (También centrado para que se vea bien alineado) o justify-start si prefieres a la izquierda.
+        // He puesto 'justify-center' en ambos para asegurar que se vea equilibrado, pero puedes cambiar el 'else' a 'justify-start'.
+        <div className={`flex items-center mb-8 h-16 transition-all duration-300 w-full ${collapsed ? 'justify-center px-0' : 'justify-center px-2'}`}>
         {collapsed ? (
-            // ✅ LOGO VERSIÓN CUADRO NARANJA
-            <div className="w-10 h-10 bg-iange-orange rounded-lg flex items-center justify-center shadow-sm transition-transform hover:scale-105 cursor-default">
+            // ✅ LOGO VERSIÓN CUADRO NARANJA (Centrado)
+            <div className="w-10 h-10 bg-iange-orange rounded-lg flex items-center justify-center shadow-sm transition-transform hover:scale-105 cursor-default flex-shrink-0">
                 <span className="text-white font-bold text-xl select-none">{initial}</span>
             </div>
         ) : (
-            // LOGO COMPLETO (Original)
+            // ✅ LOGO COMPLETO (Más Grande y Centrado)
             <img 
                 src={url || "/logo.svg"} 
                 alt="Logo" 
-                className="h-full w-auto object-contain max-h-10 transition-opacity duration-300" 
+                // Aumentado max-h-12 y max-w-[180px] para mayor presencia
+                className="h-full w-auto object-contain max-h-12 max-w-[180px] transition-opacity duration-300" 
                 onError={(e) => {
                     e.currentTarget.style.display = 'none';
                     const fallback = document.getElementById('logo-fallback');
@@ -39,9 +43,9 @@ const Logo = ({ url, collapsed, accountName }: { url?: string | null, collapsed:
             />
         )}
         
-        {/* Fallback oculto por defecto */}
+        {/* Fallback oculto */}
         <div id="logo-fallback" className={`hidden ${collapsed ? 'hidden' : ''}`}>
-            <svg width="100" height="32" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <text x="0" y="30" fontFamily="sans-serif" fontSize="32" fontWeight="bold" fill="#1E1E1E">
                 IANGE<tspan fill="#F37321">.</tspan>
                 </text>
@@ -52,7 +56,7 @@ const Logo = ({ url, collapsed, accountName }: { url?: string | null, collapsed:
 };
 
 // ==========================================
-// NAV ITEM (Corregido tamaño de iconos)
+// NAV ITEM (TRANSICIÓN SUAVE)
 // ==========================================
 interface NavItemProps {
     item: {
@@ -70,33 +74,26 @@ const NavItem: React.FC<NavItemProps> = ({ item, collapsed }) => {
     <NavLink
       to={item.path}
       end={item.path === '/' || item.path === '/superadmin'}
-      title={collapsed ? item.name : ''} // Tooltip nativo al estar colapsado
+      title={collapsed ? item.name : ''}
       className={({ isActive }) =>
-        `flex items-center rounded-md transition-all duration-200 group relative
-         ${collapsed ? 'justify-center px-2 py-3' : 'px-4 py-2.5'}
+        `flex items-center rounded-md transition-all duration-300 group relative overflow-hidden
+         py-2.5
+         ${collapsed ? 'justify-center px-2' : 'px-4'} 
          ${isActive 
             ? 'bg-iange-salmon text-iange-orange' 
             : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
         }`
       }
     >
-      {Icon && (
-        <Icon 
-          // ✅ CAMBIO AQUÍ: Forzamos h-5 w-5 en ambos estados para evitar saltos.
-          // Solo quitamos el margen (mr-3) cuando está colapsado.
-          className={`
-            transition-colors h-5 w-5
-            ${collapsed ? '' : 'mr-3'} 
-          `} 
-        />
-      )}
+      <div className={`flex-shrink-0 flex items-center justify-center w-6 h-6 transition-all duration-300 ${collapsed ? '' : 'mr-3'}`}>
+          {Icon && (
+            <Icon className="w-5 h-5 transition-colors duration-300" />
+          )}
+      </div>
       
-      {/* Texto: Oculto si está colapsado */}
-      {!collapsed && (
-          <span className="font-medium text-sm whitespace-nowrap overflow-hidden transition-all duration-300">
-              {item.name}
-          </span>
-      )}
+      <div className={`overflow-hidden transition-all duration-300 whitespace-nowrap ${collapsed ? 'w-0 opacity-0' : 'w-40 opacity-100'}`}>
+          <span className="font-medium text-sm">{item.name}</span>
+      </div>
     </NavLink>
   );
 };
@@ -105,7 +102,6 @@ interface SidebarProps {
     user: User;
     logoUrl?: string | null;
     accountName?: string;
-    // Props de control externo
     collapsed: boolean;
     toggleCollapse: () => void;
 }
@@ -144,13 +140,13 @@ const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl, accountName, collapsed
     const MainMenu = () => (
         <>
             <Logo url={logoUrl} collapsed={collapsed} accountName={accountName || user.name} />
-            <nav className="space-y-1">
+            <nav className="space-y-1 w-full">
                 {visibleMenuItems.map((item) => (
                     <NavItem key={item.name} item={item} collapsed={collapsed} />
                 ))}
             </nav>
              {canSeeSettings && (
-                <div className={`mt-auto pt-4 border-t border-gray-100 ${collapsed ? 'px-0' : ''}`}>
+                <div className={`mt-auto pt-4 border-t border-gray-100 w-full ${collapsed ? 'px-0' : ''}`}>
                     <NavItem item={SETTINGS_MENU_ITEM} collapsed={collapsed} />
                 </div>
              )}
@@ -160,7 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl, accountName, collapsed
     const SuperAdminMenu = () => (
         <>
             <Logo url={logoUrl} collapsed={collapsed} accountName={accountName || user.name} />
-            <nav className="space-y-1">
+            <nav className="space-y-1 w-full">
                 {SUPERADMIN_MENU_ITEMS.map((item) => (
                     <NavItem key={item.name} item={item} collapsed={collapsed} />
                 ))}
@@ -176,15 +172,21 @@ const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl, accountName, collapsed
                 onClick={handleBack}
                 title="Volver"
                 className={`
-                    w-full mb-4 rounded-md bg-iange-salmon text-iange-dark font-semibold hover:bg-orange-200 transition-colors flex items-center
-                    ${collapsed ? 'justify-center py-3' : 'px-4 py-2.5'}
+                    w-full mb-4 rounded-md bg-iange-salmon text-iange-dark font-semibold hover:bg-orange-200 transition-colors flex items-center overflow-hidden
+                    py-2.5
+                    ${collapsed ? 'justify-center px-2' : 'px-4'}
                 `}
             >
-                <span className={`${collapsed ? '' : 'mr-2'}`}>←</span> 
-                {!collapsed && "Atrás"}
+                <div className={`flex-shrink-0 flex items-center justify-center w-6 h-6 transition-all duration-300 ${collapsed ? '' : 'mr-3'}`}>
+                    <span>←</span> 
+                </div>
+                
+                <div className={`overflow-hidden transition-all duration-300 whitespace-nowrap ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
+                    <span className="font-semibold text-sm">Atrás</span>
+                </div>
             </button>
 
-            <nav className="space-y-1">
+            <nav className="space-y-1 w-full">
                 {visibleSettingsMenuItems.map((item) => (
                     <NavItem key={item.name} item={item} collapsed={collapsed} />
                 ))}
@@ -198,11 +200,9 @@ const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl, accountName, collapsed
     return <MainMenu />;
   }
 
-  // Ancho dinámico
   const widthClass = collapsed ? 'w-20' : 'w-64';
 
   return (
-    // EL ASIDE PRINCIPAL
     <aside 
         className={`
             bg-white h-screen border-r border-gray-200 fixed top-0 left-0 z-30 
@@ -210,7 +210,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl, accountName, collapsed
             ${widthClass}
         `}
     >
-        {/* BOTÓN DE COLAPSO (Flecha en medio) */}
+        {/* BOTÓN DE COLAPSO (MEDIO) */}
         <button
             onClick={toggleCollapse}
             className="absolute -right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center text-gray-500 hover:text-iange-orange hover:border-iange-orange shadow-sm z-50 transition-colors focus:outline-none"
@@ -219,18 +219,17 @@ const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl, accountName, collapsed
             <ChevronLeftIcon className={`w-3 h-3 transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`} />
         </button>
 
-        {/* CONTENIDO INTERNO */}
-        <div className={`flex-1 flex flex-col justify-between overflow-y-auto overflow-x-hidden ${collapsed ? 'p-3' : 'p-6'}`}>
-            <div className="flex flex-col h-full">
+        {/* CONTENIDO */}
+        <div className={`flex-1 flex flex-col justify-between overflow-y-auto overflow-x-hidden ${collapsed ? 'items-center py-6 px-2' : 'p-6'}`}>
+            <div className="flex flex-col h-full w-full">
                 {renderContent()}
             </div>
         </div>
 
-        {/* FOOTER VERSIÓN */}
-        <div className={`pb-3 text-[10px] text-gray-300 font-mono text-center select-none bg-white transition-opacity ${collapsed ? 'opacity-0' : 'opacity-100'}`}>
+        {/* FOOTER */}
+        <div className={`pb-3 text-[10px] text-gray-300 font-mono text-center select-none bg-white transition-opacity duration-300 ${collapsed ? 'opacity-0' : 'opacity-100'}`}>
             v1.0.1
         </div>
-
     </aside>
   );
 };
