@@ -41,70 +41,87 @@ const Header: React.FC<HeaderProps> = ({ title, user, onLogout, isImpersonating,
   return (
     <>
         {isImpersonating && (
-            <div className="fixed top-0 left-0 right-0 bg-yellow-400 text-yellow-900 text-center py-2 z-50 text-sm font-semibold">
+            <div className="bg-yellow-400 text-yellow-900 text-center py-2 text-xs font-semibold">
                 Estás en modo administrador.
                 <button onClick={onExitImpersonation} className="ml-4 font-bold underline hover:text-yellow-900">
-                    Salir y volver a Super Admin
+                    Salir
                 </button>
             </div>
         )}
-        <header className="flex justify-between items-center py-4">
-        <h1 className="text-3xl font-bold text-iange-dark">{title}</h1>
-        <div className="flex items-center space-x-4">
-            <div className="text-right">
-                <p className="font-semibold text-gray-800">{user.name}</p>
-                <p className="text-sm text-gray-500">{user.role}</p>
-            </div>
+        
+        {/* HEADER FINAL:
+            - bg-white: Fondo blanco limpio.
+            - shadow-sm: Sombra ligera para el efecto "flotante/sticky".
+            - border-b: Línea divisoria sutil.
+            - py-3 px-8: Dimensiones "Petite" elegantes.
+        */}
+        <header className="flex justify-between items-center py-3 px-8 w-full bg-white shadow-sm border-b border-gray-200">
             
-            <div className="relative" ref={dropdownRef}>
-                {/* --- BOTÓN DE PERFIL CORREGIDO --- */}
-                <button 
-                    onClick={() => setDropdownOpen(!dropdownOpen)} 
-                    className="w-12 h-12 rounded-full overflow-hidden focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-iange-orange transition-all"
-                >
-                    {user.photo && user.photo.length > 10 ? (
-                        // Opción A: Mostrar la imagen real
-                        <img 
-                            src={user.photo} 
-                            alt="Perfil" 
-                            className="w-full h-full object-cover" 
-                        />
-                    ) : (
-                        // Opción B: Fallback (Inicial sobre fondo naranja)
-                        <div className="w-full h-full bg-iange-orange flex items-center justify-center text-white font-bold text-xl">
-                            {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+            {/* Título Petite */}
+            <h1 className="text-lg font-bold text-iange-dark tracking-tight">{title}</h1>
+            
+            <div className="flex items-center space-x-3">
+                <div className="text-right">
+                    {/* Info Usuario Petite */}
+                    <p className="font-semibold text-gray-800 text-sm leading-tight">{user.name}</p>
+                    <p className="text-xs text-gray-500">{user.role}</p>
+                </div>
+                
+                <div className="relative" ref={dropdownRef}>
+                    {/* Avatar Petite (w-9 h-9) */}
+                    <button 
+                        onClick={() => setDropdownOpen(!dropdownOpen)} 
+                        className="w-9 h-9 rounded-full overflow-hidden focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-iange-orange transition-all shadow-sm"
+                    >
+                        {user.photo && user.photo.length > 10 ? (
+                            <img 
+                                src={user.photo} 
+                                alt="Perfil" 
+                                className="w-full h-full object-cover" 
+                            />
+                        ) : (
+                            <div className="w-full h-full bg-iange-orange flex items-center justify-center text-white font-bold text-sm">
+                                {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                        )}
+                    </button>
+
+                    {dropdownOpen && (
+                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200">
+                            <Link 
+                                to="/configuraciones/mi-perfil" 
+                                onClick={() => setDropdownOpen(false)} 
+                                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                                Configuración de mi perfil
+                            </Link>
+                            <button 
+                                onClick={handleLogoutClick} 
+                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                                Cerrar sesión
+                            </button>
                         </div>
                     )}
-                </button>
-
-                {dropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg py-1 z-10 border border-gray-200">
-                        <Link to="/configuraciones/mi-perfil" onClick={() => setDropdownOpen(false)} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                            Configuración de mi perfil
-                        </Link>
-                        <button onClick={handleLogoutClick} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                            Cerrar sesión
-                        </button>
-                    </div>
-                )}
+                </div>
             </div>
-        </div>
         </header>
+
         <Modal title="Confirmar Cierre de Sesión" isOpen={isLogoutModalOpen} onClose={() => setLogoutModalOpen(false)}>
             <div className="text-center">
-                <p className="text-lg text-gray-700">
+                <p className="text-base text-gray-700">
                     ¿Estás seguro de que quieres cerrar sesión?
                 </p>
-                <div className="mt-6 flex justify-center space-x-4">
+                <div className="mt-6 flex justify-center space-x-3">
                     <button 
                         onClick={() => setLogoutModalOpen(false)}
-                        className="px-6 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+                        className="px-4 py-2 text-sm bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
                     >
                         Cancelar
                     </button>
                     <button 
                         onClick={handleConfirmLogout}
-                        className="px-6 py-2 bg-iange-orange text-white rounded-md hover:bg-orange-600"
+                        className="px-4 py-2 text-sm bg-iange-orange text-white rounded-md hover:bg-orange-600"
                     >
                         Cerrar Sesión
                     </button>
