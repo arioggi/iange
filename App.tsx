@@ -115,7 +115,8 @@ const MainLayout = ({
 
         {/* Contenido Scrollable */}
         <main className="flex-1 overflow-y-auto p-8">
-            <div className="mt-2">
+            {/* Se eliminó la clase mt-2 para cuadrar el espaciado superior con el lateral */}
+            <div>
                 {children}
             </div>
         </main>
@@ -152,8 +153,17 @@ const App = () => {
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   
-  // ESTADO GLOBAL DEL SIDEBAR (Inicialmente expandido = false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // ✅ CAMBIO 1: Inicialización leyendo localStorage
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+      const saved = localStorage.getItem('sidebar_collapsed');
+      // Si existe y es 'true', iniciamos colapsado
+      return saved === 'true';
+  });
+
+  // ✅ CAMBIO 2: Guardar en localStorage cuando cambie
+  useEffect(() => {
+      localStorage.setItem('sidebar_collapsed', sidebarCollapsed.toString());
+  }, [sidebarCollapsed]);
 
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [propiedades, setPropiedades] = useState<Propiedad[]>([]);

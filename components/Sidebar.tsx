@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { MENU_ITEMS, SETTINGS_MENU_ITEM, SETTINGS_MENU_ITEMS, SUPERADMIN_MENU_ITEMS, ROLES } from '../constants';
 import { User, UserPermissions } from '../types';
@@ -12,7 +12,7 @@ const ChevronLeftIcon = ({ className }: { className?: string }) => (
 );
 
 // ==========================================
-// COMPONENTE LOGO ADAPTATIVO (Modificado)
+// COMPONENTE LOGO ADAPTATIVO
 // ==========================================
 const Logo = ({ url, collapsed, accountName }: { url?: string | null, collapsed: boolean, accountName?: string }) => {
     // Obtenemos la inicial (Si no hay nombre, usamos 'I')
@@ -52,7 +52,7 @@ const Logo = ({ url, collapsed, accountName }: { url?: string | null, collapsed:
 };
 
 // ==========================================
-// NAV ITEM (Tu código original)
+// NAV ITEM (Corregido tamaño de iconos)
 // ==========================================
 interface NavItemProps {
     item: {
@@ -82,10 +82,11 @@ const NavItem: React.FC<NavItemProps> = ({ item, collapsed }) => {
     >
       {Icon && (
         <Icon 
+          // ✅ CAMBIO AQUÍ: Forzamos h-5 w-5 en ambos estados para evitar saltos.
+          // Solo quitamos el margen (mr-3) cuando está colapsado.
           className={`
-            transition-colors
-            ${collapsed ? 'h-6 w-6' : 'h-5 w-5 mr-3'} 
-            ${/* Si está activo y colapsado, mantenemos color */ ''}
+            transition-colors h-5 w-5
+            ${collapsed ? '' : 'mr-3'} 
           `} 
         />
       )}
@@ -104,14 +105,12 @@ interface SidebarProps {
     user: User;
     logoUrl?: string | null;
     accountName?: string;
-    // ✅ NUEVAS PROPS PARA EL CONTROL EXTERNO
+    // Props de control externo
     collapsed: boolean;
     toggleCollapse: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl, accountName, collapsed, toggleCollapse }) => {
-    // ❌ Eliminamos el estado local: const [collapsed, setCollapsed] = useState(false);
-    // Ahora usamos las props 'collapsed' y 'toggleCollapse' que vienen de App.tsx
     
     const location = useLocation();
     const navigate = useNavigate();
@@ -120,7 +119,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl, accountName, collapsed
     const isSettingsPage = location.pathname.startsWith('/configuraciones');
     const isSuperAdminPage = location.pathname.startsWith('/superadmin');
     
-    // Filtros de menú (Originales)
+    // Filtros de menú
     const visibleMenuItems = MENU_ITEMS.filter(item => !item.permissionKey || checkPermission(item.permissionKey));
     const visibleSettingsMenuItems = SETTINGS_MENU_ITEMS.filter(item => {
         if(item.path === "/configuraciones/mi-perfil") return true;
@@ -203,7 +202,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl, accountName, collapsed
   const widthClass = collapsed ? 'w-20' : 'w-64';
 
   return (
-    // EL ASIDE PRINCIPAL (TU ESTRUCTURA ORIGINAL RESPETADA AL 100%)
+    // EL ASIDE PRINCIPAL
     <aside 
         className={`
             bg-white h-screen border-r border-gray-200 fixed top-0 left-0 z-30 
@@ -211,7 +210,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, logoUrl, accountName, collapsed
             ${widthClass}
         `}
     >
-        {/* BOTÓN DE COLAPSO (Flecha en medio) - Ahora usa toggleCollapse del padre */}
+        {/* BOTÓN DE COLAPSO (Flecha en medio) */}
         <button
             onClick={toggleCollapse}
             className="absolute -right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center text-gray-500 hover:text-iange-orange hover:border-iange-orange shadow-sm z-50 transition-colors focus:outline-none"
