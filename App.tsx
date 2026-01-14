@@ -24,7 +24,7 @@ import Configuraciones from "./pages/Configuraciones";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import PublicPropertyPage from "./pages/PublicPropertyPage";
 import PublicCatalogPage from "./pages/PublicCatalogPage"; 
-import PublicVerification from "./pages/PublicVerification"; // <--- NUEVA IMPORTACIÓN
+import PublicVerification from "./pages/PublicVerification";
 
 // Settings
 import PerfilEmpresa from "./components/settings/PerfilEmpresa";
@@ -63,27 +63,63 @@ const ProtectedRoute = ({ user, permissionKey, children }: { user: User, permiss
     return <>{children}</>;
 };
 
-// --- LAYOUT ---
-const MainLayout = ({ children, user, title, onLogout, isImpersonating, onExitImpersonation, logoUrl }: { 
+// --- LAYOUT CON SIDEBAR COLAPSABLE Y HEADER FIJO ---
+const MainLayout = ({ 
+    children, 
+    user, 
+    title, 
+    onLogout, 
+    isImpersonating, 
+    onExitImpersonation, 
+    logoUrl,
+    accountName,             // Prop para inicial del logo
+    sidebarCollapsed,        // Estado de colapso
+    setSidebarCollapsed      // Setter de colapso
+}: { 
     children: React.ReactNode, 
     user: User, 
     title: string, 
     onLogout: () => void,
     isImpersonating: boolean,
     onExitImpersonation: () => void,
-    logoUrl?: string | null 
+    logoUrl?: string | null,
+    accountName?: string,
+    sidebarCollapsed: boolean,
+    setSidebarCollapsed: (v: boolean) => void
 }) => (
-    <div className="flex bg-gray-50 min-h-screen font-sans">
-      <Sidebar user={user} logoUrl={logoUrl} />
-      <main className="flex-1 ml-64 p-8">
-        <Header 
-          title={title} user={user} onLogout={onLogout} 
-          isImpersonating={isImpersonating} onExitImpersonation={onExitImpersonation}
-        />
-        <div className="mt-8">
-            {children}
+    <div className="flex h-screen bg-gray-50 font-sans overflow-hidden">
+      
+      {/* Sidebar: Controla su renderizado pero recibe estado del padre */}
+      <Sidebar 
+        user={user} 
+        logoUrl={logoUrl} 
+        accountName={accountName}
+        collapsed={sidebarCollapsed} 
+        toggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
+      
+      {/* Contenedor derecho: Margen dinámico para la animación suave */}
+      <div 
+        className={`flex-1 flex flex-col min-w-0 overflow-hidden transition-all duration-300 ease-in-out ${
+            sidebarCollapsed ? 'ml-20' : 'ml-64'
+        }`}
+      >
+        
+        {/* Header Fijo */}
+        <div className="flex-shrink-0 z-20 bg-white border-b border-gray-200">
+            <Header 
+              title={title} user={user} onLogout={onLogout} 
+              isImpersonating={isImpersonating} onExitImpersonation={onExitImpersonation}
+            />
         </div>
-      </main>
+
+        {/* Contenido Scrollable */}
+        <main className="flex-1 overflow-y-auto p-8">
+            <div className="mt-2">
+                {children}
+            </div>
+        </main>
+      </div>
     </div>
 );
 
@@ -116,6 +152,9 @@ const App = () => {
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   
+  // ESTADO GLOBAL DEL SIDEBAR (Inicialmente expandido = false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [propiedades, setPropiedades] = useState<Propiedad[]>([]);
   const [propietarios, setPropietarios] = useState<Propietario[]>([]);
@@ -284,16 +323,10 @@ const App = () => {
     }
     showToast('Guardando cambios...', 'success');
     try {
-        // 1. Si existe un propietario real (y no es null/bypass), actualizamos sus datos de contacto
         if (updatedPropietario && updatedPropietario.id > 0) {
             await updateContact(updatedPropietario.id, updatedPropietario);
         }
-
-        // 2. Preparamos el ID del dueño para la propiedad
-        // Si updatedPropietario es null/undefined, mandamos null para desvincular (Bypass)
         const ownerIdToSave = updatedPropietario?.id ? updatedPropietario.id.toString() : null;
-
-        // 3. Actualizamos la propiedad
         await updateProperty(updatedPropiedad, ownerIdToSave);
         
         showToast('Guardado con éxito.', 'success');
@@ -352,17 +385,15 @@ const App = () => {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       
       <Routes>
-        {/* --- RUTAS PÚBLICAS --- */}
         <Route path="/preview/:token" element={<PublicPropertyPage />} />
         <Route path="/p/:id" element={<PublicPropertyPage />} />
         <Route path="/c/:tenantId" element={<PublicCatalogPage />} />
-        <Route path="/verificar-identidad/:token" element={<PublicVerification />} /> {/* ✅ NUEVA RUTA */}
+        <Route path="/verificar-identidad/:token" element={<PublicVerification />} />
 
         <Route path="/login" element={
             status === 'authenticated' ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />
         } />
 
-        {/* --- RUTAS PRIVADAS (APP) --- */}
         <Route path="/*" element={
             !user ? (
                 <Navigate to="/login" replace />
@@ -374,33 +405,27 @@ const App = () => {
                     isImpersonating={isImpersonating}
                     onExitImpersonation={handleExitImpersonation}
                     logoUrl={companySettings?.logo_url}
+                    // ✅ NUEVAS PROPS PARA EL SIDEBAR
+                    accountName={companySettings?.name || user.name} // Para el logo naranja
+                    sidebarCollapsed={sidebarCollapsed}
+                    setSidebarCollapsed={setSidebarCollapsed}
                 >
                     <Routes>
                         <Route path="/" element={<Navigate to={getInitialRoute(user)} replace />} />
-                        
                         <Route path="/inicio" element={<ProtectedRoute user={user} permissionKey="dashboard"><OportunidadesDashboard propiedades={propiedades} asesores={asesores} propietarios={propietarios} compradores={compradores} companySettings={companySettings} isLoading={dataLoading} currentUser={user} /></ProtectedRoute>} />
                         <Route path="/oportunidades" element={<ProtectedRoute user={user} permissionKey="contactos"><AltaClientes showToast={showToast} propiedades={propiedades} setPropiedades={setPropiedades} propietarios={propietarios} setPropietarios={setPropietarios} compradores={compradores} setCompradores={setCompradores} handleUpdatePropiedad={handleUpdatePropiedad} handleDeletePropiedad={handleDeletePropiedad} initialEditPropId={initialEditPropId} setInitialEditPropId={setInitialEditPropId} asesores={asesores} currentUser={user} onDataChange={() => refreshAppData(true)} /></ProtectedRoute>} />
-                        
                         <Route path="/catalogo" element={<ProtectedRoute user={user} permissionKey="propiedades"><Catalogo propiedades={propiedades} propietarios={propietarios} asesores={asesores} onAddVisita={handleAddVisita} handleUpdatePropiedad={handleUpdatePropiedad} showToast={showToast} currentUser={user} compradores={compradores} onDataChange={() => refreshAppData(true)}/></ProtectedRoute>} />
                         <Route path="/progreso" element={<ProtectedRoute user={user} permissionKey="progreso"><Progreso propiedades={propiedades} propietarios={propietarios} onUpdatePropiedad={handleUpdatePropiedad} onNavigateAndEdit={onNavigateAndEdit} asesores={asesores} /></ProtectedRoute>} />
                         <Route path="/reportes" element={<ProtectedRoute user={user} permissionKey="reportes"><Reportes /></ProtectedRoute>} />
                         <Route path="/reportes/:reportId" element={<ProtectedRoute user={user} permissionKey="reportes"><ReporteDetalle propiedades={propiedades} asesores={asesores} compradores={compradores} /></ProtectedRoute>} />
                         <Route path="/crm" element={<ProtectedRoute user={user} permissionKey="crm"><PlaceholderPage title="CRM" /></ProtectedRoute>} />
-                        
                         <Route path="/configuraciones" element={<Configuraciones />}>
                              <Route index element={<Navigate to="mi-perfil" replace />} />
                              <Route path="mi-perfil" element={<MiPerfil user={user} onUserUpdated={handleUpdateUser} />} />
-                             
-                             <Route path="perfil" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? 
-                                 <PerfilEmpresa user={user} onDataChange={() => refreshAppData(true)} /> : 
-                                 <Navigate to="/configuraciones/mi-perfil" />} 
-                             />
-                             
+                             <Route path="perfil" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? <PerfilEmpresa user={user} onDataChange={() => refreshAppData(true)} /> : <Navigate to="/configuraciones/mi-perfil" />} />
                              <Route path="facturacion" element={(user.role === ROLES.ADMIN_EMPRESA || user.role === ROLES.CUENTA_EMPRESA || user.role === ROLES.SUPER_ADMIN) ? <Facturacion /> : <Navigate to="/configuraciones/mi-perfil" />} />
-                             
                              <Route path="personal" element={<ProtectedRoute user={user} permissionKey="equipo"><PersonalEmpresa showToast={showToast} currentUser={user} onDataChange={() => refreshAppData(true)} /></ProtectedRoute>} />
                         </Route>
-
                         <Route path="/superadmin/*" element={user.role === ROLES.SUPER_ADMIN ? (<Routes><Route path="/" element={<SuperAdminDashboard />} /><Route path="empresas" element={<SuperAdminEmpresas showToast={showToast} onImpersonate={handleImpersonate} />} /><Route path="usuarios-globales" element={<SuperAdminUsuarios showToast={showToast} />} /><Route path="planes" element={<SuperAdminPlanes />} /><Route path="configuracion" element={<SuperAdminConfiguracion showToast={showToast} />} /><Route path="reportes-globales" element={<SuperAdminReportes />} /><Route path="logs" element={<SuperAdminLogs />} /></Routes>) : <Navigate to="/" />} />
                         <Route path="*" element={<PlaceholderPage title="Página no encontrada" />} />
                     </Routes>
