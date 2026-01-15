@@ -9,11 +9,21 @@ const cleanText = (text: string | undefined | null) => {
     return str.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F0F5}\u{1F200}-\u{1F270}\u{2328}\u{231A}\u{23F3}\u{23F0}\u{23F1}\u{23F2}\u{23F8}\u{23F9}\u{23FA}]/gu, '');
 };
 
+// --- FUNCIÓN HELPER PARA DIVIDIR ARRAY EN GRUPOS ---
+// Esto permite crear páginas de 6 en 6 fotos
+const chunkArray = <T,>(array: T[], size: number): T[][] => {
+    const result: T[][] = [];
+    for (let i = 0; i < array.length; i += size) {
+        result.push(array.slice(i, i + size));
+    }
+    return result;
+};
+
 const styles = StyleSheet.create({
   page: {
     backgroundColor: '#FFFFFF',
     fontFamily: 'Helvetica',
-    paddingBottom: 60, // Aumentado para dar espacio al footer
+    paddingBottom: 60, // Espacio para el footer
     paddingTop: 0,
   },
   // --- PORTADA ---
@@ -78,7 +88,10 @@ const styles = StyleSheet.create({
     padding: 20,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    // Usamos flex-start para evitar huecos extraños en la última página si son pocas fotos
+    // pero mantenemos space-between si prefieres el estilo original.
+    // Para que se vea igual al original, mantendré space-between
+    justifyContent: 'space-between', 
   },
   galleryImage: {
     width: '48%', 
@@ -120,7 +133,6 @@ const styles = StyleSheet.create({
     color: '#334155',
   },
   // --- FOOTER & LEGAL ---
-  // Cambiamos a posición relativa para que no se encime
   legalTextContainer: {
     marginTop: 30,
     paddingHorizontal: 30,
@@ -132,7 +144,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  // Footer Fijo
   footer: {
     position: 'absolute',
     bottom: 0,
@@ -165,7 +176,13 @@ const FichaTecnicaPDF: React.FC<FichaTecnicaPDFProps> = ({ propiedad, images }) 
   };
 
   const coverImage = images.length > 0 ? images[0] : null;
-  const galleryImages = images.slice(1, 7); 
+  
+  // MODIFICACIÓN: Tomamos TODAS las imágenes restantes (desde la 1 hasta el final)
+  const allGalleryImages = images.slice(1);
+  
+  // Dividimos las imágenes en grupos de 6 para que quepan perfectamente en una página
+  // Si tienes 50 fotos, esto creará un array de arrays [[6 fotos], [6 fotos], ...]
+  const galleryChunks = chunkArray(allGalleryImages, 6);
 
   // Limpieza de textos
   const tipoInmuebleSafe = cleanText(propiedad.tipo_inmueble);
@@ -177,13 +194,11 @@ const FichaTecnicaPDF: React.FC<FichaTecnicaPDFProps> = ({ propiedad, images }) 
     <Document>
       {/* --- PÁGINA 1: PORTADA --- */}
       <Page size="A4" style={styles.page}>
-        {/* Footer Fijo en todas las páginas generadas por este bloque */}
         <View fixed style={styles.footer}>
             <Text style={styles.footerText}>IANGE Real Estate</Text>
             <Text style={styles.footerText}>www.iange.xyz</Text>
         </View>
 
-        {/* Contenido Portada */}
         {coverImage ? (
             <Image src={coverImage} style={styles.coverImage} />
         ) : (
@@ -225,24 +240,24 @@ const FichaTecnicaPDF: React.FC<FichaTecnicaPDFProps> = ({ propiedad, images }) 
         </View>
       </Page>
 
-      {/* --- PÁGINA 2: GALERÍA --- */}
-      {galleryImages.length > 0 && (
-        <Page size="A4" style={styles.page}>
+      {/* --- PÁGINA 2...N: GALERÍA (Iteramos sobre los chunks) --- */}
+      {galleryChunks.map((chunk, pageIndex) => (
+        <Page key={`gallery-page-${pageIndex}`} size="A4" style={styles.page}>
             <View fixed style={styles.footer}>
                 <Text style={styles.footerText}>IANGE Real Estate</Text>
-                <Text style={styles.footerText}>Galería</Text>
+                <Text style={styles.footerText}>Galería {pageIndex + 1}</Text>
             </View>
 
             <Text style={styles.sectionTitle}>Galería</Text>
             <View style={styles.galleryContainer}>
-                {galleryImages.map((img, index) => (
-                    <Image key={index} src={img} style={styles.galleryImage} />
+                {chunk.map((img, imgIndex) => (
+                    <Image key={`img-${pageIndex}-${imgIndex}`} src={img} style={styles.galleryImage} />
                 ))}
             </View>
         </Page>
-      )}
+      ))}
 
-      {/* --- PÁGINA 3: DESCRIPCIÓN Y DETALLES (Auto-paginable) --- */}
+      {/* --- PÁGINA FINAL: DESCRIPCIÓN Y DETALLES (Auto-paginable) --- */}
       <Page size="A4" style={styles.page} wrap>
         <View fixed style={styles.footer}>
             <Text style={styles.footerText}>Generado por IANGE</Text>
@@ -250,12 +265,10 @@ const FichaTecnicaPDF: React.FC<FichaTecnicaPDFProps> = ({ propiedad, images }) 
         </View>
 
         <Text style={styles.sectionTitle}>Descripción</Text>
-        {/* El texto ahora fluye y rompe página si es necesario */}
         <Text style={styles.textBlock}>
             {descripcionSafe}
         </Text>
 
-        {/* Mantenemos Características junto, o dejamos que fluya */}
         <View break={false}> 
             <Text style={styles.sectionTitle}>Características y Equipamiento</Text>
             <View style={styles.detailsGrid}>
@@ -273,7 +286,6 @@ const FichaTecnicaPDF: React.FC<FichaTecnicaPDFProps> = ({ propiedad, images }) 
             </View>
         </View>
 
-        {/* Texto Legal al final del flujo, NO absoluto */}
         <View style={styles.legalTextContainer}>
             <Text style={styles.legalText}>
                 * Los precios y la disponibilidad están sujetos a cambios sin previo aviso. Las imágenes son ilustrativas. 
